@@ -1,6 +1,6 @@
 frontend/.vscode/
 duckdb.db*
-core.db*
+/store/core.db*
 .env
 data/
 .DS_Store

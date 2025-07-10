@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.git
+.github
+.idea
+.vscode
+*.log
+
+# Ignore node_modules everywhere
+node_modules
+
+# Frontend specific ignores
+frontend/node_modules
+frontend/dist

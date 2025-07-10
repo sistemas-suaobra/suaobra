@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: suaobra-backend
+    restart: unless-stopped
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - suaobra-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: suaobra-frontend
+    restart: unless-stopped
+    networks:
+      - suaobra-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: suaobra-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - suaobra-net
+
+networks:
+  suaobra-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  backend_data:
