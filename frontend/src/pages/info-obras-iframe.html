@@ -1,0 +1,27 @@
+  
+  <form id="info-obras-form" action="https://www.tbrweb.suaobra.com.br/infoobrastbr" method="POST">
+    carregando...
+    <input type="hidden" name="email">
+    <input type="hidden" name="senha">
+  </form>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+
+    let email = localStorage.getItem('info_obras_email') || 'isabel@cavicon.com.br'
+    let password = localStorage.getItem('info_obras_password') || 'caviconsuaobra'
+
+    console.log(`email = '${email}'`)
+
+    let form = document.forms["info-obras-form"]
+    
+    form.elements["email"].value = email
+    form.elements["senha"].value = password
+
+    document.getElementById("info-obras-form").submit();
+    
+    // clear values
+    localStorage.setItem('info_obras_email', '')
+    localStorage.setItem('info_obras_password', '')
+  });
+  </script>

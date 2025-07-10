@@ -1,0 +1,89 @@
+{
+	storage file_system {
+		root /tmp/caddy  # or any directory where Caddy can write
+	}
+}
+
+app.suaobra.test {
+  tls internal
+	reverse_proxy localhost:4321
+
+	header {
+		Access-Control-Allow-Origin {http.request.header.Origin}
+		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Origin, Content-Type, Accept, Authorization"
+		Access-Control-Allow-Credentials true
+		Access-Control-Max-Age 3600
+		defer
+	}
+
+	@cors_origins {
+		header Origin *
+	}
+
+	handle @cors_origins {
+		header Access-Control-Allow-Origin {http.request.header.Origin}
+	}
+
+	@options {
+		method OPTIONS
+	}
+
+	respond @options 204
+}
+
+api.suaobra.test {
+  tls internal
+	reverse_proxy localhost:8090
+
+	header {
+		Access-Control-Allow-Origin {http.request.header.Origin}
+		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Origin, Content-Type, Accept, Authorization"
+		Access-Control-Allow-Credentials true
+		Access-Control-Max-Age 3600
+		defer
+	}
+
+	@cors_origins {
+		header Origin *
+	}
+
+	handle @cors_origins {
+		header Access-Control-Allow-Origin {http.request.header.Origin}
+	}
+
+	@options {
+		method OPTIONS
+	}
+
+	respond @options 204
+}
+
+messenger.suaobra.test {
+  tls internal
+	reverse_proxy localhost:4376
+
+	header {
+		Access-Control-Allow-Origin {http.request.header.Origin}
+		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Origin, Content-Type, Accept, Authorization"
+		Access-Control-Allow-Credentials true
+		Access-Control-Max-Age 3600
+		defer
+	}
+
+	@cors_origins {
+		header Origin *
+	}
+
+	handle @cors_origins {
+		header Access-Control-Allow-Origin {http.request.header.Origin}
+	}
+
+	@options {
+		method OPTIONS
+	}
+
+	respond @options 204
+}

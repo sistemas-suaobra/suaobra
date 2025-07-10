@@ -1,0 +1,12 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { LoginPage } from '../components/login/LoginPage';
+---
+
+<Layout
+  slug="login"
+  mainSlotStyle='background: transparent; margin:0 !important; padding: 0 !important'
+  login={true}
+>
+  <LoginPage client:load />
+</Layout>

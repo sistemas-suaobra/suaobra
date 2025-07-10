@@ -1,0 +1,27 @@
+version: "3.7"
+services:
+
+  sua-obra-production:
+    build: .
+    hostname: sua-obra-production
+    container_name: sua-obra-production
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8090"
+    volumes:
+      - /etc/localtime:/etc/localtime
+      - /__/docker-data/sua-obra-production/main:/app/data/main
+      - type: bind
+        source: ./core.db
+        target: /app/data/core/core.db
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+networks:
+  default:
+    name: caddy_default
+    external: true

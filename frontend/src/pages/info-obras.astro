@@ -1,0 +1,30 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<script>
+import { loadUserState } from '../store/store.ts';
+
+loadUserState().then(
+  user => {
+    if (user.email) {
+      localStorage.setItem('info_obras_email', user.email)
+      // localStorage.setItem('info_obras_password', user.get().team.state.info_obras_password)
+    }
+
+    // add iframe when loaded
+    var iframe = document.createElement("iframe");
+    iframe.setAttribute("src", "/info-obras-iframe");
+    iframe.setAttribute("height", "2747");
+    iframe.style.border = "0";
+    iframe.style.width = "100%";
+    iframe.style.overflow = "hidden";
+    document.getElementById("main-slot").appendChild(iframe);
+  }
+)
+
+</script>
+
+<Layout slug="info-obras" mainSlotStyle='background: transparent'>
+  <!-- <iframe src="/info-obras-iframe" id="iframe1" style="border: 0; width:100%; overflow: hidden;" height="2747"></iframe> -->
+</Layout>

@@ -1,0 +1,57 @@
+source: 'local://'
+target: 'sqlite://./data/core/core.db'
+
+defaults:
+  mode: full-refresh
+  source_options: 
+    empty_as_null: true
+    trim_space: true
+
+streams:
+  file://./data/core/core_obras_plus.csv.gz:
+    object: main.core_obras_plus
+
+    source_options:
+      columns:
+        obra_number: string
+        size: integer
+        start_date: timestamp
+        end_date: timestamp
+        has_owner_phone: bool
+        has_owner_email: bool
+        has_professional_phone: bool
+        has_professional_email: bool
+        first_listing_date: date
+        last_listing_date: date
+    
+    target_options:
+      post_sql: |
+        create unique index idx_core_obras_plus_id on core_obras_plus (id);
+        create index idx_core_obras_plus_city_state on core_obras_plus (city, state);
+        create index idx_core_obras_plus_city_bairro on core_obras_plus (bairro);
+        create index idx_core_obras_plus_owner on core_obras_plus (owner);
+        create index idx_core_obras_plus_professional on core_obras_plus (professional);
+  
+  file://./data/core/core_obras_plus_phone.csv.gz:
+    object: main.core_obras_plus_phone
+
+    source_options:
+      columns:
+        telefone: string
+    
+    target_options:
+      post_sql: |
+        create index idx_core_obras_plus_phone_nome on core_obras_plus_phone (nome, telefone);
+        create index idx_core_obras_plus_phone_uf_cidade on core_obras_plus_phone (uf, cidade)
+  
+  file://./data/core/core_obras_plus_email.csv.gz:
+    object: main.core_obras_plus_email
+
+    source_options:
+      columns:
+        email: string
+    
+    target_options:
+      post_sql: |
+        create index idx_core_obras_plus_email_nome on core_obras_plus_email (nome, email);
+        create index idx_core_obras_plus_email_uf_cidade on core_obras_plus_email (uf, cidade)

@@ -1,0 +1,14 @@
+frontend/.vscode/
+duckdb.db*
+core.db*
+.env
+data/
+.DS_Store
+suaobra-app
+scripts/submit_deploy.sh
+store/dev_data_timestamp
+store/core_data_timestamp
+*.csv.gz
+scripts/backfill.py
+dump.sql
+store/collections.json

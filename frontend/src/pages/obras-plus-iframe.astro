@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ObraPlusPage from '../components/obras-plus/ObraPlusPage';
+---
+
+<Layout slug="obras-plus" mainSlotStyle='background: transparent; margin-left: 1rem !important; margin-right: 1rem; !important' iframe={true}>
+  <ObraPlusPage Restricted={true} client:load/>
+</Layout>

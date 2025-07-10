@@ -1,0 +1,136 @@
+---
+import "primereact/resources/primereact.min.css";
+// import "primereact/resources/themes/lara-light-indigo/theme.css";  
+import "primeflex/primeflex.css";  
+import 'primeicons/primeicons.css';
+import "../styles/theme.css";  
+import "../styles/global.css";  
+import NavBar from '../components/NavBar';
+import Menu from '../components/Menu';
+import { ViewTransitions } from 'astro:transitions';
+
+interface Props {
+	slug: string;
+  mainSlotStyle?: string;
+  iframe?: boolean;
+  login?: boolean;
+}
+
+const { slug, mainSlotStyle, iframe, login } = Astro.props;
+
+const slugMap = {
+  '': 'SuaObra', // index
+  'login': 'SuaObra',
+  'dashboard': 'Dashboard',
+  'obras-plus': 'Obras+',
+  'info-obras': 'InfoObras',
+  'venda-mais': 'VendaMais',
+}
+
+const isDev = import.meta.env.DEV;
+
+---
+
+<script>
+
+import { isLoaded, isWaiting, loadUser } from '../store/store.ts';
+
+// redirect if not able to load user
+if(window.location.pathname !== '/' && location.pathname.indexOf('-iframe') === -1 && !loadUser())
+  window.location.assign('/')
+
+isLoaded.subscribe(loaded => {
+  if (loaded) {
+    setTimeout(() => {
+        document.getElementById('loader')?.remove()
+        document.getElementById('root').removeAttribute('hidden')
+        document.getElementById('root-menu').removeAttribute('hidden')
+        document.getElementById('main-slot').removeAttribute('hidden')
+      }, 300)
+  }
+})
+
+isWaiting.subscribe(waiting => {
+  if (waiting) {
+    document.getElementById('waiter').removeAttribute('hidden')
+  } else {
+    document.getElementById('waiter').setAttribute('hidden', '')
+  }
+})
+
+</script>
+
+<script>
+    // this is to extends the window global functions
+    import { RudderAnalytics } from '@rudderstack/analytics-js';
+    import { isProd } from '../store/api.ts';
+    const rudderAnalytics = new RudderAnalytics();
+    const rudderstackKey = isProd() ? '2VJjQjlB56KCm1H7tkoOm67xWs1' : '2VJPvIEuTC4MiA9Sj6tFj4EPWtC'
+    rudderAnalytics.load(rudderstackKey,"https://liveflarccszw.dataplane.rudderstack.com", {});
+    window.rudderAnalytics = rudderAnalytics
+</script>
+
+<script src="https://cdn.rudderlabs.com/v1.1/rudder-analytics.min.js"></script>
+
+<script defer data-domain="app.suaobra.com.br" src="https://plausible.ocral.org/js/plausible.js"></script>
+
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="SuaObra" content={ slugMap[slug] }>
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="icon" type="image/svg+xml" href={isDev ? "/favicon-dev.svg" : "/favicon.svg"} />
+		<meta name="generator" content={Astro.generator} />
+		<title>{ slugMap[slug] }</title>
+    <ViewTransitions />
+	</head>
+
+	<body id="root" class="m-0 h-screen">
+
+  
+  { iframe || login ? <></> : <NavBar client:load/>}
+
+  <!-- Loader with https://www.cssportal.com/css-loader-generator/ -->
+  <div id="loader" class="flex min-w-screen h-16rem justify-center align-content-center" style="position: relative;" >
+    <div class="page-loader" style="text-align: center"></div>
+  </div>
+
+  <!-- Loader with https://www.cssportal.com/css-loader-generator/ -->
+  <div id="waiter" class="" hidden>
+    <div class="api-loader" style="text-align: center"></div>
+  </div>
+
+  <div id="root-menu" hidden>
+    { iframe || login ? <></> : <Menu client:load/>}
+  </div>
+
+  <div id="main-slot" class="main-slot border-round h-auto" style={mainSlotStyle} hidden>
+  
+    <slot />
+  
+  </div>
+
+  </div>
+	</body>
+</html>
+
+<style is:global>
+	:root {
+		--accent: 136, 58, 234;
+		--accent-light: 224, 204, 250;
+		--accent-dark: 49, 10, 101;
+		--accent-gradient: linear-gradient(45deg, rgb(var(--accent)), rgb(var(--accent-light)) 30%, white 60%);
+	}
+	html {
+		font-family: system-ui, sans-serif;
+		background: #e9e9e9;
+		background-size: 224px;
+    scroll-behavior: smooth;
+	}
+	code {
+		font-family: Menlo, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono,
+			Bitstream Vera Sans Mono, Courier New, monospace;
+	}
+
+</style>

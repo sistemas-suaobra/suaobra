@@ -1,0 +1,7 @@
+source: 'duckdb:///Users/fritz/__/Git/suaobra/suaobra-app/data/core/duckdb.db'
+target: 'sqlite://./data/main/data.db'
+
+streams:
+  intermediate.int_obra_note_matched:
+    object: "main.int_obra_note_matched"
+    mode: full-refresh

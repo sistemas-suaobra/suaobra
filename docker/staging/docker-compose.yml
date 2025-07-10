@@ -1,0 +1,27 @@
+version: "3.7"
+services:
+
+  sua-obra-staging:
+    build: .
+    hostname: sua-obra-staging
+    container_name: sua-obra-staging
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8090"
+    volumes:
+      - /etc/localtime:/etc/localtime
+      - /__/docker-data/sua-obra-staging/main:/app/data/main
+      - type: bind
+        source: /__/storage/sua-obra-staging/core.db
+        target: /app/data/core/core.db
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+networks:
+  default:
+    name: caddy_default
+    external: true
