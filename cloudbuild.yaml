@@ -5,3 +5,5 @@ steps:
   - 'DOCKER_BUILDKIT=1'
 images:
 - 'southamerica-east1-docker.pkg.dev/sua-obra-limeira/suaobra-backend-repo/suaobra-backend-service:latest'
+options:
+  logging: CLOUD_LOGGING_ONLY
