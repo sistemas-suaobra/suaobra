@@ -7,3 +7,5 @@ steps:
   dir: 'frontend'
 - name: 'gcr.io/cloud-builders/gsutil'
   args: ['rsync', '-r', 'frontend/dist', 'gs://suaobra-frontend-assets']
+options:
+  logging: CLOUD_LOGGING_ONLY
