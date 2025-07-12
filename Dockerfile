@@ -33,7 +33,7 @@ COPY --from=builder /app/suaobra-app .
 
 # The core.db is now managed by the volume, so it's not needed here.
 
-EXPOSE 8090
+EXPOSE 8080
 
 # Run the application
-CMD ["./suaobra-app", "serve", "--http", "0.0.0.0:8090"]
+CMD ["./suaobra-app", "serve", "--http=0.0.0.0:8080"]
