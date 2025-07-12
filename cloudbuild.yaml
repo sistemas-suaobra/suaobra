@@ -1,9 +1,9 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'southamerica-east1-docker.pkg.dev/sua-obra-limeira/suaobra-backend-repo/suaobra-backend-service:latest', '.']
+  args: ['build', '-t', 'us-central1-docker.pkg.dev/sua-obra-25/suaobra-backend-repo/suaobra-backend-service:latest', '.']
   env:
   - 'DOCKER_BUILDKIT=1'
 images:
-- 'southamerica-east1-docker.pkg.dev/sua-obra-limeira/suaobra-backend-repo/suaobra-backend-service:latest'
+- 'us-central1-docker.pkg.dev/sua-obra-25/suaobra-backend-repo/suaobra-backend-service:latest'
 options:
   logging: CLOUD_LOGGING_ONLY
