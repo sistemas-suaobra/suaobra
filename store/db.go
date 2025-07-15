@@ -52,7 +52,7 @@ func AttachCoreDb() error {
 	_, err := MainDB.Exec("select 1 from core.core_obras_plus limit 1")
 	if err != nil {
 		g.Warn("attaching core")
-		_, err = MainDB.Exec("attach database './data/core/core.db' as 'core'")
+		_, err = MainDB.Exec("attach database '/app/core.db' as 'core'")
 	}
 	return err
 }
