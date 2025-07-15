@@ -1,6 +1,27 @@
 steps:
+# ==============================================================================
+# PASSO DE DIAGNÓSTICO TEMPORÁRIO
+# Este passo tenta verificar a conectividade de rede com o gcr.io.
+# ==============================================================================
+- name: 'ubuntu'
+  id: 'Network Connectivity Check'
+  args:
+    - 'bash'
+    - '-c'
+    - |
+      echo "--- Iniciando verificação de rede ---"
+      apt-get update -y && apt-get install -y dnsutils curl
+      echo "--- Verificando DNS para gcr.io ---"
+      nslookup gcr.io
+      echo "--- Tentando conectar ao gcr.io na porta 443 (HTTPS) ---"
+      curl -v https://gcr.io
+      echo "--- Verificação de rede concluída ---"
+
+# ==============================================================================
+# Pipeline de Build Original
+# ==============================================================================
+
 # 1. Build da imagem Docker
-# Usa o Dockerfile otimizado e tagueia a imagem com o hash do commit para versionamento.
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Build'
   args:
@@ -14,7 +35,6 @@ steps:
     - 'DOCKER_BUILDKIT=1'
 
 # 2. Push da imagem para o Artifact Registry
-# Envia a imagem versionada para o repositório.
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Push'
   args:
@@ -22,20 +42,19 @@ steps:
     - 'us-central1-docker.pkg.dev/$PROJECT_ID/suaobra-backend-repo/suaobra-backend-service:$COMMIT_SHA'
 
 # 3. Deploy da nova revisão no Cloud Run
-# Aponta o serviço do Cloud Run para a nova imagem, criando uma nova revisão.
 - name: 'gcr.io/google-cloud-builders/gcloud'
   id: 'Deploy'
   args:
     - 'run'
     - 'deploy'
-    - 'suaobra-backend-service' # <-- CONFIRME SE ESTE É O NOME DO SEU SERVIÇO
+    - 'suaobra-backend-service'
     - '--image'
     - 'us-central1-docker.pkg.dev/$PROJECT_ID/suaobra-backend-repo/suaobra-backend-service:$COMMIT_SHA'
     - '--region'
-    - 'us-central1' # <-- CONFIRME SE ESTA É A REGIÃO CORRETA
+    - 'us-central1'
     - '--platform'
     - 'managed'
-    - '--allow-unauthenticated' # Remove this line if the service is not public
+    - '--allow-unauthenticated'
 
 # Mantém a imagem no registro para referência
 images:
@@ -43,4 +62,4 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  machineType: 'E2_HIGHCPU_8' # Maquina mais potente para acelerar o build com o arquivo de 5GB
+  machineType: 'E2_HIGHCPU_8'
