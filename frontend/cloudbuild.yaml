@@ -1,12 +1,56 @@
 steps:
+# 1. Instala as dependências do frontend
 - name: 'gcr.io/cloud-builders/npm'
+  id: 'Install Dependencies'
   args: ['install']
   dir: 'frontend'
+
+# 2. Builda a aplicação frontend
 - name: 'gcr.io/cloud-builders/npm'
+  id: 'Build Frontend'
   args: ['run', 'build']
   dir: 'frontend'
+
+# 3. Sincroniza os arquivos buildados com o Google Cloud Storage
+# Este passo envia os novos arquivos para o bucket que serve como origem do CDN.
 - name: 'gcr.io/cloud-builders/gsutil'
+  id: 'Sync to GCS'
   args: ['-m', 'rsync', '-d', '-c', '-r', 'dist', 'gs://app-suaobra-com-br-frontend-assets']
   dir: 'frontend'
+
+# 4. Invalida o cache do Google Cloud CDN
+# Força o Google a buscar os novos arquivos do bucket na próxima requisição.
+# Usamos --async para que o build não precise esperar a invalidação terminar.
+- name: 'gcr.io/google-cloud-builders/gcloud'
+  id: 'Invalidate Google CDN'
+  args:
+    - 'compute'
+    - 'url-maps'
+    - 'invalidate-cdn-cache'
+    - 'suaobra-frontend-url-map' # O nome do mapa de URLs que criamos
+    - '--path'
+    - '/*' # Invalida todo o conteúdo
+    - '--async'
+
+# 5. Faz o purge do cache do Cloudflare
+# Chama a API do Cloudflare para limpar todo o cache da zona.
+- name: 'gcr.io/cloud-builders/curl'
+  id: 'Purge Cloudflare Cache'
+  secretEnv: ['CLOUDFLARE_TOKEN']
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      curl -X POST "https://api.cloudflare.com/client/v4/zones/29eab7acc70683179197a070ac0d8c51/purge_cache" \
+      -H "Authorization: Bearer $$CLOUDFARE_TOKEN" \
+      -H "Content-Type: application/json" \
+      --data '{"purge_everything":true}'
+
+# Disponibiliza o segredo do Secret Manager para o passo acima.
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/CLOUDFLARE_API_TOKEN/versions/latest
+      env: 'CLOUDFLARE_TOKEN'
+
 options:
   logging: CLOUD_LOGGING_ONLY
