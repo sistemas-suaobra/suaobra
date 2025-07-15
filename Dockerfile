@@ -1,8 +1,8 @@
 # Estágio 1: Imagem base com o dado pesado
 # Esta camada só será reconstruída se o arquivo core.db mudar.
-FROM alpine:latest AS data-base
-WORKDIR /app
-COPY data/core.db .
+# FROM alpine:latest AS data-base
+# WORKDIR /app
+# COPY data/core.db .
 
 
 # Estágio 2: Builder para compilar a aplicação Go
