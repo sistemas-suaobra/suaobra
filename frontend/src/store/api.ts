@@ -6,11 +6,11 @@ import { isWaiting, loadUser, user, type User } from "./store"
 import PocketBase, { RecordService, type RecordModel, type ListResult, type CommonOptions, type RecordListOptions, type RecordOptions, type RecordFullListOptions } from 'pocketbase';
 
 export const isProd = () => window.location.hostname.includes('suaobra.com.br')
-export const isStage = () => window.location.hostname.includes('suaobra.ocral.app.br')
+export const isStage = () => window.location.hostname.includes('suaobra-backend-service-897274251845.us-central1.run.app')
 export const isDev = () => !(isStage() || isProd())
 
 export const baseURL =  () => isProd() ? 'https://api.suaobra.com.br' :
-                              isStage() ? 'https://api.suaobra.ocral.app.br' :
+                              isStage() ? 'https://suaobra-backend-service-897274251845.us-central1.run.app' :
                               window.location.hostname.includes('suaobra.test') ? `https://api.suaobra.test` :
                               `http://${window.location.hostname}:8090`
 

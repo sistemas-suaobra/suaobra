@@ -1,9 +1,46 @@
 steps:
+# 1. Build da imagem Docker
+# Usa o Dockerfile otimizado e tagueia a imagem com o hash do commit para versionamento.
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'us-central1-docker.pkg.dev/sua-obra-25/suaobra-backend-repo/suaobra-backend-service:latest', '.']
+  id: 'Build'
+  args:
+    - 'build'
+    - '-t'
+    - 'us-central1-docker.pkg.dev/$PROJECT_ID/suaobra-backend-repo/suaobra-backend-service:$COMMIT_SHA'
+    - '.'
+    - '-f'
+    - 'Dockerfile'
   env:
-  - 'DOCKER_BUILDKIT=1'
+    - 'DOCKER_BUILDKIT=1'
+
+# 2. Push da imagem para o Artifact Registry
+# Envia a imagem versionada para o repositório.
+- name: 'gcr.io/cloud-builders/docker'
+  id: 'Push'
+  args:
+    - 'push'
+    - 'us-central1-docker.pkg.dev/$PROJECT_ID/suaobra-backend-repo/suaobra-backend-service:$COMMIT_SHA'
+
+# 3. Deploy da nova revisão no Cloud Run
+# Aponta o serviço do Cloud Run para a nova imagem, criando uma nova revisão.
+- name: 'gcr.io/google-cloud-builders/gcloud'
+  id: 'Deploy'
+  args:
+    - 'run'
+    - 'deploy'
+    - 'suaobra-backend-service' # <-- CONFIRME SE ESTE É O NOME DO SEU SERVIÇO
+    - '--image'
+    - 'us-central1-docker.pkg.dev/$PROJECT_ID/suaobra-backend-repo/suaobra-backend-service:$COMMIT_SHA'
+    - '--region'
+    - 'us-central1' # <-- CONFIRME SE ESTA É A REGIÃO CORRETA
+    - '--platform'
+    - 'managed'
+    - '--allow-unauthenticated' # Remove this line if the service is not public
+
+# Mantém a imagem no registro para referência
 images:
-- 'us-central1-docker.pkg.dev/sua-obra-25/suaobra-backend-repo/suaobra-backend-service:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/suaobra-backend-repo/suaobra-backend-service:$COMMIT_SHA'
+
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8' # Maquina mais potente para acelerar o build com o arquivo de 5GB
