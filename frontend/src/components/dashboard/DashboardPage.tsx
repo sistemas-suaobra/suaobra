@@ -62,40 +62,40 @@ export default function DashboardPage(props: Props) {
   const videos : File[] = [
     {
       title: 'Como fazer seu primeiro acesso',
-      url: 'https://r2.suaobra.ocral.app.br/2024 primeiro acesso SUA OBRA.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-primeiro-acesso.mp4',
     },
-    {
-      title: 'Panorama geral da plataforma',
-      url: 'https://r2.suaobra.ocral.app.br/WhatsApp Video 2024-02-01 at 10.46.52.mp4',
-    },
+    // {
+    //   title: 'Panorama geral da plataforma',
+    //   url: 'https://r2.suaobra.ocral.app.br/WhatsApp Video 2024-02-01 at 10.46.52.mp4',
+    // },
     {
       title: 'Abordagens: como conseguir resultados usando a abordagem ideal',
-      url: 'https://r2.suaobra.ocral.app.br/WhatsApp Video 2024-02-01 at 10.46.51.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-abordagens.mp4',
     },
     {
       title: 'Como agendar atividade no VENDA MAIS: follow up de orçamentos',
-      url: 'https://r2.suaobra.ocral.app.br/WhatsApp Video 2024-02-01 at 17.26.02.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-agendar-atividade.mp4',
     },
     {
       title: '6 dicas para prospectar',
-      url: 'https://r2.suaobra.ocral.app.br/2024%20Treinamento%20Marco%20Sua%20Obra.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-dicas-prospectar.mp4',
     },
     {
       title: '4 Dicas para Prospectar obras nas Redes Sociais',
-      url: 'https://r2.suaobra.ocral.app.br/WhatsApp%20Video%202024-05-14%20at%2007.17.30.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-prospectar-redes-sociais.mp4',
     },
     {
       title: 'Persistencia e as Vendas',
-      url: 'https://r2.suaobra.ocral.app.br/PERSISTENCIA%20E%20AS%20VENDAS.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-persistencia.mp4',
     },
     {
       title: 'Taxa de conversao - Script Simples e Eficiente',
-      url: 'https://r2.suaobra.ocral.app.br/WhatsApp%20Video%202024-09-26%20at%2008.40.57.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-taxa-conversao.mp4',
     },
-    {
-      title: 'Login Master e Equipe',
-      url: 'https://r2.suaobra.ocral.app.br/Login%20Master%20e%20Equipe.mp4',
-    },
+    // {
+    //   title: 'Login Master e Equipe',
+    //   url: 'https://r2.suaobra.ocral.app.br/Login%20Master%20e%20Equipe.mp4',
+    // },
   ]
 
   const files : File[] = [
