@@ -5,5 +5,5 @@ app.suaobra.test {
 
 api.suaobra.test {
     tls internal
-    reverse_proxy backend:8090
+    reverse_proxy backend:8080
 }

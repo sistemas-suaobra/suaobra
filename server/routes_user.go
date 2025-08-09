@@ -40,7 +40,6 @@ func sendNotificationSignupToAdmins(app *pocketbase.PocketBase, rec *models.Reco
 		// To:      []mail.Address{{Address: rec.Email()}},
 		To: []mail.Address{
 			{Address: "lucas@suaobra.com.br"},
-			{Address: "flarco@gmail.com"},
 		},
 		Subject: g.F("SuaObra - Novo Usuário Cadastrado - %s", rec.Email()),
 		HTML: g.F(`
