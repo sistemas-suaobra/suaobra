@@ -8,7 +8,7 @@ defaults:
     trim_space: true
 
 streams:
-  file://./data/core/core_obras_plus.csv.gz:
+  file://./data/core/core_obras_plus.csv:
     object: main.core_obras_plus
 
     source_options:
@@ -32,7 +32,7 @@ streams:
         create index idx_core_obras_plus_owner on core_obras_plus (owner);
         create index idx_core_obras_plus_professional on core_obras_plus (professional);
   
-  file://./data/core/core_obras_plus_phone.csv.gz:
+  file://./data/core/core_obras_plus_phone.csv:
     object: main.core_obras_plus_phone
 
     source_options:
@@ -44,7 +44,7 @@ streams:
         create index idx_core_obras_plus_phone_nome on core_obras_plus_phone (nome, telefone);
         create index idx_core_obras_plus_phone_uf_cidade on core_obras_plus_phone (uf, cidade)
   
-  file://./data/core/core_obras_plus_email.csv.gz:
+  file://./data/core/core_obras_plus_email.csv:
     object: main.core_obras_plus_email
 
     source_options:

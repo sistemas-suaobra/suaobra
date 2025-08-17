@@ -12,3 +12,12 @@ store/core_data_timestamp
 scripts/backfill.py
 dump.sql
 store/collections.json
+cmd/
+cno/
+core.db
+core.db.gz
+LICENSE
+process_cno_data.py
+sling
+sling_darwin_arm64.tar.gz
+sling_linux_amd64.tar.gz

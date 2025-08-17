@@ -64,10 +64,6 @@ export default function DashboardPage(props: Props) {
       title: 'Como fazer seu primeiro acesso',
       url: 'https://app.suaobra.com.br/videos/suaobra-primeiro-acesso.mp4',
     },
-    // {
-    //   title: 'Panorama geral da plataforma',
-    //   url: 'https://r2.suaobra.ocral.app.br/WhatsApp Video 2024-02-01 at 10.46.52.mp4',
-    // },
     {
       title: 'Abordagens: como conseguir resultados usando a abordagem ideal',
       url: 'https://app.suaobra.com.br/videos/suaobra-abordagens.mp4',
@@ -92,44 +88,20 @@ export default function DashboardPage(props: Props) {
       title: 'Taxa de conversao - Script Simples e Eficiente',
       url: 'https://app.suaobra.com.br/videos/suaobra-taxa-conversao.mp4',
     },
-    // {
-    //   title: 'Login Master e Equipe',
-    //   url: 'https://r2.suaobra.ocral.app.br/Login%20Master%20e%20Equipe.mp4',
-    // },
   ]
 
   const files : File[] = [
     {
-      title: 'SUA OBRA - Script-de-Vendas-Primeiro-Contato.pdf',
-      url: 'https://r2.suaobra.ocral.app.br/SUA%20OBRA%20-%20Script-de-Vendas-Primeiro-Contato.pdf',
+      title: 'Treinamento básico PROSPECÇÃO DE OBRAS',
+      url: 'https://app.suaobra.com.br/pdfs/Treinamento-Basico-Prospeccao.pdf',
     },
     {
-      title: 'SCRIPTS PRE PRONTOS - PROFISSIONAIS.pdf',
-      url: 'https://r2.suaobra.ocral.app.br/SCRIPTS%20PRE%20PRONTOS%20-%20PROFISSIONAIS.pdf',
+      title: 'Metodologia da Negociação de Harvard',
+      url: 'https://app.suaobra.com.br/pdfs/Metodologia-da-Negociacao-de-Harvard.pdf',
     },
     {
-      title: 'SCRIPTS PRE PRONTOS - PROFISSIONAIS 2.pdf',
-      url: 'https://r2.suaobra.ocral.app.br/SCRIPTS%20PRE%20PRONTOS%20-%20PROFISSIONAIS%202.pdf',
-    },
-    {
-      title: 'SUA OBRA - Como Prospectar obras pelas redes sociais.pdf',
-      url: 'https://r2.suaobra.ocral.app.br/2024%2005%20Como%20Prospectar%20obras%20pelas%20redes%20sociais.pdf',
-    },
-    {
-      title: 'Taxa de conversao - Script Simples e Eficiente - Photo1.png',
-      url: 'https://r2.suaobra.ocral.app.br/Taxa%20de%20conversao%20-%20Script%20Simples%20e%20Eficiente%20-%20Photo1.png',
-    },
-    {
-      title: 'Taxa de conversao - Script Simples e Eficiente - Photo2.png',
-      url: 'https://r2.suaobra.ocral.app.br/Taxa%20de%20conversao%20-%20Script%20Simples%20e%20Eficiente%20-%20Photo2.png',
-    },
-    {
-      title: 'Taxa de conversao - Script Simples e Eficiente - Photo3.png',
-      url: 'https://r2.suaobra.ocral.app.br/Taxa%20de%20conversao%20-%20Script%20Simples%20e%20Eficiente%20-%20Photo3.png',
-    },
-    {
-      title: 'Taxa de conversao - Script Simples e Eficiente - Photo4.png',
-      url: 'https://r2.suaobra.ocral.app.br/Taxa%20de%20conversao%20-%20Script%20Simples%20e%20Eficiente%20-%20Photo4.png',
+      title: 'SCRIPTS PRE PRONTOS 2025',
+      url: 'https://app.suaobra.com.br/pdfs/Script-2025.pdf',
     },
   ]
   ///////////////////////////  HOOKS  ///////////////////////////
