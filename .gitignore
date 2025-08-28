@@ -21,3 +21,6 @@ process_cno_data.py
 sling
 sling_darwin_arm64.tar.gz
 sling_linux_amd64.tar.gz
+core_new.db
+core_new.db-shm
+core_new.db-wal
