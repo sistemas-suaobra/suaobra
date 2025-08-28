@@ -24,3 +24,4 @@ sling_linux_amd64.tar.gz
 core_new.db
 core_new.db-shm
 core_new.db-wal
+node-scraper-rrt/node_modules/

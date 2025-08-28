@@ -1,0 +1,18 @@
+{
+  "name": "node-scraper-rrt",
+  "version": "1.0.0",
+  "description": "Scraper for RRT data from CAU-BR website using Node.js, Puppeteer and ZenRows.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@zenrows/browser-sdk": "^1.1.0",
+    "express": "^4.18.2",
+    "puppeteer": "^21.11.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "puppeteer-extra-plugin-user-data-dir": "^2.4.1",
+    "puppeteer-extra-plugin-user-preferences": "^2.4.1"
+  }
+}

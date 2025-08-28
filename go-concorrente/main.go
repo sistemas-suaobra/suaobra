@@ -16,9 +16,9 @@ import (
 
 // Configurações
 const (
-	API_BASE_URL  = "http://localhost:5000"
-	DB_PATH       = "./core_new.db"
-	MAX_WORKERS   = 5
+	API_BASE_URL  = "http://localhost:3001"
+	DB_PATH       = "./go-concorrente/core.db"
+	MAX_WORKERS   = 4
 )
 
 // Estrutura para dados da obra vindos da API
@@ -160,7 +160,7 @@ func processRRT(rrt string) ProcessResult {
 }
 
 func fetchRRTFromAPI(rrt string) (*ObraData, error) {
-	url := fmt.Sprintf("%s/rrt/%s", API_BASE_URL, rrt)
+	url := fmt.Sprintf("%s/scrape/%s", API_BASE_URL, rrt)
 	
 	client := &http.Client{
 		Timeout: 60 * time.Second,
