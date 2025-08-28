@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 from playwright.sync_api import sync_playwright, TimeoutError
 import re
+import hashlib
 
 app = Flask(__name__)
 
@@ -13,17 +14,34 @@ def extract_data(text):
 
     data = {}
     
-    # Extrair dados básicos
-    data['obra_number'] = extract(r'Número do RRT:\s*(.*)', text)
-    data['professional'] = extract(r'Arquiteto\(a\) e Urbanista:\s*(.*)', text)
-    data['owner'] = extract(r'Nome/Razão Social:\s*(.*)', text) or extract(r'CPF / CNPJ:\s*(.*)', text)
-    data['start_date'] = extract(r'Data de Início:\s*(.*)', text)
-    data['end_date'] = extract(r'Previsão de Término:\s*(.*)', text)
-    data['bairro'] = extract(r'Bairro:\s*(.*)', text)
-    data['type'] = extract(r'Modalidade:\s*(.*)', text)
-    data['first_listing_date'] = extract(r'Data de Registro:\s*(.*)', text)
+    # Função para formatar datas
+    def format_date(date_str):
+        import datetime
+        try:
+            return datetime.datetime.strptime(date_str, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except Exception:
+            return ""
 
-    # Extrair cidade e estado
+    # Extrair dados básicos
+    data['obra_number'] = extract(r'Número do RRT:\s*(\d+)', text)
+    if not data['obra_number']:
+        raise ValueError("Não foi possível extrair o número da obra.")
+    md5_hasher = hashlib.md5()
+    md5_hasher.update(data['obra_number'].encode('utf-8'))
+    md5_hash = md5_hasher.hexdigest()
+    data['id'] = "obra_" + md5_hash
+    data['professional'] = extract(r'Arquiteto\(a\) e Urbanista:\s*(.*)', text)
+    ownerValue = extract(r'Nome/Razão Social:\s*(.*)', text)
+    if ownerValue.startswith("CPF / CNPJ"):
+        data['owner'] = ""
+    else:
+        data['owner'] = ownerValue
+    data['bairro'] = extract(r'Bairro:\s*(.*)', text)
+    data['start_date'] = format_date(extract(r'Data de Início:\s*(.*)', text))
+    data['end_date'] = format_date(extract(r'Previsão de Término:\s*(.*)', text))
+    data['first_listing_date'] = format_date(extract(r'Data de Registro:\s*(.*)', text))
+
+    # Cidade e Estado
     city_state = extract(r'Cidade/UF:\s*(.*)', text)
     if city_state:
         parts = city_state.split('/')
@@ -37,32 +55,36 @@ def extract_data(text):
         data['city'] = ""
         data['state'] = ""
 
-    # Extrair atividade
-    data['activity'] = extract(r'1\.  (.*?)(?:\n|$)', text)
+    # Atividade e Tipo
+    activityStr = extract(r'Atividade Subordinada([\s\S]*?)Pagamento', text)
+    data['activity'] = extract(r'(\d+\.\d+\.\d+\s*-\s*[^\d\s-][\s\S]*?)[\s]*[\d]', activityStr)
+    reType = re.compile(r'([\d\.]+)\s*([\wÇÃÁÉÍÓÚ]+)\s*>\s*(\d+)\s*>\s*([\d\.]+\s*-\s*[\w\sÇÃÁÉÍÓÚ]+)', re.IGNORECASE)
+    matchType = reType.search(activityStr)
+    if matchType:
+        data['type'] = f"{matchType.group(3)} - {matchType.group(2)}"
+    else:
+        data['type'] = extract(r'Modalidade:\s*(.*)', text)
 
-    # Extrair tamanho e unidade
-    size_unit = extract(r'EXECUÇÃO DE OBRA[\s\w]*([\d\.,]+\s*/\s*.*)', text)
-    if size_unit:
-        parts = size_unit.split('/')
-        if len(parts) == 2:
-            data['unidade'] = parts[1].strip()
-            size_str = parts[0].strip().replace('.', '').replace(',', '.')
-            try:
-                data['size'] = float(size_str)
-            except ValueError:
-                data['size'] = 0.0
-        else:
+    # Tamanho e Unidade
+    reSizeUnit = re.compile(r'(\d+\.?\d*)\s*/\s*([\w\s²]+)', re.IGNORECASE)
+    matchSizeUnit = reSizeUnit.search(activityStr)
+    if matchSizeUnit:
+        sizeValue = matchSizeUnit.group(1).split('.')[0]
+        try:
+            data['size'] = float(sizeValue)
+        except Exception:
             data['size'] = 0.0
-            data['unidade'] = ""
+        data['unidade'] = matchSizeUnit.group(2)
     else:
         data['size'] = 0.0
         data['unidade'] = ""
 
-    # Extrair endereço
-    logradouro = extract(r'Logradouro:\s*(.*)', text)
+    # Endereço completo
+    tipoLogradouro = extract(r'Tipo de Logradouro:\s*(.*?)[\r\n]', text)
+    logradouro = extract(r'(?:\n|^)Logradouro:\s*(.*)', text)
     numero = extract(r'Número/Ano:\s*(.*)', text)
     complemento = extract(r'Complemento:\s*(.*)', text)
-    data['address'] = f"{logradouro}, {numero}, {complemento}".strip(', ')
+    data['address'] = f"{tipoLogradouro} {logradouro}, {numero}, {complemento}, {data['bairro']} - {data['city']}, {data['state']}"
 
     return data
 
