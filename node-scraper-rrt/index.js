@@ -1,98 +1,20 @@
 const express = require('express');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const puppeteer = require('puppeteer-core');
 const crypto = require('crypto');
-const fs = require('fs');
 
-// Configure stealth plugin with optimized options
-const stealthPlugin = StealthPlugin();
-// Remove user-agent override to use our custom one
-stealthPlugin.enabledEvasions.delete('user-agent-override');
-puppeteer.use(stealthPlugin);
-
-// Function to get Chrome executable path (Docker optimized)
-async function getChromePath() {
-    // In Docker container, use the system Chromium
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        return process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-    
-    const possiblePaths = [
-        '/usr/bin/chromium-browser', // Alpine Linux
-        '/usr/bin/chromium',
-        '/usr/bin/google-chrome',
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // macOS
-        '/Applications/Chromium.app/Contents/MacOS/Chromium'
-    ];
-    
-    for (const chromePath of possiblePaths) {
-        try {
-            if (fs.existsSync(chromePath)) {
-                return chromePath;
-            }
-        } catch (error) {
-            // Continue to next path
-        }
-    }
-    
-    return null; // Use bundled Chromium
-}
+// ZenRows connection configuration
+const connectionURL = 'wss://browser.zenrows.com?apikey=b67313ec4485fd294ff26be3f995989e4b7ab61b&proxy_country=br';
 
 // Function to scrape RRT data
 async function scrapeRrt(rrtNumber) {
     let browser;
     try {
-        console.log('Launching browser...');
+        console.log('Connecting to external browser...');
         
-        // Detect if Chrome is available, otherwise use bundled Chromium
-        const executablePath = await getChromePath();
-        console.log('Using executable:', executablePath || 'default');
+        // Connect to ZenRows browser
+        browser = await puppeteer.connect({ browserWSEndpoint: connectionURL });
         
-        // Launch browser with Docker-optimized stealth configuration
-        const launchOptions = {
-            headless: 'new',
-            timeout: 60000,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--disable-web-security',
-                '--disable-features=VizDisplayCompositor',
-                '--disable-background-timer-throttling',
-                '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding',
-                '--disable-extensions',
-                '--disable-plugins',
-                '--disable-default-apps',
-                '--disable-sync',
-                '--metrics-recording-only',
-                '--no-default-browser-check',
-                '--disable-crash-reporter',
-                '--disable-translate',
-                '--disable-component-extensions-with-background-pages',
-                // Docker specific
-                '--disable-ipc-flooding-protection',
-                '--memory-pressure-off',
-                '--max_old_space_size=4096',
-                // Stealth optimizations for Cloudflare
-                '--disable-blink-features=AutomationControlled',
-                '--exclude-switches=enable-automation',
-                '--disable-extensions-http-throttling'
-            ]
-        };
-        
-        // Use system Chrome if available on macOS
-        if (executablePath) {
-            launchOptions.executablePath = executablePath;
-        }
-        
-        browser = await puppeteer.launch(launchOptions);
-        
-        console.log('Browser launched successfully');
+        console.log('Browser connected successfully');
         
         const page = await browser.newPage();
         console.log('New page created');
@@ -133,8 +55,8 @@ async function scrapeRrt(rrtNumber) {
         console.log('Page loaded, waiting for content...');
         
         // Wait for page to fully load and simulate human behavior
-        await page.waitForTimeout(2000);
-        
+        await page.waitForSelector('.body-title', { timeout: 4000 });
+
         // Check for Cloudflare challenge
         const cloudflareChallenge = await page.$('.cf-browser-verification, .cf-challenge-running, .cf-checking, #challenge-form');
         if (cloudflareChallenge) {
@@ -324,35 +246,12 @@ app.get('/health', (req, res) => {
 app.get('/test', async (req, res) => {
     let browser;
     try {
-        console.log('Starting Puppeteer test...');
+        console.log('Starting external browser test...');
         
-        // Detect if Chrome is available, otherwise use bundled Chromium
-        const executablePath = await getChromePath();
-        console.log('Using executable:', executablePath || 'default');
+        // Connect to ZenRows browser
+        browser = await puppeteer.connect({ browserWSEndpoint: connectionURL });
         
-        const launchOptions = {
-            headless: 'new',
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu',
-                '--disable-ipc-flooding-protection',
-                '--disable-blink-features=AutomationControlled',
-                '--exclude-switches=enable-automation'
-            ]
-        };
-        
-        if (executablePath) {
-            launchOptions.executablePath = executablePath;
-        }
-        
-        browser = await puppeteer.launch(launchOptions);
-        
-        console.log('Browser launched successfully');
+        console.log('Browser connected successfully');
         
         const page = await browser.newPage();
         console.log('New page created');
@@ -365,13 +264,13 @@ app.get('/test', async (req, res) => {
         
         res.json({ 
             status: 'ok', 
-            message: 'Puppeteer test successful',
+            message: 'External browser test successful',
             title: title,
-            chrome_path: executablePath || 'bundled'
+            browser_type: 'ZenRows External'
         });
         
     } catch (error) {
-        console.error('Puppeteer test failed:', error);
+        console.error('External browser test failed:', error);
         res.status(500).json({ error: error.message });
     } finally {
         if (browser) {

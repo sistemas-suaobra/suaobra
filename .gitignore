@@ -25,3 +25,15 @@ core_new.db
 core_new.db-shm
 core_new.db-wal
 node-scraper-rrt/node_modules/
+api_caubr.py
+package.json
+package-lock.json
+README-PROJETO.md
+requirements.txt
+node_modules/
+node-scraper-rrt/
+python_man/
+python_scraper_api/
+caubr-api/
+caubr-api-service/
+caubr-api-v2/

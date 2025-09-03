@@ -35,22 +35,6 @@ var (
 	totalTimeouts = 0
 )
 
-// Caminho do arquivo de log para RRTs que falharam
-const FAILED_RRT_LOG = "failed_rrts.log"
-
-// Função para registrar RRTs que falharam após todas as tentativas
-func logFailedRRT(rrt string) {
-	f, err := os.OpenFile(FAILED_RRT_LOG, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Printf("Erro ao abrir arquivo de log de falhas: %v", err)
-		return
-	}
-	defer f.Close()
-	if _, err := f.WriteString(rrt + "\n"); err != nil {
-		log.Printf("Erro ao escrever no arquivo de log de falhas: %v", err)
-	}
-}
-
 // Função helper para obter variáveis de ambiente com valor padrão
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
@@ -467,8 +451,6 @@ func fetchRRTFromAPI(rrt string) (*ObraData, error) {
 		return &apiResp.Data, nil
 	}
 
-	// Logar o número que falhou após todas as tentativas
-	logFailedRRT(rrt)
 	return nil, fmt.Errorf("falhou após %d tentativas: %v", MAX_RETRIES, lastErr)
 }
 
