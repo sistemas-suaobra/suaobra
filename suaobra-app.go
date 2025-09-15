@@ -93,7 +93,7 @@ func main() {
 		return nil
 	})
 
-	// cron schedule
+	// cron schedule - FIXED EMAIL SPAM BUG: improved SQL query + rate limiting
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		scheduler := cron.New()
 

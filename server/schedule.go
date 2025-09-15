@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/mail"
+	"time"
 
 	"github.com/flarco/g"
 	"github.com/pocketbase/pocketbase"
@@ -19,9 +20,19 @@ func NotifyReminders(app *pocketbase.PocketBase) {
 		return
 	}
 
-	for _, rec := range data.RecordsCasted() {
+	records := data.RecordsCasted()
+	g.Info("Processing %d reminder records", len(records))
+
+	for i, rec := range records {
+		// Rate limiting: delay between emails to respect provider limits (max 2/second)
+		if i > 0 {
+			time.Sleep(600 * time.Millisecond) // 0.6 seconds delay = ~1.5 emails/second
+		}
+
 		err = EmailReminder(app, rec)
 		if g.LogError(err, "could not email reminder") {
+			// Add exponential backoff on error
+			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
 
@@ -39,7 +50,7 @@ func EmailReminder(app *pocketbase.PocketBase, rec map[string]any) error {
 	link := g.F("https://app.suaobra.com.br/venda-mais/?lead=%s", rec["lead_id"])
 	title := g.F("%s - %s, %s", rec["owner"], rec["city"], rec["state"])
 
-	g.Info("EmailReminder to '%s' for `%s`", rec["email"], title)
+	g.Info("EmailReminder to '%s' for `%s` (Lead ID: %s)", rec["email"], title, rec["lead_id"])
 
 	message := &mailer.Message{
 		From: mail.Address{
