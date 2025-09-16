@@ -191,6 +191,7 @@ export class TeamProperties {
   maps_url: string
   industry: string
   keywords: string
+  lead_introduction_text: string
   constructor(data : ObjectAny = {}){
     this.name = data.name
     this.description = data.description
@@ -206,6 +207,7 @@ export class TeamProperties {
     this.maps_url = data.maps_url
     this.industry = data.industry
     this.keywords = data.keywords
+    this.lead_introduction_text = data.lead_introduction_text || ''
   }
 }
 

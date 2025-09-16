@@ -173,14 +173,80 @@ function ProfileDialog(props: { state: State<DialogParams> }) {
   ///////////////////////////  EFFECTS  ///////////////////////////
   ///////////////////////////  FUNCTIONS  ///////////////////////////
   const saveTeam = async () => {
+    // Get current values to compare with original for key fields
+    const currentProperties = team.properties.get()
+    
+    // Save the team first
     let resp = await api().collection('team').update(
       team.id.get(), 
-      {properties: jsonClone(team.properties.get())}, 
+      {properties: jsonClone(currentProperties)}, 
     )
     error.set(resp.error)
     if(resp.error) return false
     isModified.set(false)
-    await loadUserState() // reload
+    
+    // Check if key fields were modified that require lead introduction regeneration
+    const originalUser = await loadUserState() // reload and get original
+    const originalProperties = originalUser.team.properties
+    
+    const keyFields = ['name', 'description', 'industry', 'keywords', 'founded_date']
+    const hasKeyFieldChanges = keyFields.some(field => 
+      currentProperties[field] !== originalProperties[field]
+    )
+    
+    if(hasKeyFieldChanges) {
+      // Generate new lead introduction text
+      try {
+        const leadIntroResp = await api().post(`${baseURL()}/messenger/generate-lead-introduction`, {})
+        
+        if(!leadIntroResp.error) {
+          const leadIntroData = await leadIntroResp.json()
+          
+          // Check if there's a warning (text generated but not saved)
+          if(leadIntroData.warning) {
+            team.properties.lead_introduction_text.set(leadIntroData.lead_introduction_text)
+            doToast(toast, {
+              severity: 'warn',
+              summary: 'Parcialmente salvo',
+              detail: 'Perfil salvo e texto gerado, mas houve problema ao salvar o texto no banco.',
+            }, 5000)
+          } else {
+            // Update the team state with the new text
+            team.properties.lead_introduction_text.set(leadIntroData.lead_introduction_text)
+            
+            doToast(toast, {
+              severity: 'success',
+              summary: 'Sucesso',
+              detail: 'Perfil salvo e texto de apresentação atualizado automaticamente!',
+            }, 4000)
+          }
+        } else {
+          // If lead intro generation fails, still show success for the profile save
+          console.warn('Failed to generate lead introduction:', leadIntroResp.error)
+          doToast(toast, {
+            severity: 'warn',
+            summary: 'Parcialmente salvo',
+            detail: 'Perfil salvo, mas houve um problema ao gerar o texto de apresentação.',
+          }, 4000)
+        }
+      } catch (err) {
+        console.warn('Error generating lead introduction:', err)
+        // Profile was saved successfully, just warn about the lead intro
+        doToast(toast, {
+          severity: 'warn',
+          summary: 'Parcialmente salvo',
+          detail: 'Perfil salvo, mas o serviço de IA está temporariamente indisponível.',
+        }, 4000)
+      }
+    } else {
+      // No key fields changed, just show normal success
+      doToast(toast, {
+        severity: 'success',
+        summary: 'Sucesso',
+        detail: 'Perfil salvo com sucesso!',
+      }, 3000)
+    }
+    
     return true
   }
 
@@ -286,6 +352,15 @@ function ProfileDialog(props: { state: State<DialogParams> }) {
                 <i className="pi pi-phone mr-1" style={propertyIconStyle}></i>
                 {team.properties.telephone?.get() || team.properties.whatsapp?.get()}
               </div>
+
+              {team.properties.lead_introduction_text?.get() && (
+                <div style={{...propertyStyle, marginTop: '10px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px', borderLeft: '4px solid #007bff'}}>
+                  <i className="pi pi-comment mr-1" style={propertyIconStyle}></i>
+                  <span style={{fontStyle: 'italic', color: '#495057'}}>
+                    {team.properties.lead_introduction_text.get()}
+                  </span>
+                </div>
+              )}
 
               {/* <div style={propertyStyle}>
                 <i className="pi pi-whatsapp mr-1" style={propertyIconStyle}></i>

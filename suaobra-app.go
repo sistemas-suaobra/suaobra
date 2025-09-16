@@ -79,6 +79,7 @@ func main() {
 		e.Router.POST("/messenger/existing", server.MessengerExisting)
 		e.Router.GET("/messenger/user", server.MessengerGetOrCreateUser)
 		e.Router.POST("/messenger/generate-templates", server.MessengerGenerateTemplates)
+		e.Router.POST("/messenger/generate-lead-introduction", server.MessengerGenerateLeadIntroduction)
 
 		// Team management
 		e.Router.GET("/team/members", server.TeamMembers)

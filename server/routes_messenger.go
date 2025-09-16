@@ -15,6 +15,11 @@ var (
 	MessengerAuthorization = "App-Token " + os.Getenv("MESSENGER_TOKEN")
 	MessengerBaseURL       = os.Getenv("MESSENGER_BASE_URL")
 	MessengerHeaders       = map[string]string{echo.HeaderAuthorization: MessengerAuthorization, echo.HeaderContentType: echo.MIMEApplicationJSON}
+	
+	// Gemini API Configuration
+	GeminiAPIKey    = os.Getenv("GEMINI_API_KEY")
+	GeminiBaseURL   = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+	GeminiHeaders   = map[string]string{echo.HeaderContentType: echo.MIMEApplicationJSON}
 )
 
 // called from messenger
@@ -239,6 +244,183 @@ func MessengerGenerateTemplates(c echo.Context) error {
 	}
 
 	return c.JSON(200, templateMap)
+}
+
+// called from suaobra frontend
+func MessengerGenerateLeadIntroduction(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(400, req.Error)
+	}
+
+	// Validate Gemini API Key
+	if GeminiAPIKey == "" {
+		g.LogError(g.Error("GEMINI_API_KEY not configured"))
+		return ErrJSON(500, g.Error("AI service not configured"), "service configuration missing")
+	}
+
+	teamRecord, err := req.TeamRecord()
+	if err != nil {
+		return ErrJSON(400, g.Error(err, "could not find team record"))
+	}
+
+	teamProps, err := g.UnmarshalMap(teamRecord.GetString("properties"))
+	if err != nil {
+		return ErrJSON(400, g.Error(err, "could not get team properties"))
+	}
+
+	// Store original lead introduction text in case of failure
+	originalLeadIntroductionText := cast.ToString(teamProps["lead_introduction_text"])
+
+	storeName := cast.ToString(teamProps["name"])
+	storeDescription := cast.ToString(teamProps["description"])
+	storeIndustry := cast.ToString(teamProps["industry"])
+	storeKeywords := cast.ToString(teamProps["keywords"])
+	foundedDate := cast.ToString(teamProps["founded_date"])
+
+	// Validate required fields
+	if strings.TrimSpace(storeName) == "" {
+		return ErrJSON(400, g.Error("store name is required to generate lead introduction"))
+	}
+
+	// Build the prompt for Gemini
+	promptParts := []string{
+		"Você deve criar um texto de apresentação profissional e informal para prospecção de leads.",
+		g.F("Nome da empresa: %s", storeName),
+	}
+
+	if storeDescription != "" {
+		promptParts = append(promptParts, g.F("Descrição da empresa: %s", storeDescription))
+	}
+
+	if storeIndustry != "" {
+		promptParts = append(promptParts, g.F("Setor de atuação: %s", storeIndustry))
+	}
+
+	if storeKeywords != "" {
+		promptParts = append(promptParts, g.F("Palavras-chave importantes: %s", storeKeywords))
+	}
+
+	if foundedDate != "" {
+		promptParts = append(promptParts, g.F("Data de fundação: %s", foundedDate))
+	}
+
+	promptParts = append(promptParts, []string{
+		"",
+		"Instruções:",
+		"1. Use um tom informal-profissional, pessoal e acolhedor",
+		"2. Destaque a empresa como parceira estratégica",
+		"3. Crie conexão com o leitor",
+		"4. Use entre 3 a 5 frases",
+		"5. Seja conciso e impactante",
+		"6. Ideal para primeiro contato com leads",
+		"7. Não use aspas ou formatação especial",
+		"8. Retorne apenas o texto de apresentação, sem explicações adicionais",
+	}...)
+
+	// Prepare Gemini API payload
+	fullPrompt := strings.Join(promptParts, "\n")
+	geminiPayload := g.M(
+		"contents", []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{
+						"text": fullPrompt,
+					},
+				},
+			},
+		},
+		"generationConfig", g.M(
+			"temperature",        0.7,
+			"topK",              40,
+			"topP",              0.95,
+			"maxOutputTokens",   200,
+			"stopSequences",     []string{},
+		),
+	)
+
+	// Call Gemini API
+	url := g.F("%s?key=%s", GeminiBaseURL, GeminiAPIKey)
+	resp, respBytes, err := net.ClientDo("POST", url, strings.NewReader(g.Marshal(geminiPayload)), GeminiHeaders)
+	
+	// Handle API call errors
+	if err != nil {
+		g.LogError(g.Error(err, "failed to call Gemini API for lead introduction"))
+		return ErrJSON(500, g.Error("could not connect to AI service"), "service temporarily unavailable")
+	}
+	
+	if resp.StatusCode >= 400 {
+		g.LogError(g.Error("Gemini API returned error status: %d, response: %s", resp.StatusCode, string(respBytes)))
+		return ErrJSON(500, g.Error("AI service error"), "could not generate lead introduction text")
+	}
+
+	// Parse Gemini response
+	respMap, err := g.UnmarshalMap(string(respBytes))
+	if err != nil {
+		g.LogError(g.Error(err, "failed to parse response from Gemini API"))
+		return ErrJSON(500, g.Error("invalid response from AI service"))
+	}
+
+	// Extract text from Gemini response structure
+	candidates, ok := respMap["candidates"].([]interface{})
+	if !ok || len(candidates) == 0 {
+		g.LogError(g.Error("no candidates in Gemini response"))
+		return ErrJSON(500, g.Error("AI service did not generate any content"))
+	}
+
+	candidate, ok := candidates[0].(map[string]interface{})
+	if !ok {
+		g.LogError(g.Error("invalid candidate structure in Gemini response"))
+		return ErrJSON(500, g.Error("AI service returned invalid response"))
+	}
+
+	content, ok := candidate["content"].(map[string]interface{})
+	if !ok {
+		g.LogError(g.Error("no content in Gemini candidate"))
+		return ErrJSON(500, g.Error("AI service returned empty content"))
+	}
+
+	parts, ok := content["parts"].([]interface{})
+	if !ok || len(parts) == 0 {
+		g.LogError(g.Error("no parts in Gemini content"))
+		return ErrJSON(500, g.Error("AI service returned no text parts"))
+	}
+
+	part, ok := parts[0].(map[string]interface{})
+	if !ok {
+		g.LogError(g.Error("invalid part structure in Gemini response"))
+		return ErrJSON(500, g.Error("AI service returned invalid text structure"))
+	}
+
+	leadIntroductionText, ok := part["text"].(string)
+	if !ok {
+		g.LogError(g.Error("no text field in Gemini part"))
+		return ErrJSON(500, g.Error("AI service returned no text content"))
+	}
+
+	leadIntroductionText = strings.TrimSpace(leadIntroductionText)
+	if leadIntroductionText == "" {
+		g.LogError(g.Error("empty text generated by Gemini API"))
+		return ErrJSON(500, g.Error("AI service generated empty content"))
+	}
+
+	// Update the team record with the new lead introduction text
+	teamProps["lead_introduction_text"] = leadIntroductionText
+	teamRecord.Set("properties", g.Marshal(teamProps))
+
+	if err := req.Dao().SaveRecord(teamRecord); err != nil {
+		g.LogError(g.Error(err, "failed to save lead introduction text to database"))
+		// Return the generated text even if we couldn't save it
+		return c.JSON(200, g.M(
+			"lead_introduction_text", leadIntroductionText,
+			"warning", "Text generated but not saved to database",
+		))
+	}
+
+	return c.JSON(200, g.M(
+		"lead_introduction_text", leadIntroductionText,
+		"previous_text", originalLeadIntroductionText,
+	))
 }
 
 // called from suaobra frontend

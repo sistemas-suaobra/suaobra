@@ -26,8 +26,20 @@ func init() {
 
 func importDevData() error {
 
-	b, err := os.ReadFile("store/dev_data_timestamp")
-	g.LogFatal(err)
+	// Check if timestamp file exists, create if not
+	timestampFile := "store/dev_data_timestamp"
+	b, err := os.ReadFile(timestampFile)
+	if err != nil {
+		// If file doesn't exist, create it with timestamp 0 to force refresh
+		if os.IsNotExist(err) {
+			g.Info("Timestamp file not found, creating it and forcing data refresh")
+			timestamp := int64(0)
+			os.WriteFile(timestampFile, []byte(cast.ToString(timestamp)), 0644)
+			b = []byte("0")
+		} else {
+			g.LogFatal(err, "could not read timestamp file")
+		}
+	}
 	timestamp := cast.ToInt64(string(b))
 
 	filePaths := []string{
@@ -39,7 +51,14 @@ func importDevData() error {
 	refresh := false
 	for _, filePath := range filePaths {
 		stat, err := os.Stat(filePath)
-		g.LogFatal(err)
+		if err != nil {
+			if os.IsNotExist(err) {
+				g.Warn("Data file not found: %s", filePath)
+				continue // Skip missing files
+			} else {
+				g.LogFatal(err, "could not stat file: %s", filePath)
+			}
+		}
 
 		if stat.ModTime().Unix() > timestamp {
 			g.Info("%d > timestamp (%d)", stat.ModTime().Unix(), timestamp)
@@ -56,8 +75,19 @@ func importDevData() error {
 
 	// copy the files
 	for _, filePath := range filePaths {
+		// Check if source file exists before copying
+		if _, err := os.Stat(filePath); os.IsNotExist(err) {
+			g.Warn("Skipping missing file: %s", filePath)
+			continue
+		}
+		
 		err := exec.Command("cp", "-f", filePath, "./data/core/").Run()
-		g.LogFatal(err, "could not copy %s", filePath)
+		if err != nil {
+			g.Warn("Could not copy %s: %v", filePath, err)
+			// Don't fatal, just warn and continue
+		} else {
+			g.Info("Copied: %s", filePath)
+		}
 	}
 
 	// load the files
@@ -70,7 +100,7 @@ func importDevData() error {
 	g.LogFatal(err, "could not run sling process")
 
 	timestamp = time.Now().Unix()
-	os.WriteFile("store/dev_data_timestamp", []byte(cast.ToString(timestamp)), 0777)
+	os.WriteFile(timestampFile, []byte(cast.ToString(timestamp)), 0644)
 
 	return nil
 }
