@@ -37,3 +37,13 @@ python_scraper_api/
 caubr-api/
 caubr-api-service/
 caubr-api-v2/
+
+# Go binaries and large files
+go-concorrente/main
+go-concorrente/main_zenrows
+go-concorrente/api_zenrows/api_zenrows
+go-concorrente/extract_result.log
+go-concorrente/api_zenrows/html_rrt.log
+go-concorrente/api_zenrows/failed_rrts_zenrows.log
+*.log
+main_zenrows
