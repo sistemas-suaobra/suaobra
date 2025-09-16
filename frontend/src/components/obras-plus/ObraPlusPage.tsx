@@ -864,6 +864,40 @@ const parseDate = (date: string, add_days = 0) => {
   return `${d.getUTCDate()}/${d.getMonth()+1}/${d.getFullYear()}`
 }
 
+const calculateObraStage = (startDateStr: string, endDateStr: string): string => {
+  const startDate = new Date(Date.parse(startDateStr))
+  const endDate = new Date(Date.parse(endDateStr))
+  const currentDate = new Date()
+  
+  // Se a data atual é posterior à data de término, a obra está finalizada
+  if (currentDate > endDate) {
+    return 'FINALIZADA'
+  }
+  
+  // Calcular tempo total da obra em milissegundos
+  const totalTime = endDate.getTime() - startDate.getTime()
+  
+  // Calcular tempo decorrido desde o início até agora
+  const elapsedTime = currentDate.getTime() - startDate.getTime()
+  
+  // Se ainda não iniciou (data atual anterior à data de início)
+  if (elapsedTime < 0) {
+    return 'INICIO'
+  }
+  
+  // Calcular porcentagem de progresso
+  const percentage = (elapsedTime / totalTime) * 100
+  
+  // Determinar etapa baseada na porcentagem
+  if (percentage <= 33) {
+    return 'INICIO'
+  } else if (percentage <= 66) {
+    return 'ESTRUTURA'
+  } else {
+    return 'ACABAMENTO'
+  }
+}
+
 interface RecordCardParams {
   record: ResultRecord;
   toggle: (type: 'visit'|'favorite'|'exclude') => void;
@@ -1071,8 +1105,8 @@ const RecordCard = (props: RecordCardParams) => {
           <p className="mt-2"> {record.size.toLocaleString('pt-br')} M²</p>
 
           <br/>
-          <p className="my-0"><strong>Número</strong></p>
-          <p className="mt-2"> {record.obra_number} </p>
+          <p className="my-0"><strong>Etapa</strong></p>
+          <p className="mt-2"> {calculateObraStage(record.start_date, record.end_date)} </p>
         </div>
 
         {/* Column 3 */}
