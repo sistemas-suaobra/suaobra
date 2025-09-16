@@ -11,3 +11,4 @@ where 1=1
   and {statusCond}
   and {neighborhoodCond}
   and {filterCond}
+  and {dateFilterCond}

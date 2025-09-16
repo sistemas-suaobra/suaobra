@@ -149,6 +149,49 @@ func makeStatusCond(statuses []string) string {
 	return "(" + strings.Join(whereArr, " and ") + ")"
 }
 
+func makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo string) string {
+	whereArr := []string{}
+
+	// Validação básica de formato de data (YYYY-MM-DD)
+	validateDate := func(dateStr string) bool {
+		if dateStr == "" {
+			return true
+		}
+		// Verificação simples do formato YYYY-MM-DD
+		if len(dateStr) == 10 && dateStr[4] == '-' && dateStr[7] == '-' {
+			return true
+		}
+		return false
+	}
+
+	if !validateDate(startDateFrom) || !validateDate(startDateTo) || 
+	   !validateDate(endDateFrom) || !validateDate(endDateTo) {
+		return "1=1" // Se alguma data for inválida, ignora os filtros
+	}
+
+	// Filtros de data de início
+	if startDateFrom != "" {
+		whereArr = append(whereArr, g.F("cop.start_date >= '%s'", startDateFrom))
+	}
+	if startDateTo != "" {
+		whereArr = append(whereArr, g.F("cop.start_date <= '%s'", startDateTo))
+	}
+
+	// Filtros de data de fim
+	if endDateFrom != "" {
+		whereArr = append(whereArr, g.F("date(julianday(cop.end_date) + 400) >= '%s'", endDateFrom))
+	}
+	if endDateTo != "" {
+		whereArr = append(whereArr, g.F("date(julianday(cop.end_date) + 400) <= '%s'", endDateTo))
+	}
+
+	if len(whereArr) == 0 {
+		return "1=1"
+	}
+	
+	return "(" + strings.Join(whereArr, " and ") + ")"
+}
+
 func QueryCities(c echo.Context) error {
 	cities := lo.Keys(store.ObrasCities)
 	sort.Strings(cities)
@@ -222,6 +265,10 @@ func QueryObrasPlus(c echo.Context) (err error) {
 	sizeMin := cast.ToInt(c.QueryParam("sizeMin"))
 	sizeMax := cast.ToInt(c.QueryParam("sizeMax"))
 	itemPerPage := cast.ToInt(c.QueryParam("itemsPerPage"))
+	startDateFrom := strings.TrimSpace(c.QueryParam("startDateFrom"))
+	startDateTo := strings.TrimSpace(c.QueryParam("startDateTo"))
+	endDateFrom := strings.TrimSpace(c.QueryParam("endDateFrom"))
+	endDateTo := strings.TrimSpace(c.QueryParam("endDateTo"))
 
 	user, err := getUser(c, req.UserID())
 	if err != nil {
@@ -277,6 +324,7 @@ func QueryObrasPlus(c echo.Context) (err error) {
 		"neighborhoodCond", makeNeighborhoodCond(neighborhoods),
 		"statusCond", g.R(makeStatusCond(statuses), "teamId", user.Team.ID),
 		"filterCond", makeFilterCond(filter),
+		"dateFilterCond", makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo),
 		"itemPerPage", itemPerPage,
 		"offset", offset,
 		"teamId", user.Team.ID,

@@ -3,6 +3,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
 import { Paginator } from 'primereact/paginator';
 import { Button } from 'primereact/button';
+import { Calendar } from 'primereact/calendar';
 import { obrasPlusCity, obrasPlusState, isWaiting, isLoaded, user, User, loadUserState, userS, Contact, obrasPlusNeighborhood, type Templates, TeamProperties } from '../../store/store';
 import { allCities, type City, makeCity } from '../../store/cities.js';
 import { MultiSelect } from 'primereact/multiselect';
@@ -138,6 +139,10 @@ export default function ObraPlusPage(props: Props) {
   const [filterValue, setFilterValue] = React.useState('')
   const [selectedOrder, setSelectedOrder] = React.useState(orders[0].code)
   const [selectedStatuses, setSelectedStatuses] = React.useState([statuses[0].code])
+  const [startDateFrom, setStartDateFrom] = React.useState<Date | null>(null)
+  const [startDateTo, setStartDateTo] = React.useState<Date | null>(null)
+  const [endDateFrom, setEndDateFrom] = React.useState<Date | null>(null)
+  const [endDateTo, setEndDateTo] = React.useState<Date | null>(null)
   const [records, setRecords] = React.useState<ResultRecord[]>([])
   const [total, setTotal] = React.useState(0)
   const [refresh, setRefresh] = React.useState(0)
@@ -182,7 +187,7 @@ export default function ObraPlusPage(props: Props) {
       }
     )
 
-  }, [selectedCity, selectedNeighborhood, selectedSize, selectedOrder, selectedStatuses, offset, rowsPerPage, refresh, locked, citiesOptions])
+  }, [selectedCity, selectedNeighborhood, selectedSize, selectedOrder, selectedStatuses, offset, rowsPerPage, refresh, locked, citiesOptions, startDateFrom, startDateTo, endDateFrom, endDateTo])
 
   /*
   In the useEffect hook, we increment the neighborhoodRequestId and update the latestRequestIdRef before making the API call.
@@ -260,6 +265,22 @@ export default function ObraPlusPage(props: Props) {
     messengerBatchDialogVisible.set(true)
   }
 
+  // Função auxiliar para formatar data para o backend
+  const formatDateForAPI = (date: Date | null): string => {
+    if (!date) return ''
+    return date.toISOString().split('T')[0] // formato YYYY-MM-DD
+  }
+
+  // Função para resetar todos os filtros
+  const resetAllFilters = () => {
+    setFilterValue('')
+    setStartDateFrom(null)
+    setStartDateTo(null)
+    setEndDateFrom(null)
+    setEndDateTo(null)
+    doRefresh()
+  }
+
   const getRecords = async (rowsPerPage: number, statuses: string[]) => {
     let recs : ResultRecord[] = [];
     let total = 0
@@ -274,6 +295,10 @@ export default function ObraPlusPage(props: Props) {
       offset: offset.toString(),
       itemsPerPage: rowsPerPage.toString(),
       enriched: `false`,
+      startDateFrom: formatDateForAPI(startDateFrom),
+      startDateTo: formatDateForAPI(startDateTo),
+      endDateFrom: formatDateForAPI(endDateFrom),
+      endDateTo: formatDateForAPI(endDateTo),
       // legacy_id: user.get().legacy_id,
     }
     
@@ -291,7 +316,7 @@ export default function ObraPlusPage(props: Props) {
       isWaiting.set(false)
       window.rudderAnalytics?.track(
         'obras-plus-get-records',
-        { user: userTrackProps(), page_number: pageNumber, rows_per_page: rowsPerPage, state: selectedState, city: selectedCity, neighborhood: (selectedNeighborhood || []).map(r => r.bairro), size: selectedSize, order: selectedOrder, statuses: selectedStatuses, filter: filterValue, itemsPerPage: rowsPerPage, total: total, records: recs.length }
+        { user: userTrackProps(), page_number: pageNumber, rows_per_page: rowsPerPage, state: selectedState, city: selectedCity, neighborhood: (selectedNeighborhood || []).map(r => r.bairro), size: selectedSize, order: selectedOrder, statuses: selectedStatuses, filter: filterValue, startDateFrom: formatDateForAPI(startDateFrom), startDateTo: formatDateForAPI(startDateTo), endDateFrom: formatDateForAPI(endDateFrom), endDateTo: formatDateForAPI(endDateTo), itemsPerPage: rowsPerPage, total: total, records: recs.length }
       )
     }
 
@@ -344,6 +369,10 @@ export default function ObraPlusPage(props: Props) {
       offset: offset.toString(),
       itemsPerPage: user.get().team?.allow_export?.toString(),
       export: 'true',
+      startDateFrom: formatDateForAPI(startDateFrom),
+      startDateTo: formatDateForAPI(startDateTo),
+      endDateFrom: formatDateForAPI(endDateFrom),
+      endDateTo: formatDateForAPI(endDateTo),
       // legacy_id: user.get().legacy_id,
     }
     
@@ -366,7 +395,7 @@ export default function ObraPlusPage(props: Props) {
       isWaiting.set(false)
       window.rudderAnalytics?.track(
         'obras-plus-export',
-        { user: userTrackProps(), items: user.get().team?.allow_export, state: selectedState, city: selectedCity, size: selectedSize, order: selectedOrder, statuses: selectedStatuses, filter: filterValue }
+        { user: userTrackProps(), items: user.get().team?.allow_export, state: selectedState, city: selectedCity, size: selectedSize, order: selectedOrder, statuses: selectedStatuses, filter: filterValue, startDateFrom: formatDateForAPI(startDateFrom), startDateTo: formatDateForAPI(startDateTo), endDateFrom: formatDateForAPI(endDateFrom), endDateTo: formatDateForAPI(endDateTo) }
       )
     }
 
@@ -486,9 +515,9 @@ export default function ObraPlusPage(props: Props) {
                 <Button
                   icon="pi pi-times"
                   className="p-button-warning"
-                  tooltip="Limpar"
+                  tooltip="Limpar todos os filtros"
                   tooltipOptions={{position: 'top'}}
-                  onClick={() => { setFilterValue(''); doRefresh() }}
+                  onClick={() => { resetAllFilters() }}
                 />
                 <Button
                   icon="pi pi-search"
@@ -592,6 +621,122 @@ export default function ObraPlusPage(props: Props) {
               optionValue="code"
               className="w-full"
             />
+          </div>
+
+          <div className="field md:col-3 col-6">
+            <label htmlFor="start-date-from">Data de Início (De)</label>
+            <div className="p-inputgroup">
+              <Calendar
+                id='start-date-from'
+                value={startDateFrom}
+                onChange={(e) => {
+                  setStartDateFrom(e.value as Date | null)
+                }}
+                placeholder="Selecione uma data"
+                dateFormat="dd/mm/yy"
+                showIcon
+                className="w-full"
+                tooltip="Filtrar obras que iniciaram a partir desta data"
+                tooltipOptions={{position: 'top'}}
+              />
+              {startDateFrom && (
+                <Button
+                  icon="pi pi-times"
+                  className="p-button-text p-button-sm"
+                  tooltip="Limpar"
+                  onClick={() => {
+                    setStartDateFrom(null)
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="field md:col-3 col-6">
+            <label htmlFor="start-date-to">Data de Início (Até)</label>
+            <div className="p-inputgroup">
+              <Calendar
+                id='start-date-to'
+                value={startDateTo}
+                onChange={(e) => {
+                  setStartDateTo(e.value as Date | null)
+                }}
+                placeholder="Selecione uma data"
+                dateFormat="dd/mm/yy"
+                showIcon
+                className="w-full"
+                tooltip="Filtrar obras que iniciaram até esta data"
+                tooltipOptions={{position: 'top'}}
+              />
+              {startDateTo && (
+                <Button
+                  icon="pi pi-times"
+                  className="p-button-text p-button-sm"
+                  tooltip="Limpar"
+                  onClick={() => {
+                    setStartDateTo(null)
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="field md:col-3 col-6">
+            <label htmlFor="end-date-from">Data de Fim (De)</label>
+            <div className="p-inputgroup">
+              <Calendar
+                id='end-date-from'
+                value={endDateFrom}
+                onChange={(e) => {
+                  setEndDateFrom(e.value as Date | null)
+                }}
+                placeholder="Selecione uma data"
+                dateFormat="dd/mm/yy"
+                showIcon
+                className="w-full"
+                tooltip="Filtrar obras que terminam a partir desta data"
+                tooltipOptions={{position: 'top'}}
+              />
+              {endDateFrom && (
+                <Button
+                  icon="pi pi-times"
+                  className="p-button-text p-button-sm"
+                  tooltip="Limpar"
+                  onClick={() => {
+                    setEndDateFrom(null)
+                  }}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="field md:col-3 col-6">
+            <label htmlFor="end-date-to">Data de Fim (Até)</label>
+            <div className="p-inputgroup">
+              <Calendar
+                id='end-date-to'
+                value={endDateTo}
+                onChange={(e) => {
+                  setEndDateTo(e.value as Date | null)
+                }}
+                placeholder="Selecione uma data"
+                dateFormat="dd/mm/yy"
+                showIcon
+                className="w-full"
+                tooltip="Filtrar obras que terminam até esta data"
+                tooltipOptions={{position: 'top'}}
+              />
+              {endDateTo && (
+                <Button
+                  icon="pi pi-times"
+                  className="p-button-text p-button-sm"
+                  tooltip="Limpar"
+                  onClick={() => {
+                    setEndDateTo(null)
+                  }}
+                />
+              )}
+            </div>
           </div>
       </div>   
 
