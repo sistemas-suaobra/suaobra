@@ -22,7 +22,8 @@ import { useHookstate, type State } from "@hookstate/core";
 import { LogOut } from "../NavBar.js";
 import { SelectButton } from 'primereact/selectbutton';
 import { Toast } from "primereact/toast";
-        
+import { addLocale, locale } from 'primereact/api';
+import { pt_BR } from "primelocale/js/pt_BR.js";
 
 declare global {
   interface Window {
@@ -81,6 +82,8 @@ const selectedContact = atom<Contact[]>([]);
 
 export default function ObraPlusPage(props: Props) {
   ///////////////////////////  VARIABLES  ///////////////////////////
+  addLocale('pt_BR', pt_BR);
+  locale("pt_BR");
 
   const sizes = [
     {label: 'Todos', code: '0-9999999'},
