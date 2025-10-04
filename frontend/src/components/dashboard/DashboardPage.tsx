@@ -88,6 +88,14 @@ export default function DashboardPage(props: Props) {
       title: 'Taxa de conversao - Script Simples e Eficiente',
       url: 'https://app.suaobra.com.br/videos/suaobra-taxa-conversao.mp4',
     },
+    {
+      title: 'IA Script com Inteligencia Artificial',
+      url: 'https://app.suaobra.com.br/videos/IA-SCRIPT-com-Inteligencia Artificial.mp4',
+    },
+    {
+      title: 'Login e Master Equipe',
+      url: 'https://app.suaobra.com.br/videos/login-master-equipe.mp4',
+    }
   ]
 
   const files : File[] = [
@@ -103,6 +111,13 @@ export default function DashboardPage(props: Props) {
       title: 'SCRIPTS PRE PRONTOS 2025',
       url: 'https://app.suaobra.com.br/pdfs/Script-2025.pdf',
     },
+    {
+      title: 'Funil cheio, vendas explosivas - Prospecção sem desculpas',
+      url: 'https://app.suaobra.com.br/pdfs/Funil-cheio-vendas-explosivas-Prospeccao-sem-desculpas.pdf',
+    },
+    {
+      title: 'Como Utilizar a Metodologia Funil de Vendas',
+      url: 'https://app.suaobra.com.br/pdfs/Como-Utilizar-a-Metodologia-Funil-de-Vendas.pdf',}
   ]
   ///////////////////////////  HOOKS  ///////////////////////////
   const [selectedPeriod, setSelectedPeriod] = React.useState(makePeriodOption(thisMonth()))
