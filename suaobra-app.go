@@ -54,18 +54,6 @@ func main() {
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.Use(contextMiddleware)
 		
-		// Configurar timeout maior para endpoints específicos que podem ser lentos
-		timeoutMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				// Aumentar timeout para requisições do RudderStack
-				if strings.Contains(c.Path(), "/api/collections/rudderstack") {
-					c.Request().Context()
-				}
-				return next(c)
-			}
-		}
-		e.Router.Use(timeoutMiddleware)
-		
 		e.Router.GET("/query/obras-plus", server.QueryObrasPlus)
 		e.Router.GET("/query/obras-plus-neighborhood", server.QueryCityNeighborhood)
 		e.Router.GET("/query/obras-plus-export", server.QueryObrasPlusExport)

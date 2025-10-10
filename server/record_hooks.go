@@ -181,21 +181,13 @@ func registerRudderstackHooks(app *pocketbase.PocketBase) {
 			// Aqui você pode adicionar processamento adicional se necessário
 			// Por exemplo: enviar para fila, processar analytics, etc.
 			// Por enquanto apenas logamos o evento
-			g.Debug("Received rudderstack event: type=%s, event=%s", 
+			g.Debug("Received rudderstack event: type=%s, event=%s, messageId=%s", 
 				e.Record.GetString("type"), 
-				e.Record.GetString("event"))
+				e.Record.GetString("event"),
+				e.Record.GetString("messageId"))
 		}()
 		
 		// Retornar imediatamente sem aguardar processamento
-		return nil
-	})
-
-	// Adicionar timeout limit para criação de registros
-	app.OnRecordBeforeCreateRequest("rudderstack").Add(func(e *core.RecordCreateEvent) error {
-		// Validação rápida apenas
-		if e.Record.GetString("type") == "" {
-			return g.Error("type is required")
-		}
 		return nil
 	})
 }

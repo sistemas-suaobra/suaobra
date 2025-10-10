@@ -1,13 +1,19 @@
 # 🔧 Correção do Timeout no Endpoint RudderStack
 
-## 🐛 Problema Identificado
+## 🐛 Problemas Identificados
 
-O endpoint `/api/collections/rudderstack/records` estava apresentando erro `504 context deadline exceeded`, causado por:
+### 1. Erro 504 - Context Deadline Exceeded
+O endpoint `/api/collections/rudderstack/records` estava apresentando timeout, causado por:
+- **Falta de índices** na tabela `rudderstack`
+- **Processamento síncrono** dos eventos
+- **Views lentas** consultando a tabela
+- **Timeout padrão** muito baixo
 
-1. **Falta de índices** na tabela `rudderstack`
-2. **Processamento síncrono** dos eventos
-3. **Views lentas** consultando a tabela
-4. **Timeout padrão** muito baixo
+### 2. Erro 400 - Failed to Create Record
+Erro retornado pelo RudderStack causado por:
+- **Validação excessiva** no hook `OnRecordBeforeCreateRequest`
+- **Campos obrigatórios** que não são enviados em todos os tipos de evento
+- **Payload vazio ou incompleto** do RudderStack
 
 ## ✅ Soluções Implementadas
 
@@ -40,13 +46,40 @@ func registerRudderstackHooks(app *pocketbase.PocketBase) {
 }
 ```
 
-### 3. **Validação Rápida**
-Apenas validações essenciais no `BeforeCreate` para não bloquear a requisição.
+### 3. **Validação Removida**
+Arquivo: `server/record_hooks.go`
 
-### 4. **Middleware de Timeout**
-Configuração específica para endpoints do RudderStack no `suaobra-app.go`.
+**ANTES (causava erro 400):**
+```go
+app.OnRecordBeforeCreateRequest("rudderstack").Add(func(e *core.RecordCreateEvent) error {
+    if e.Record.GetString("type") == "" {
+        return g.Error("type is required")
+    }
+    return nil
+})
+```
+
+**DEPOIS (permite todos os payloads):**
+- Validação removida completamente
+- O PocketBase já faz validação de schema automaticamente
+- Campos opcionais podem ser vazios
+
+### 4. **Middleware de Timeout Removido**
+O middleware incompleto foi removido do `suaobra-app.go`.
 
 ## 📊 Monitoramento
+
+### **Testar endpoint localmente:**
+```bash
+# Tornar o script executável
+chmod +x test-rudderstack-payload.sh
+
+# Testar em desenvolvimento
+./test-rudderstack-payload.sh http://localhost:8090/api/collections/rudderstack/records
+
+# Testar em produção
+./test-rudderstack-payload.sh https://api.suaobra.com.br/api/collections/rudderstack/records
+```
 
 ### **Ver logs de eventos RudderStack:**
 ```bash
@@ -157,8 +190,38 @@ curl -X POST https://api.suaobra.com.br/api/collections/rudderstack/records \
 ### 4. Verificar configuração do RudderStack:
 No dashboard do RudderStack, verifique:
 - **Retry settings**: Configurar para 3-5 tentativas
-- **Batch size**: Reduzir para 10-20 eventos por batch
+- **Batch size**: Reduzir para 10-20 eventos por batch  
 - **Timeout**: Aumentar para 30 segundos
+- **Webhook URL**: Verificar que está usando HTTPS e o header TOKEN correto
+
+### 5. Verificar payload enviado:
+Se ainda houver erro 400, capture o payload exato:
+```bash
+# Adicionar log no hook para ver o payload
+docker-compose logs backend | grep "rudderstack event"
+
+# Ou testar manualmente com curl
+curl -X POST https://api.suaobra.com.br/api/collections/rudderstack/records \
+  -H "Content-Type: application/json" \
+  -H "TOKEN: sua-obra-rudderstack" \
+  -d @payload.json \
+  -v
+```
+
+## 🔍 Estrutura da Coleção RudderStack
+
+Campos aceitos (todos opcionais):
+- `messageId` (text)
+- `type` (text) - Ex: "page", "track", "identify"
+- `event` (text) - Nome do evento (para type="track")
+- `channel` (text)
+- `userId` (text)
+- `anonymousId` (text)
+- `originalTimestamp` (date)
+- `sentAt` (date)
+- `context` (json)
+- `properties` (json)
+- `integrations` (json)
 
 ## 📝 Próximos Passos (Opcional)
 
