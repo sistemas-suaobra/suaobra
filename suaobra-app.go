@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 	"github.com/pocketbase/pocketbase/tools/cron"
 	"github.com/suaobra/suaobra-app/server"
@@ -87,6 +88,46 @@ func main() {
 		e.Router.POST("/team/invite", server.TeamInvite)
 		e.Router.POST("/team/remove-member", server.TeamRemoveMember)
 		e.Router.POST("/team/set-manager", server.TeamSetManager)
+		
+		// Debug endpoint para RudderStack (temporário)
+		e.Router.POST("/debug/rudderstack", func(c echo.Context) error {
+			token := c.Request().Header.Get("TOKEN")
+			if token != "sua-obra-rudderstack" {
+				return c.JSON(401, map[string]string{"error": "unauthorized"})
+			}
+			
+			var payload map[string]interface{}
+			if err := c.Bind(&payload); err != nil {
+				return c.JSON(400, map[string]string{"error": "bind error: " + err.Error()})
+			}
+			
+			// Log do payload recebido
+			g.Info("DEBUG: Received payload: %v", payload)
+			
+			collection, err := app.Dao().FindCollectionByNameOrId("rudderstack")
+			if err != nil {
+				return c.JSON(400, map[string]string{"error": "collection not found: " + err.Error()})
+			}
+			
+			record := models.NewRecord(collection)
+			
+			// Setar cada campo manualmente
+			for key, value := range payload {
+				record.Set(key, value)
+			}
+			
+			// Tentar salvar
+			if err := app.Dao().SaveRecord(record); err != nil {
+				g.Error(err, "Failed to save record")
+				return c.JSON(400, map[string]string{"error": "save error: " + err.Error()})
+			}
+			
+			return c.JSON(200, map[string]interface{}{
+				"success": true,
+				"id":      record.Id,
+				"record":  record,
+			})
+		})
 
 		// e.Router.PATCH("/patch/crm/stage-lead-adjust", server.PatchStageLeadAdjust)
 		// e.Router.PATCH("/patch/crm/stage-lead-add", server.PatchStageLeadAdd)
