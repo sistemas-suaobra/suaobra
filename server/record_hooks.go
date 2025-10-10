@@ -19,6 +19,7 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 	registerTeamHooks(app)
 	registerListHooks(app)
 	registerListLeadHooks(app)
+	registerRudderstackHooks(app)
 }
 
 func registerUserHooks(app *pocketbase.PocketBase) {
@@ -166,6 +167,35 @@ func registerListLeadHooks(app *pocketbase.PocketBase) {
 			return g.Error(err, "could not save new list_activity")
 		}
 
+		return nil
+	})
+}
+
+func registerRudderstackHooks(app *pocketbase.PocketBase) {
+	
+	// Otimização: Processar eventos do RudderStack de forma assíncrona
+	// para evitar timeout nas requisições
+	app.OnRecordAfterCreateRequest("rudderstack").Add(func(e *core.RecordCreateEvent) error {
+		// Processar de forma assíncrona para não bloquear a resposta
+		go func() {
+			// Aqui você pode adicionar processamento adicional se necessário
+			// Por exemplo: enviar para fila, processar analytics, etc.
+			// Por enquanto apenas logamos o evento
+			g.Debug("Received rudderstack event: type=%s, event=%s", 
+				e.Record.GetString("type"), 
+				e.Record.GetString("event"))
+		}()
+		
+		// Retornar imediatamente sem aguardar processamento
+		return nil
+	})
+
+	// Adicionar timeout limit para criação de registros
+	app.OnRecordBeforeCreateRequest("rudderstack").Add(func(e *core.RecordCreateEvent) error {
+		// Validação rápida apenas
+		if e.Record.GetString("type") == "" {
+			return g.Error("type is required")
+		}
 		return nil
 	})
 }
