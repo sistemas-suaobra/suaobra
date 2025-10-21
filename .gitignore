@@ -37,6 +37,8 @@ python_scraper_api/
 caubr-api/
 caubr-api-service/
 caubr-api-v2/
+contatos/
+archive/
 
 # Go binaries and large files
 go-concorrente/main
