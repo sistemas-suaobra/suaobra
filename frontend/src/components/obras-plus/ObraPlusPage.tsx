@@ -1228,13 +1228,23 @@ const ContactModal = () => {
 
 
   const phoneBody = (row: Contact, column: ColumnBodyOptions) => {
-    let ddd = row.telephone.toString().slice(0, 2)
-    let prefix = row.telephone.toString().slice(2, 7)
-    let suffix = row.telephone.toString().slice(7, 11)
-    if (row.telephone.toString().length === 10) {
-      prefix = row.telephone.toString().slice(2, 6)
-      suffix = row.telephone.toString().slice(6, 11)
+    let phone = row.telephone.toString()
+    
+    // Remove DDI +55 do Brasil se presente
+    if (phone.startsWith('55') && phone.length >= 12) {
+      phone = phone.slice(2)
     }
+    
+    let ddd = phone.slice(0, 2)
+    let prefix = phone.slice(2, 7)
+    let suffix = phone.slice(7, 11)
+    
+    // Telefone fixo (10 dígitos)
+    if (phone.length === 10) {
+      prefix = phone.slice(2, 6)
+      suffix = phone.slice(6, 10)
+    }
+    
     return <div style={{}}>
         <span>({ddd}) </span>
         <span>{prefix} </span>
