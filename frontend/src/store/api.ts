@@ -9,10 +9,14 @@ export const isProd = () => window.location.hostname.includes('suaobra.com.br')
 export const isStage = () => window.location.hostname.includes('suaobra-backend-service-897274251845.us-central1.run.app')
 export const isDev = () => !(isStage() || isProd())
 
-export const baseURL =  () => isProd() ? 'https://api.suaobra.com.br' :
-                              isStage() ? 'https://suaobra-backend-service-897274251845.us-central1.run.app' :
-                              window.location.hostname.includes('suaobra.test') ? `https://api.suaobra.test` :
-                              `http://${window.location.hostname}:8090`
+export const baseURL = () => {
+  const url = isProd() ? 'https://api.suaobra.com.br' :
+    isStage() ? 'https://suaobra-backend-service-897274251845.us-central1.run.app' :
+      window.location.hostname.includes('suaobra.test') ? `http://api.suaobra.test` :
+        `http://${window.location.hostname}:8090`
+  console.log('baseURL', url)
+  return url
+}
 
 export const PB = () => new PocketBase(baseURL())
 
@@ -20,8 +24,8 @@ export const PB = () => new PocketBase(baseURL())
 export const makeURL = (route: string) => `${baseURL()}${route}`
 
 const loadUserOrLogout = async () => {
-  if(window.location.href?.includes('obras-plus-iframe')) return // no need to login
-  if(! (await loadUser())) LogOut()
+  if (window.location.href?.includes('obras-plus-iframe')) return // no need to login
+  if (!(await loadUser())) LogOut()
 }
 
 export const api = () => {
@@ -35,7 +39,7 @@ export const api = () => {
       let response = new Response()
       try {
         isWaiting.set(true)
-        if(loggedIn && !user.get().token) await loadUserOrLogout()
+        if (loggedIn && !user.get().token) await loadUserOrLogout()
         let resp = await fetch(`${url}?${serialize(data)}`, {
           method: 'GET',
           headers: {
@@ -46,9 +50,9 @@ export const api = () => {
         })
         response = new Response(resp)
         await response.init()
-        
+
       } catch (error) {
-        response.setError(error) 
+        response.setError(error)
       } finally {
         isWaiting.set(false)
       }
@@ -59,7 +63,7 @@ export const api = () => {
       let response = new Response()
       try {
         isWaiting.set(true)
-        if(loggedIn && !user.get().token) await loadUserOrLogout()
+        if (loggedIn && !user.get().token) await loadUserOrLogout()
         let resp = await fetch(url, {
           method: 'POST',
           headers: {
@@ -71,9 +75,9 @@ export const api = () => {
         })
         response = new Response(resp)
         await response.init()
-        
+
       } catch (error) {
-        response.setError(error) 
+        response.setError(error)
       } finally {
         isWaiting.set(false)
       }
@@ -84,7 +88,7 @@ export const api = () => {
       let response = new Response()
       try {
         isWaiting.set(true)
-        if(loggedIn && !user.get().token) await loadUserOrLogout()
+        if (loggedIn && !user.get().token) await loadUserOrLogout()
         let resp = await fetch(url, {
           method: 'PATCH',
           headers: {
@@ -96,9 +100,9 @@ export const api = () => {
         })
         response = new Response(resp)
         await response.init()
-        
+
       } catch (error) {
-        response.setError(error) 
+        response.setError(error)
       } finally {
         isWaiting.set(false)
       }
@@ -109,7 +113,7 @@ export const api = () => {
       let response = new Response()
       try {
         isWaiting.set(true)
-        if(loggedIn && !user.get().token) await loadUserOrLogout()
+        if (loggedIn && !user.get().token) await loadUserOrLogout()
         let resp = await fetch(url, {
           method: 'PUT',
           headers: {
@@ -121,9 +125,9 @@ export const api = () => {
         })
         response = new Response(resp)
         await response.init()
-        
+
       } catch (error) {
-        response.setError(error) 
+        response.setError(error)
       } finally {
         isWaiting.set(false)
       }
@@ -141,7 +145,7 @@ export class Response {
   _json_payload: any
   _pb_data: any
 
-  constructor(response?: globalThis.Response){
+  constructor(response?: globalThis.Response) {
     this.response = response
   }
 
@@ -155,10 +159,10 @@ export class Response {
 
   async init() {
     this._json_read = false
-    if(this.response?.status >= 400) {
+    if (this.response?.status >= 400) {
       let data = await this.json()
-      if(data?.error) this.setError(data?.error)
-      else if(data?.message) this.setError(data?.message)
+      if (data?.error) this.setError(data?.error)
+      else if (data?.message) this.setError(data?.message)
       else this.setError(this.response.statusText)
     }
   }
@@ -169,10 +173,10 @@ export class Response {
   }
 
   async json() {
-    if(this._json_payload) return this._json_payload
+    if (this._json_payload) return this._json_payload
 
     try {
-      if(this._json_read === false) {
+      if (this._json_read === false) {
         this._json_read = true
         this.data = await this.response?.json()
       }
@@ -186,23 +190,23 @@ export class Response {
 
   async record() {
     let recs = await this.records()
-    if(recs.length > 0) return recs[0]
-    if(this.data) return this.data
+    if (recs.length > 0) return recs[0]
+    if (this.data) return this.data
     return {}
   }
-  
-  async records() {
-    let recs :  ObjectAny[] = []
 
-    if(this._json_payload) {
-      if(Array.isArray(this._json_payload)) recs = this._json_payload
+  async records() {
+    let recs: ObjectAny[] = []
+
+    if (this._json_payload) {
+      if (Array.isArray(this._json_payload)) recs = this._json_payload
       else recs = [this._json_payload]
       return recs
     }
 
     try {
       recs = await this.json()
-      if(!recs) return []
+      if (!recs) return []
     } catch (error) {
       this.setError(error)
     }
@@ -231,7 +235,7 @@ export class PocketBaseCollection {
   pb: PocketBase
   api: RecordService
 
-  constructor(collection: string){
+  constructor(collection: string) {
     this.pb = PB()
     this.api = this.pb.collection(collection)
   }
@@ -249,8 +253,8 @@ export class PocketBaseCollection {
     }
     return resp
   }
-  
-  async update(id: string, bodyParams?: { [key: string]: any;} | FormData, options?: RecordOptions) {
+
+  async update(id: string, bodyParams?: { [key: string]: any; } | FormData, options?: RecordOptions) {
     let resp = new Response()
     try {
       isWaiting.set(true)
@@ -263,7 +267,7 @@ export class PocketBaseCollection {
     }
     return resp
   }
-  
+
   async getFirstListItem(filter: string, options?: RecordListOptions) {
     let resp = new Response()
     try {
@@ -277,7 +281,7 @@ export class PocketBaseCollection {
     }
     return resp
   }
-  
+
   async getList(page?: number, perPage?: number, options?: RecordListOptions) {
     let resp = new Response()
     try {
@@ -291,13 +295,13 @@ export class PocketBaseCollection {
     }
     return resp
   }
-  
+
   async delete(id: string, options?: CommonOptions) {
     let resp = new Response()
     try {
       isWaiting.set(true)
       let success = await this.api.delete(id, options)
-      resp._json_payload = {success: success}
+      resp._json_payload = { success: success }
     } catch (error) {
       resp.setError(error)
     } finally {
@@ -305,8 +309,8 @@ export class PocketBaseCollection {
     }
     return resp
   }
-  
-  async create(bodyParams?: { [key: string]: any;} | FormData) {
+
+  async create(bodyParams?: { [key: string]: any; } | FormData) {
     let resp = new Response()
     try {
       isWaiting.set(true)
@@ -319,7 +323,7 @@ export class PocketBaseCollection {
     }
     return resp
   }
-  
+
 }
 
 export const userTrackProps = () => { return { id: user.get().id, legacy_id: user.get().legacy_id, email: user.get().email, team_id: user.get().team.id } }

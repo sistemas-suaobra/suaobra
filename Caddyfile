@@ -1,9 +1,7 @@
-app.suaobra.test {
-    tls internal
+http://app.suaobra.test {
     reverse_proxy frontend:80
 }
 
-api.suaobra.test {
-    tls internal
+http://api.suaobra.test {
     reverse_proxy backend:8080
 }
