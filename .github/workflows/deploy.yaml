@@ -1,0 +1,72 @@
+name: Deploy to Production (SSH)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CF_ZONE_ID: 29eab7acc70683179197a070ac0d8c51
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy Files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          source: "."
+          target: "/root/suaobra-app"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          script: |
+            cd /root/suaobra-app
+            
+            echo "Building Backend Image..."
+            docker buildx build -t suaobra/api:latest . -f Dockerfile
+            
+            echo "Building Frontend Image..."
+            docker buildx build -t suaobra/app:latest frontend/. -f frontend/Dockerfile
+            
+            echo "Stopping old containers..."
+            docker stop api-suaobra || true
+            docker stop app-suaobra || true
+            docker rm api-suaobra || true
+            docker rm app-suaobra || true
+            
+            echo "Starting Backend..."
+            docker run -d --restart unless-stopped --network my-tunnel-network --name api-suaobra \
+              -p 8080:8080 \
+              -v /app/data:/app/data \
+              -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+              suaobra/api:latest
+            
+            echo "Starting Frontend..."
+            docker run -d --restart unless-stopped --network my-tunnel-network --name app-suaobra \
+              -p 80:80 \
+              suaobra/app:latest
+
+  purge-cache:
+    name: Purge Cloudflare Cache
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge Cache
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.CF_ZONE_ID }}/purge_cache" \
+          -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          --data '{"purge_everything":true}'
