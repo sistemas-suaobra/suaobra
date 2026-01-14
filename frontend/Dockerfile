@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Use a cache mount for the npm cache directory
-RUN --mount=type=cache,target=/root/.npm npm install
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
 RUN npm run build
