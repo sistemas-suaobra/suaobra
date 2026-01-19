@@ -20,5 +20,5 @@ pnpm-debug.log*
 # macOS-specific files
 .DS_Store
 
-public/videos/*
-public/pdfs/*
+public/videos/*.mp4
+public/pdfs/*.pdf
