@@ -62,62 +62,62 @@ export default function DashboardPage(props: Props) {
   const videos: File[] = [
     {
       title: 'Como fazer seu primeiro acesso',
-      url: 'https://app.suaobra.com.br/videos/suaobra-primeiro-acesso.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-primeiro-acesso.mp4',
     },
     {
       title: 'Abordagens: como conseguir resultados usando a abordagem ideal',
-      url: 'https://app.suaobra.com.br/videos/suaobra-abordagens.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-abordagens.mp4',
     },
     {
       title: 'Como agendar atividade no VENDA MAIS: follow up de orçamentos',
-      url: 'https://app.suaobra.com.br/videos/suaobra-agendar-atividade.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-agendar-atividade.mp4',
     },
     {
       title: '6 dicas para prospectar',
-      url: 'https://app.suaobra.com.br/videos/suaobra-dicas-prospectar.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-dicas-prospectar.mp4',
     },
     {
       title: '4 Dicas para Prospectar obras nas Redes Sociais',
-      url: 'https://app.suaobra.com.br/videos/suaobra-prospectar-redes-sociais.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-prospectar-redes-sociais.mp4',
     },
     {
       title: 'Persistencia e as Vendas',
-      url: 'https://app.suaobra.com.br/videos/suaobra-persistencia.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-persistencia.mp4',
     },
     {
       title: 'Taxa de conversao - Script Simples e Eficiente',
-      url: 'https://app.suaobra.com.br/videos/suaobra-taxa-conversao.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-taxa-conversao.mp4',
     },
     {
       title: 'IA Script com Inteligencia Artificial',
-      url: 'https://app.suaobra.com.br/videos/suaobra-ia-script.mp4',
+      url: 'https://files.suaobra.com.br/videos/suaobra-ia-script.mp4',
     },
     {
       title: 'Login e Master Equipe',
-      url: 'https://app.suaobra.com.br/videos/login-master-equipe.mp4',
+      url: 'https://files.suaobra.com.br/videos/login-master-equipe.mp4',
     }
   ]
 
   const files: File[] = [
     {
       title: 'Treinamento básico PROSPECÇÃO DE OBRAS',
-      url: 'https://app.suaobra.com.br/pdfs/Treinamento-Basico-Prospeccao.pdf',
+      url: 'https://files.suaobra.com.br/pdf/Treinamento-Basico-Prospeccao.pdf',
     },
     {
       title: 'Metodologia da Negociação de Harvard',
-      url: 'https://app.suaobra.com.br/pdfs/Metodologia-da-Negociacao-de-Harvard.pdf',
+      url: 'https://files.suaobra.com.br/pdf/Metodologia-da-Negociacao-de-Harvard.pdf',
     },
-    {
-      title: 'SCRIPTS PRE PRONTOS 2025',
-      url: 'https://app.suaobra.com.br/pdfs/Script-2025.pdf',
-    },
+    // {
+    //   title: 'SCRIPTS PRE PRONTOS 2025',
+    //   url: 'https://app.suaobra.com.br/pdfs/Script-2025.pdf',
+    // },
     {
       title: 'Funil cheio, vendas explosivas - Prospecção sem desculpas',
-      url: 'https://app.suaobra.com.br/pdfs/Funil-cheio-vendas-explosivas-Prospeccao-sem-desculpas.pdf',
+      url: 'https://files.suaobra.com.br/pdf/Funil-cheio-vendas-explosivas-Prospeccao-sem-desculpas.pdf',
     },
     {
       title: 'Como Utilizar a Metodologia Funil de Vendas',
-      url: 'https://app.suaobra.com.br/pdfs/Como-Utilizar-a-Metodologia-Funil-de-Vendas.pdf',
+      url: 'https://files.suaobra.com.br/pdf/Como-Utilizar-a-Metodologia-Funil-de-Vendas.pdf',
     }
   ]
   ///////////////////////////  HOOKS  ///////////////////////////
