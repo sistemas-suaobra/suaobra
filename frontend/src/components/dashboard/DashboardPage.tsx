@@ -16,9 +16,9 @@ declare global {
   interface Window {
     rudderAnalytics: any
   }
-}        
+}
 
-interface Props {}
+interface Props { }
 
 interface Funnel {
   month: string;
@@ -59,7 +59,7 @@ interface UserData {
 export default function DashboardPage(props: Props) {
   ///////////////////////////  VARIABLES  ///////////////////////////
   interface File { title: string; url: string }
-  const videos : File[] = [
+  const videos: File[] = [
     {
       title: 'Como fazer seu primeiro acesso',
       url: 'https://app.suaobra.com.br/videos/suaobra-primeiro-acesso.mp4',
@@ -90,7 +90,7 @@ export default function DashboardPage(props: Props) {
     },
     {
       title: 'IA Script com Inteligencia Artificial',
-      url: 'https://app.suaobra.com.br/videos/IA-SCRIPT-com-Inteligencia Artificial.mp4',
+      url: 'https://app.suaobra.com.br/videos/suaobra-ia-script.mp4',
     },
     {
       title: 'Login e Master Equipe',
@@ -98,7 +98,7 @@ export default function DashboardPage(props: Props) {
     }
   ]
 
-  const files : File[] = [
+  const files: File[] = [
     {
       title: 'Treinamento básico PROSPECÇÃO DE OBRAS',
       url: 'https://app.suaobra.com.br/pdfs/Treinamento-Basico-Prospeccao.pdf',
@@ -117,7 +117,8 @@ export default function DashboardPage(props: Props) {
     },
     {
       title: 'Como Utilizar a Metodologia Funil de Vendas',
-      url: 'https://app.suaobra.com.br/pdfs/Como-Utilizar-a-Metodologia-Funil-de-Vendas.pdf',}
+      url: 'https://app.suaobra.com.br/pdfs/Como-Utilizar-a-Metodologia-Funil-de-Vendas.pdf',
+    }
   ]
   ///////////////////////////  HOOKS  ///////////////////////////
   const [selectedPeriod, setSelectedPeriod] = React.useState(makePeriodOption(thisMonth()))
@@ -129,7 +130,7 @@ export default function DashboardPage(props: Props) {
   const [leads, setLeads] = React.useState<Lead[]>([]);
   const [histData, setHistData] = React.useState<HistoryEntry[]>([]);
   const [funnel, setFunnel] = React.useState<Funnel>({} as Funnel);
-  const [chartData, setChartData] = React.useState<ChartData>({data: {}, options: {}});
+  const [chartData, setChartData] = React.useState<ChartData>({ data: {}, options: {} });
   const localUserS = useHookstate<LoginUserState>({
     id: '',
     loaded: false,
@@ -139,7 +140,7 @@ export default function DashboardPage(props: Props) {
   })
 
   ///////////////////////////  EFFECTS  ///////////////////////////
-  
+
   React.useEffect(() => {
     // randomize quotes
     quotes.set(
@@ -147,9 +148,9 @@ export default function DashboardPage(props: Props) {
         .map(value => ({ value, sort: Math.random() }))
         .sort((a, b) => a.sort - b.sort)
         .map(({ value }) => value)
-        .filter((_, i) => i < 3 )
+        .filter((_, i) => i < 3)
     )
-    
+
     window.rudderAnalytics?.page({
       userId: user.get().id,
       category: "dashboard",
@@ -176,9 +177,9 @@ export default function DashboardPage(props: Props) {
       }
     )
   }, []);
-  
+
   React.useEffect(() => {
-    if(!localUserS.id.get()) return
+    if (!localUserS.id.get()) return
     getHistory()
     getFunnel()
     getLatestLeads()
@@ -189,17 +190,17 @@ export default function DashboardPage(props: Props) {
       setChart()
     }, 300);
   }, [histData]);
-  
+
   ///////////////////////////  FUNCTIONS  ///////////////////////////
 
   const getUsers = async () => {
     let resp = await api().get(makeURL('/query/dashboard/users'), {})
-    if(resp.error) return
+    if (resp.error) return
     let users = await resp.records() as UserData[]
-    if(users) {
+    if (users) {
       console.log("Fetched users:", users);
       setUserOptions(users)
-      
+
       persistSelectedUser(users);
     }
   }
@@ -208,10 +209,10 @@ export default function DashboardPage(props: Props) {
   const persistSelectedUser = (users: UserData[]) => {
     // Skip if "all" is selected or user is not a manager
     if (selectedUser.code === 'all' || !localUserS.is_manager?.get()) return;
-    
+
     // Find the user in the updated options list
     const foundUser = users.find(u => u.id === selectedUser.code);
-    
+
     // If found, make sure the selected user data is current
     if (foundUser) {
       setSelectedUser(makeUserOption(foundUser.id, foundUser));
@@ -224,58 +225,58 @@ export default function DashboardPage(props: Props) {
 
   const getLatestLeads = async () => {
     // For non-managers, always force user_id to be the current user
-    const userId = !localUserS.is_manager?.get() 
-      ? localUserS.id.get() 
+    const userId = !localUserS.is_manager?.get()
+      ? localUserS.id.get()
       : (selectedUser.code === 'all' ? null : selectedUser.code);
-      
+
     let resp = await api().get(makeURL('/query/dashboard/leads'), {
       month: selectedPeriod.code,
       user_id: userId
     })
-    if(resp.error) return
+    if (resp.error) return
     let leads = (await resp.records() as any[]).map(v => new Lead(v))
-    if(leads) setLeads(leads)
+    if (leads) setLeads(leads)
   }
 
   const getFunnel = async () => {
     // For non-managers, always force user_id to be the current user
-    const userId = !localUserS.is_manager?.get() 
-      ? localUserS.id.get() 
+    const userId = !localUserS.is_manager?.get()
+      ? localUserS.id.get()
       : (selectedUser.code === 'all' ? null : selectedUser.code);
-      
+
     let resp = await api().get(makeURL('/query/dashboard/funnel'), {
       month: selectedPeriod.code,
       user_id: userId
     })
-    if(resp.error) return
+    if (resp.error) return
     let funnels = await resp.records() as Funnel[]
-    if(funnels) setFunnel(funnels[0])
+    if (funnels) setFunnel(funnels[0])
   }
 
   const getHistory = async () => {
     let start_date = selectedPeriod.code
     let end_date = nextMonth()
-    if(start_date === prevMonth()) end_date = thisMonth()
-    if(start_date === prevMonth2()) end_date = prevMonth()
+    if (start_date === prevMonth()) end_date = thisMonth()
+    if (start_date === prevMonth2()) end_date = prevMonth()
 
     // For non-managers, always force user_id to be the current user
-    const userId = !localUserS.is_manager?.get() 
-      ? localUserS.id.get() 
+    const userId = !localUserS.is_manager?.get()
+      ? localUserS.id.get()
       : (selectedUser.code === 'all' ? null : selectedUser.code);
 
     let resp = await api().get(makeURL('/query/dashboard/history'), {
-      start_date, 
+      start_date,
       end_date,
       user_id: userId
     })
-    if(resp.error) return
+    if (resp.error) return
     let entries = await resp.records() as HistoryEntry[]
-    if(entries) {
-      if(start_date === thisMonth()) {
+    if (entries) {
+      if (start_date === thisMonth()) {
         // set null for entries after today
         for (let i = 0; i < entries.length; i++) {
           const element = entries[i];
-          if(i > (new Date()).getDate()) {
+          if (i > (new Date()).getDate()) {
             entries[i].lead_cnt_cumulative = null
             entries[i].visit_cnt_cumulative = null
           }
@@ -286,64 +287,64 @@ export default function DashboardPage(props: Props) {
   }
 
   const setChart = () => {
-      const documentStyle = getComputedStyle(document.documentElement);
-      const textColor = documentStyle.getPropertyValue('--text-color');
-      const textColorSecondary = documentStyle.getPropertyValue('--text-color-secondary');
-      const surfaceBorder = documentStyle.getPropertyValue('--surface-border');
-      const data = {
-          labels: histData.map(v => v.date.replaceAll("T00:00:00Z", "")),
-          datasets: [
-              {
-                  label: 'Vizualizações',
-                  data: histData.map(v => v.visit_cnt_cumulative).filter(v => v !== null),
-                  fill: true,
-                  borderColor: documentStyle.getPropertyValue('--orange-500'),
-                  tension: 0.4,
-                  backgroundColor: 'rgba(255,167,38,0.2)'
-              },
-              {
-                  label: 'Leads',
-                  data: histData.map(v => v.lead_cnt_cumulative).filter(v => v !== null),
-                  fill: true,
-                  borderColor: documentStyle.getPropertyValue('--blue-500'),
-                  tension: 0.4,
-                  backgroundColor: 'rgba(255,167,38,0.2)'
-              },
-          ]
-      };
+    const documentStyle = getComputedStyle(document.documentElement);
+    const textColor = documentStyle.getPropertyValue('--text-color');
+    const textColorSecondary = documentStyle.getPropertyValue('--text-color-secondary');
+    const surfaceBorder = documentStyle.getPropertyValue('--surface-border');
+    const data = {
+      labels: histData.map(v => v.date.replaceAll("T00:00:00Z", "")),
+      datasets: [
+        {
+          label: 'Vizualizações',
+          data: histData.map(v => v.visit_cnt_cumulative).filter(v => v !== null),
+          fill: true,
+          borderColor: documentStyle.getPropertyValue('--orange-500'),
+          tension: 0.4,
+          backgroundColor: 'rgba(255,167,38,0.2)'
+        },
+        {
+          label: 'Leads',
+          data: histData.map(v => v.lead_cnt_cumulative).filter(v => v !== null),
+          fill: true,
+          borderColor: documentStyle.getPropertyValue('--blue-500'),
+          tension: 0.4,
+          backgroundColor: 'rgba(255,167,38,0.2)'
+        },
+      ]
+    };
 
-      const options = {
-          maintainAspectRatio: true,
-          aspectRatio: 4,
-          plugins: {
-              legend: {
-                  labels: {
-                      color: textColor
-                  }
-              }
-          },
-          scales: {
-              x: {
-                  ticks: {
-                      color: textColorSecondary
-                  },
-                  grid: {
-                      color: surfaceBorder
-                  }
-              },
-              y: {
-                  min: 0,
-                  ticks: {
-                      color: textColorSecondary
-                  },
-                  grid: {
-                      color: surfaceBorder
-                  }
-              }
+    const options = {
+      maintainAspectRatio: true,
+      aspectRatio: 4,
+      plugins: {
+        legend: {
+          labels: {
+            color: textColor
           }
-      };
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: textColorSecondary
+          },
+          grid: {
+            color: surfaceBorder
+          }
+        },
+        y: {
+          min: 0,
+          ticks: {
+            color: textColorSecondary
+          },
+          grid: {
+            color: surfaceBorder
+          }
+        }
+      }
+    };
 
-      setChartData({ data, options });
+    setChartData({ data, options });
   }
 
   const funnelNumber = (n: number) => {
@@ -373,14 +374,14 @@ export default function DashboardPage(props: Props) {
   const leadChip = (lead: Lead) => {
     const id = lead.obra_id
     return <span key={id}>
-      { makeLeadTooltip(lead) }
+      {makeLeadTooltip(lead)}
 
       <Chip
         id={id}
         onClick={() => window.location.assign('venda-mais')}
         icon="pi pi-home"
         label={lead.title}
-        style={{cursor: 'pointer'}}
+        style={{ cursor: 'pointer' }}
         className="ml-2 mt-2"
       />
     </span>
@@ -388,145 +389,145 @@ export default function DashboardPage(props: Props) {
 
   const quoteTemplate = (item: MotivationalQuote) => {
     return (
-        <div className="border-1 surface-border border-round m-2 text-center py-5 px-3">
-          <h3>
-            { item.frase }
-          </h3>
-          <h4>
-            - { item.autor }
-          </h4>
-        </div>
+      <div className="border-1 surface-border border-round m-2 text-center py-5 px-3">
+        <h3>
+          {item.frase}
+        </h3>
+        <h4>
+          - {item.autor}
+        </h4>
+      </div>
     );
   };
 
   const videoTemplate = (video: File) => {
-      return <div>
-        <div className="text-center">
-          <h3>{video.title}</h3>
-        </div>
-        <video width="100%" height="100%" loop controls preload="metadata" key={video.url}>
-          <source src={video.url} type="video/mp4" />
-        </video>
+    return <div>
+      <div className="text-center">
+        <h3>{video.title}</h3>
       </div>
+      <video width="100%" height="100%" loop controls preload="metadata" key={video.url}>
+        <source src={video.url} type="video/mp4" />
+      </video>
+    </div>
   };
 
   return (
     <div className="justify-content-center w-full border-circle bg-tr">
-      <InfoInputPanel lus={localUserS}/>
-      <VerifyPanel lus={localUserS}/>
+      <InfoInputPanel lus={localUserS} />
+      <VerifyPanel lus={localUserS} />
 
       <div className=" bg-white border-round-3xl mx-2 p-4">
-          <div className="flex md:col-6 col-12">
-            <h2 className="mt-0">Resumo</h2> 
-          </div>
+        <div className="flex md:col-6 col-12">
+          <h2 className="mt-0">Resumo</h2>
+        </div>
 
         <div className="formgrid grid">
+          <div className="field md:col-6 col-12">
+            <Dropdown
+              id='date-dropdown'
+              value={selectedPeriod.code}
+              onChange={(e) => {
+                setSelectedPeriod(makePeriodOption(e.value))
+              }}
+              options={makePeriodOptions(periodOptions)}
+              optionValue="code"
+              optionLabel="label"
+              className="w-full"
+            />
+          </div>
+          {(localUserS.is_manager?.get() === true) && (
             <div className="field md:col-6 col-12">
               <Dropdown
-                id='date-dropdown'
-                value={selectedPeriod.code}
+                id='user-dropdown'
+                value={selectedUser.code}
                 onChange={(e) => {
-                  setSelectedPeriod(makePeriodOption(e.value))
+                  const selectedId = e.value;
+                  console.log("Dropdown selection changed to:", selectedId);
+                  const foundUser = userOptions.find(u => u.id === selectedId);
+                  console.log("Found user:", foundUser);
+                  setSelectedUser(makeUserOption(selectedId, foundUser));
                 }}
-                options={makePeriodOptions(periodOptions)}
-                optionValue="code" 
-                optionLabel="label" 
+                options={makeUserOptions(userOptions)}
+                optionValue="code"
+                optionLabel="label"
                 className="w-full"
               />
             </div>
-            {(localUserS.is_manager?.get() === true) && (
-              <div className="field md:col-6 col-12">
-                <Dropdown
-                  id='user-dropdown'
-                  value={selectedUser.code}
-                  onChange={(e) => {
-                    const selectedId = e.value;
-                    console.log("Dropdown selection changed to:", selectedId);
-                    const foundUser = userOptions.find(u => u.id === selectedId);
-                    console.log("Found user:", foundUser);
-                    setSelectedUser(makeUserOption(selectedId, foundUser));
-                  }}
-                  options={makeUserOptions(userOptions)}
-                  optionValue="code" 
-                  optionLabel="label" 
-                  className="w-full"
-                />
-              </div>
-            )}
+          )}
         </div>
 
 
         <div className="grid gap-2">
           <div className="col relative">
-              <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold">
-                <div className="text-lg uppercase pb-2">Vizualizações</div>
-                <div className="text-5xl">{ funnelNumber(funnel.visit_cnt) }</div>
-              </div>
+            <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold">
+              <div className="text-lg uppercase pb-2">Vizualizações</div>
+              <div className="text-5xl">{funnelNumber(funnel.visit_cnt)}</div>
+            </div>
 
-              {ArrowNumber(funnel.lead_cnt, funnel.visit_cnt)}
+            {ArrowNumber(funnel.lead_cnt, funnel.visit_cnt)}
           </div>
 
           <div className="col relative">
-              <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold ">
-                <div className="text-lg uppercase pb-2">Leads</div>
-                <div className="text-5xl">{ funnelNumber(funnel.lead_cnt) }</div>
-              </div>
+            <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold ">
+              <div className="text-lg uppercase pb-2">Leads</div>
+              <div className="text-5xl">{funnelNumber(funnel.lead_cnt)}</div>
+            </div>
 
-              {ArrowNumber(funnel.opportunity_cnt, funnel.lead_cnt)}
+            {ArrowNumber(funnel.opportunity_cnt, funnel.lead_cnt)}
           </div>
 
           <div className="col relative">
-              <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold ">
-                <div className="text-lg uppercase pb-2">Oportunidades</div>
-                <div className="text-5xl">{ funnelNumber(funnel.opportunity_cnt) }</div>
-              </div>
+            <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold ">
+              <div className="text-lg uppercase pb-2">Oportunidades</div>
+              <div className="text-5xl">{funnelNumber(funnel.opportunity_cnt)}</div>
+            </div>
 
-              {ArrowNumber(funnel.sold_cnt, funnel.opportunity_cnt)}
+            {ArrowNumber(funnel.sold_cnt, funnel.opportunity_cnt)}
           </div>
 
           <div className="col relative">
-              <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold ">
-                <div className="text-lg uppercase pb-2">Vendas</div>
-                <div className="text-5xl">{ funnelNumber(funnel.sold_cnt) }</div>
-              </div>
+            <div className="text-center py-5 p-3 border-round-lg bg-primary font-bold ">
+              <div className="text-lg uppercase pb-2">Vendas</div>
+              <div className="text-5xl">{funnelNumber(funnel.sold_cnt)}</div>
+            </div>
           </div>
 
         </div>
-      
+
       </div>
 
-      <div className="mx-2 my-4 border-bottom-0"/>
+      <div className="mx-2 my-4 border-bottom-0" />
 
       <div className="mx-2 bg-white border-round-3xl px-5 pb-3 col-12">
         <div className="flex col-12">
-          <h2>Historico</h2> 
+          <h2>Historico</h2>
         </div>
 
         <Chart type="line" data={chartData.data} options={chartData.options} />
       </div>
 
-      <div className="mx-2 my-4 border-bottom-0"/>
+      <div className="mx-2 my-4 border-bottom-0" />
 
       <div className="mx-2 bg-white border-round-3xl px-5 pb-3 col-12">
         <div className="flex col-12">
-          <h2>Vídeos de Treinamento</h2> 
+          <h2>Vídeos de Treinamento</h2>
         </div>
 
-        
+
         <Galleria
           value={videos}
           // style={{ maxWidth: '640px' }} 
           item={videoTemplate}
           showThumbnails={false}
           showIndicators
-          />
+        />
       </div>
 
-      <div className="mx-2 my-4 border-bottom-0"/>
+      <div className="mx-2 my-4 border-bottom-0" />
 
       <div className="mx-2 bg-white border-round-3xl px-5 pb-3 col-12">
         <div className="flex col-12">
-          <h2>Material de Apoio</h2> 
+          <h2>Material de Apoio</h2>
         </div>
 
         <div className="grid w-full">
@@ -534,33 +535,33 @@ export default function DashboardPage(props: Props) {
             files.map(file => {
               return <div className="flex align-items-center lg:col-4 md:col-6 col-12">
                 <div><i className="pi pi-file-pdf" style={{ fontSize: '2.5rem' }}></i></div>
-                <div> <a href={file.url} target="_blank">{ file.title }</a></div> 
+                <div> <a href={file.url} target="_blank">{file.title}</a></div>
               </div>
             })
           }
         </div>
       </div>
 
-      <div className="mx-2 my-4 border-bottom-0"/>
+      <div className="mx-2 my-4 border-bottom-0" />
 
       <div className="mx-2 bg-white border-round-3xl px-5 pb-3">
         <div className='pt-2'>
-          <h2>Últimas Obras Convertidas em Leads</h2> 
+          <h2>Últimas Obras Convertidas em Leads</h2>
         </div>
-          {
-            leads?.map(lead => leadChip(lead))
-          }
+        {
+          leads?.map(lead => leadChip(lead))
+        }
       </div>
 
       <div className="mx-2 bg-white border-round-3xl px-5 pb-3 mt-4">
-          <Carousel
-            value={quotes.get()}
-            numVisible={1}
-            className="pt-4"
-            circular
-            autoplayInterval={5000}
-            itemTemplate={quoteTemplate}
-          />
+        <Carousel
+          value={quotes.get()}
+          numVisible={1}
+          className="pt-4"
+          circular
+          autoplayInterval={5000}
+          itemTemplate={quoteTemplate}
+        />
       </div>
     </div>
   );
@@ -568,12 +569,12 @@ export default function DashboardPage(props: Props) {
 
 
 const makePeriodOption = (options: string) => {
-  return {code: options, label: dateLongString(options)}
+  return { code: options, label: dateLongString(options) }
 }
 
 const makePeriodOptions = (options: string[]) => {
   let opts = []
-  for(let o of options) {
+  for (let o of options) {
     opts.push(makePeriodOption(o))
   }
   return opts
@@ -655,7 +656,7 @@ const makeUserOption = (code: string = 'all', user?: UserData): UserOption => {
 const makeUserOptions = (users: UserData[]): UserOption[] => {
   // Always start with the "All" option
   let opts = [makeUserOption('all')];
-  
+
   // Add each user option
   if (users && users.length > 0) {
     users.forEach(user => {
@@ -664,7 +665,7 @@ const makeUserOptions = (users: UserData[]): UserOption[] => {
       }
     });
   }
-  
+
   console.log("Generated user options:", opts);
   return opts;
 } 
