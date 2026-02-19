@@ -1,0 +1,72 @@
+name: Deploy to Homolog (SSH)
+
+on:
+  push:
+    branches:
+      - homolog
+  workflow_dispatch:
+
+env:
+  CF_ZONE_ID: 29eab7acc70683179197a070ac0d8c51
+
+jobs:
+  deploy:
+    name: Deploy to VPS (Homolog)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy Files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          source: "."
+          target: "/root/suaobra-app-hml"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          script: |
+            cd /root/suaobra-app-hml
+            
+            echo "Building Backend Image (Homolog)..."
+            docker buildx build -t suaobra/api:hml . -f Dockerfile
+            
+            echo "Building Frontend Image (Homolog)..."
+            docker buildx build -t suaobra/app:hml frontend/. -f frontend/Dockerfile
+            
+            echo "Stopping old containers (Homolog)..."
+            docker stop api-hml || true
+            docker stop app-hml || true
+            docker rm api-hml || true
+            docker rm app-hml || true
+            
+            echo "Starting Backend (Homolog)..."
+            docker run -d --restart unless-stopped --network my-tunnel-network --name api-hml \
+              -p 8081:8080 \
+              -v /app/data:/app/data \
+              -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+              suaobra/api:hml
+            
+            echo "Starting Frontend (Homolog)..."
+            docker run -d --restart unless-stopped --network my-tunnel-network --name app-hml \
+              -p 81:80 \
+              suaobra/app:hml
+
+  purge-cache:
+    name: Purge Cloudflare Cache (Homolog)
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge Cache
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.CF_ZONE_ID }}/purge_cache" \
+          -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          --data '{"purge_everything":true}'
