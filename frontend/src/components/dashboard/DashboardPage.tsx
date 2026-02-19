@@ -118,6 +118,10 @@ export default function DashboardPage(props: Props) {
     {
       title: 'Como Utilizar a Metodologia Funil de Vendas',
       url: 'https://files.suaobra.com.br/pdf/Como-Utilizar-a-Metodologia-Funil-de-Vendas.pdf',
+    },
+    {
+      title: 'Script e Abordagem Profissional e Cliente Final - 5 Modelos',
+      url: 'https://files.suaobra.com.br/pdf/script-e-abordagem-profissional-e-cliente-final-5-modelos.pdf',
     }
   ]
   ///////////////////////////  HOOKS  ///////////////////////////
