@@ -1,5 +1,5 @@
 import { Dropdown } from "primereact/dropdown";
-import * as React from "react";
+import React from "react";
 import { Chart } from 'primereact/chart';
 import { Chip } from 'primereact/chip';
 import { api, makeURL } from "../../store/api";

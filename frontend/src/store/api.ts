@@ -140,6 +140,7 @@ export const api = () => {
 export class Response {
   response: globalThis.Response
   data: any
+  details: any
   error: string
   _json_read: boolean
   _json_payload: any
@@ -164,12 +165,19 @@ export class Response {
       if (data?.error) this.setError(data?.error)
       else if (data?.message) this.setError(data?.message)
       else this.setError(this.response.statusText)
+
+      // Capture details if available (e.g. from ClientResponseError structure in data)
+      if (data?.data) this.details = data.data
     }
   }
 
-  setError(error: string) {
+  setError(error: any) {
     console.error(error)
     this.error = error.toString()
+
+    // Attempt to extract details if they exist on the error object
+    if (error?.data) this.details = error.data
+    else if (error?.response?.data) this.details = error.response.data
   }
 
   async json() {

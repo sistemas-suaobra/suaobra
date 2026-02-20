@@ -1,4 +1,12 @@
-# Stage 1: Build the static assets
+# Stage 1: Dev environment
+FROM node:20-alpine AS dev
+WORKDIR /app
+COPY package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm install
+COPY . .
+CMD ["npm", "run", "dev", "--", "--host", "--port", "80"]
+
+# Stage 2: Build the static assets
 FROM node:20-alpine AS builder
 
 WORKDIR /app
