@@ -1,5 +1,5 @@
 import { Dropdown } from "primereact/dropdown";
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Chart } from 'primereact/chart';
 import { Chip } from 'primereact/chip';
 import { api, makeURL } from "../../store/api";
@@ -125,16 +125,16 @@ export default function DashboardPage(props: Props) {
     }
   ]
   ///////////////////////////  HOOKS  ///////////////////////////
-  const [selectedPeriod, setSelectedPeriod] = React.useState(makePeriodOption(thisMonth()))
-  const [selectedUser, setSelectedUser] = React.useState(makeUserOption("all"))
-  const [periodOptions, setPeriodOptions] = React.useState<string[]>([thisMonth(), prevMonth(), prevMonth2()])
-  const [userOptions, setUserOptions] = React.useState<UserData[]>([])
+  const [selectedPeriod, setSelectedPeriod] = useState(makePeriodOption(thisMonth()))
+  const [selectedUser, setSelectedUser] = useState(makeUserOption("all"))
+  const [periodOptions, setPeriodOptions] = useState<string[]>([thisMonth(), prevMonth(), prevMonth2()])
+  const [userOptions, setUserOptions] = useState<UserData[]>([])
   const quotes = useVariable(GetQuotes())
 
-  const [leads, setLeads] = React.useState<Lead[]>([]);
-  const [histData, setHistData] = React.useState<HistoryEntry[]>([]);
-  const [funnel, setFunnel] = React.useState<Funnel>({} as Funnel);
-  const [chartData, setChartData] = React.useState<ChartData>({ data: {}, options: {} });
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [histData, setHistData] = useState<HistoryEntry[]>([]);
+  const [funnel, setFunnel] = useState<Funnel>({} as Funnel);
+  const [chartData, setChartData] = useState<ChartData>({ data: {}, options: {} });
   const localUserS = useHookstate<LoginUserState>({
     id: '',
     loaded: false,
@@ -145,7 +145,7 @@ export default function DashboardPage(props: Props) {
 
   ///////////////////////////  EFFECTS  ///////////////////////////
 
-  React.useEffect(() => {
+  useEffect(() => {
     // randomize quotes
     quotes.set(
       quotes.get()
@@ -165,7 +165,7 @@ export default function DashboardPage(props: Props) {
     getUsers()
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadUserState().then(
       user => {
         localUserS.set(
@@ -182,14 +182,14 @@ export default function DashboardPage(props: Props) {
     )
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!localUserS.id.get()) return
     getHistory()
     getFunnel()
     getLatestLeads()
   }, [localUserS, selectedPeriod, selectedUser]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setTimeout(() => {
       setChart()
     }, 300);
@@ -536,8 +536,8 @@ export default function DashboardPage(props: Props) {
 
         <div className="grid w-full">
           {
-            files.map(file => {
-              return <div className="flex align-items-center lg:col-4 md:col-6 col-12">
+            files.map((file, index) => {
+              return <div key={index} className="flex align-items-center lg:col-4 md:col-6 col-12">
                 <div><i className="pi pi-file-pdf" style={{ fontSize: '2.5rem' }}></i></div>
                 <div> <a href={file.url} target="_blank">{file.title}</a></div>
               </div>
