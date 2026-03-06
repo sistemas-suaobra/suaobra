@@ -52,6 +52,9 @@ jobs:
               -p 8081:8080 \
               -v /app/hml/data:/app/data \
               -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+              -e WHATSMEOW_APIKEY="${{ secrets.WHATSMEOW_APIKEY }}" \
+              -e WHATSMEOW_URL="${{ secrets.WHATSMEOW_URL }}" \
+              -e WHATSMEOW_WEBHOOK_BASE="${{ secrets.WHATSMEOW_WEBHOOK_BASE }}" \
               suaobra/api:hml
             
             echo "Starting Frontend (Homolog)..."
