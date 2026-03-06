@@ -11,6 +11,8 @@ export default function Menu(props: Props) {
       {url: '/obras-plus', label: 'Obras+', icon: 'pi pi-fw pi-database'},
       // {url: '/info-obras', label: 'InfoObras', icon: 'pi pi-fw pi-chart-line'},
       {url: '/venda-mais', label: 'Venda Mais', icon: 'pi pi-fw pi-dollar'},
+      {url: '/automacao', label: 'Automação', icon: 'pi pi-fw pi-sync'},
+      {url: '/mestre-ia', label: 'Mestre IA', icon: 'pi pi-fw pi-android'}
       // {url: '/clube', label: 'Clube', icon: 'pi pi-fw pi-car'}
   ];
 

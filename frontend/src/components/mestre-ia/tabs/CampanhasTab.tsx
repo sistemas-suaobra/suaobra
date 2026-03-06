@@ -1,0 +1,504 @@
+import React from "react";
+import { InputText } from "primereact/inputtext";
+import { Button } from "primereact/button";
+import { Toast } from "primereact/toast";
+import { DataTable } from "primereact/datatable";
+import { Column, type ColumnBodyOptions } from "primereact/column";
+import { Dropdown } from "primereact/dropdown";
+import { Tag } from "primereact/tag";
+import { useStore } from "@nanostores/react";
+
+import { obrasPlusCity, user, loadUserState, isWaiting } from "../../../store/store";
+import { type City, makeCity } from "../../../store/cities";
+import { api, baseURL, PB } from "../../../store/api";
+import type { LeadOption, Campaign, CampaignStatus } from "../types/campanhastab";
+import CreateCampaignDialog from "./CreateCampaignDialog";
+
+type SortMode = "CREATED_DESC" | "CREATED_ASC" | "NAME_ASC" | "NAME_DESC";
+type StatusFilter = "ALL" | CampaignStatus;
+
+const sortOptions = [
+  { label: "Cadastro: mais recente", value: "CREATED_DESC" as SortMode },
+  { label: "Cadastro: mais antigo", value: "CREATED_ASC" as SortMode },
+  { label: "Nome A → Z", value: "NAME_ASC" as SortMode },
+  { label: "Nome Z → A", value: "NAME_DESC" as SortMode },
+];
+
+const statusOptions = [
+  { label: "Todos", value: "ALL" as StatusFilter },
+  { label: "Rascunho", value: "RASCUNHO" as StatusFilter },
+  { label: "Agendada", value: "AGENDADA" as StatusFilter },
+  { label: "Em andamento", value: "EM_ANDAMENTO" as StatusFilter },
+  { label: "Pausada", value: "PAUSADA" as StatusFilter },
+  { label: "Concluída", value: "CONCLUIDA" as StatusFilter },
+  { label: "Cancelada", value: "CANCELADA" as StatusFilter },
+];
+
+function fmtDate(iso: string) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
+
+// Interface de resultado da API obras-plus
+interface ResultRecord {
+  obra_id: string;
+  owner: string;
+  professional: string;
+  has_professional_phone: boolean;
+  has_professional_email: boolean;
+  has_owner_phone: boolean;
+  has_owner_email: boolean;
+  bairro: string;
+  city: string;
+}
+
+interface Result {
+  total: number;
+  records: ResultRecord[];
+}
+
+export default function CampanhasTab() {
+  // Função de refresh manual
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  // Função para criar campanha (usada no modal)
+  const onCreateCampaign = async (newCampaign: Campaign) => {
+    try {
+      // Adiciona nova campanha ao estado
+      setCampaigns((prev) => [newCampaign, ...prev]);
+      setCreateOpen(false);
+      setRefreshKey((k) => k + 1); // Atualiza tabela
+      notify("success", "Campanha criada", "A campanha foi criada com sucesso.");
+    } catch (error: any) {
+      notify("error", "Erro", error?.message || "Erro ao criar campanha");
+    }
+  };
+  const toast = React.useRef<Toast>(null);
+  const $obrasPlusCity = useStore(obrasPlusCity);
+
+  const notify = (severity: "success" | "info" | "warn" | "error", summary: string, detail: string) => {
+    toast.current?.show({ severity, summary, detail, life: 3000 });
+  };
+
+  // Estados para leads (da API obras-plus)
+  const [leadsOptions, setLeadsOptions] = React.useState<LeadOption[]>([]);
+  const [loadingLeads, setLoadingLeads] = React.useState(false);
+  const [selectedCity, setSelectedCity] = React.useState<City | null>($obrasPlusCity || null);
+  const [citiesOptions, setCitiesOptions] = React.useState<City[]>([]);
+
+  // Estados para conexões do team (WhatsApp e Email)
+  const [conexaoWhatsAppId, setConexaoWhatsAppId] = React.useState<string>("");
+  const [conexaoEmailId, setConexaoEmailId] = React.useState<string>("");
+
+  // Team e User IDs (carregados pelo loadUserState)
+  const [teamId, setTeamId] = React.useState<string>("");
+  const [userId, setUserId] = React.useState<string>("");
+
+  // Estados para campanhas (do PocketBase)
+  const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = React.useState(false);
+
+  const [search, setSearch] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("ALL");
+  const [sortMode, setSortMode] = React.useState<SortMode>("CREATED_DESC");
+  const [createOpen, setCreateOpen] = React.useState(false);
+
+  // Carrega usuário e cidades permitidas
+  React.useEffect(() => {
+    loadUserState().then((userData) => {
+      if (!userData) return;
+      
+      // Salva team e user IDs
+      setTeamId(userData.team?.id || "");
+      setUserId(userData.id || "");
+      
+      const cities = userData.team?.cities?.sort().map((id: string) => makeCity(id)) || [];
+      if (cities.length) {
+        setCitiesOptions(cities);
+        
+        let savedCity = localStorage.getItem("obrasPlusCity");
+        if (!cities.map((c: City) => c.id).includes(savedCity)) {
+          savedCity = cities[0].id;
+        }
+        const city = makeCity(savedCity!);
+        setSelectedCity(city);
+        obrasPlusCity.set(city);
+      }
+    });
+  }, []);
+
+  // Busca leads (obras favoritadas) quando cidade muda
+  React.useEffect(() => {
+    if (!selectedCity) return;
+
+    const fetchLeads = async () => {
+      setLoadingLeads(true);
+
+      try {
+        const payload = {
+          city: selectedCity.city || "",
+          bairro: "",
+          order: "first_listing_date-desc,start_date-desc",
+          filter: "",
+          sizeMin: "0",
+          sizeMax: "9999999",
+          offset: "0",
+          itemsPerPage: "200", // Busca até 200 leads
+          enriched: "false",
+          startDateFrom: "",
+          startDateTo: "",
+          endDateFrom: "",
+          endDateTo: "",
+        };
+
+        // Busca todos os leads possíveis, igual à tela de Leads
+        const resp = await api().get(`${baseURL()}/query/leads-plus`, payload);
+        if (resp.error) throw new Error(resp.error);
+        const data = (await resp.response.json()) as Result;
+        
+        // Converte para LeadOption
+        const options: LeadOption[] = (data.records || []).map((r) => {
+          const nome = r.owner || r.professional || "Sem nome";
+          const contato = r.has_owner_phone || r.has_professional_phone ? "📞" : r.has_owner_email || r.has_professional_email ? "✉️" : "";
+          return {
+            label: `${nome} — ${r.city}, ${r.bairro} ${contato}`,
+            value: r.obra_id,
+            owner: r.owner,
+            professional: r.professional,
+            has_owner_phone: r.has_owner_phone,
+            has_professional_phone: r.has_professional_phone,
+            has_owner_email: r.has_owner_email,
+            has_professional_email: r.has_professional_email,
+            bairro: r.bairro,
+            city: r.city,
+          };
+        });
+
+        setLeadsOptions(options);
+      } catch (error) {
+        console.error("Erro ao buscar leads:", error);
+        setLeadsOptions([]);
+      } finally {
+        setLoadingLeads(false);
+      }
+    };
+
+    fetchLeads();
+  }, [selectedCity]);
+
+  // Busca campanhas do PocketBase
+  const fetchCampaigns = React.useCallback(async () => {
+    if (!teamId) return;
+    setLoadingCampaigns(true);
+    try {
+      const pb = PB();
+      pb.authStore.save(user.get().token, user.get());
+      const records = await pb.collection("campanhas").getList(1, 100, {
+        filter: `team_id = "${teamId}"`,
+        sort: "-created",
+      });
+      const mapped: Campaign[] = records.items.map((r: any) => ({
+        id: r.id,
+        team_id: r.team_id,
+        nome: r.nome,
+        conexao_id: r.conexao_id,
+        status: r.status || "RASCUNHO",
+        mensagem_template: r.mensagem_template || "",
+        criado_por: r.criado_por,
+        iniciado_em: r.iniciado_em,
+        finalizado_em: r.finalizado_em,
+        created: r.created,
+        updated: r.updated,
+        leads: [],
+        channelWa: true,
+        channelEmail: false,
+        iaContinuar: true,
+      }));
+      setCampaigns(mapped);
+    } catch (error) {
+      console.error("Erro ao buscar campanhas:", error);
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }, [teamId]);
+
+  React.useEffect(() => {
+    fetchCampaigns();
+  }, [teamId, fetchCampaigns, refreshKey]);
+
+  // Busca conexões do team (WhatsApp e Email)
+  React.useEffect(() => {
+    if (!teamId) return;
+
+    const fetchConexoes = async () => {
+      try {
+        const pb = PB();
+        pb.authStore.save(user.get().token, user.get());
+        
+        // Busca conexões ativas do team
+        const conexoes = await pb.collection("conexoes").getFullList({
+          filter: `team_id = "${teamId}" && ativo = true`,
+        });
+
+        for (const con of conexoes) {
+          if (con.canal === "WHATSAPP") {
+            setConexaoWhatsAppId(con.id);
+          } else if (con.canal === "EMAIL") {
+            setConexaoEmailId(con.id);
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao buscar conexões:", error);
+        // Silently fail - não bloqueia criação de campanhas
+        // Usuário pode configurar conexão depois via banco
+      }
+    };
+
+    fetchConexoes();
+  }, [teamId]);
+
+  const filteredSorted = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let data = [...campaigns];
+
+    if (statusFilter !== "ALL") data = data.filter((c) => c.status === statusFilter);
+
+    if (q) {
+      data = data.filter((c) => {
+        const blob = [
+          c.nome,
+          c.status,
+          c.mensagem_template || "",
+        ].join(" ").toLowerCase();
+        return blob.includes(q);
+      });
+    }
+
+    const byCreatedDesc = (a: Campaign, b: Campaign) => +new Date(b.created || "") - +new Date(a.created || "");
+    const byCreatedAsc = (a: Campaign, b: Campaign) => +new Date(a.created || "") - +new Date(b.created || "");
+    const byNameAsc = (a: Campaign, b: Campaign) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
+    const byNameDesc = (a: Campaign, b: Campaign) => b.nome.localeCompare(a.nome, "pt-BR", { sensitivity: "base" });
+
+    if (sortMode === "CREATED_DESC") data.sort(byCreatedDesc);
+    if (sortMode === "CREATED_ASC") data.sort(byCreatedAsc);
+    if (sortMode === "NAME_ASC") data.sort(byNameAsc);
+    if (sortMode === "NAME_DESC") data.sort(byNameDesc);
+
+    return data;
+  }, [campaigns, search, statusFilter, sortMode]);
+
+  const startCampaign = async (id: string) => {
+    try {
+      await api().post(`${baseURL()}/campanhas/${id}/iniciar`, {});
+
+      setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: "EM_ANDAMENTO" as CampaignStatus } : c)));
+      notify("success", "Campanha iniciada", "O envio será processado em background.");
+    } catch (error: any) {
+      const detail = error?.response?.data?.message || error?.message || "Erro ao iniciar campanha";
+      notify("error", "Erro", detail);
+    }
+  };
+
+  const deleteCampaign = async (id: string) => {
+    try {
+      const pb = PB();
+      pb.authStore.save(user.get().token, user.get());
+      
+      // Remove destinatários primeiro
+      const destinatarios = await pb.collection("campanha_destinatarios").getFullList({
+        filter: `campanha_id = "${id}"`,
+      });
+      for (const d of destinatarios) {
+        await pb.collection("campanha_destinatarios").delete(d.id);
+      }
+      
+      // Remove campanha
+      await pb.collection("campanhas").delete(id);
+      
+      setCampaigns((prev) => prev.filter((c) => c.id !== id));
+      notify("success", "Campanha removida", "Campanha e destinatários excluídos.");
+    } catch (error) {
+      notify("error", "Erro", "Erro ao excluir campanha");
+    }
+  };
+
+  const statusTag = (row: Campaign) => {
+    const map: Record<CampaignStatus, { label: string; severity: "info" | "warning" | "success" | "danger" }> = {
+      RASCUNHO: { label: "Rascunho", severity: "info" },
+      AGENDADA: { label: "Agendada", severity: "info" },
+      EM_ANDAMENTO: { label: "Em andamento", severity: "warning" },
+      PAUSADA: { label: "Pausada", severity: "warning" },
+      CONCLUIDA: { label: "Concluída", severity: "success" },
+      CANCELADA: { label: "Cancelada", severity: "danger" },
+    };
+    const conf = map[row.status] || { label: row.status, severity: "info" };
+    return <Tag value={conf.label} severity={conf.severity} className="border-round-xl" />;
+  };
+
+  const campanhaCell = (row: Campaign) => (
+    <div>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>{row.nome}</div>
+      <div className="text-secondary" style={{ fontSize: 12, marginTop: 4 }}>
+        Criada em {fmtDate(row.created || "")}
+      </div>
+    </div>
+  );
+
+  const mensagemCell = (row: Campaign) => {
+    const text = row.mensagem_template || "";
+    const short = text.length > 80 ? text.slice(0, 80) + "…" : text;
+    return <span className="text-secondary">{short || "—"}</span>;
+  };
+
+  const actionsCell = (row: Campaign, _opts: ColumnBodyOptions) => (
+    <div className="flex align-items-center gap-2 justify-content-end">
+      <Button
+        label="INICIAR"
+        icon="pi pi-play"
+        className="p-button-sm"
+        disabled={row.status === "EM_ANDAMENTO" || row.status === "CONCLUIDA"}
+        onClick={() => startCampaign(row.id)}
+      />
+      <Button
+        icon="pi pi-trash"
+        className="p-button-text p-button-rounded p-button-sm"
+        severity="danger"
+        tooltip="Excluir"
+        tooltipOptions={{ position: "top" }}
+        onClick={() => deleteCampaign(row.id)}
+      />
+    </div>
+  );
+
+  return (
+    <div className="w-full">
+      <Toast ref={toast} />
+
+      <div className="flex align-items-center justify-content-between mb-3">
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Campanhas</div>
+          <div className="text-secondary" style={{ marginTop: 4 }}>
+            Crie campanhas de disparo para seus leads • {leadsOptions.length} lead(s) disponíveis
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            icon="pi pi-plus" 
+            label="Criar nova campanha" 
+            onClick={() => setCreateOpen(true)} 
+            disabled={leadsOptions.length === 0}
+          />
+          <Button 
+            icon="pi pi-refresh" 
+            label="Atualizar" 
+            severity="info"
+            onClick={() => setRefreshKey((k) => k + 1)}
+          />
+        </div>
+      </div>
+
+      <div className="bg-white border-round-3xl p-3 mb-3 border-1 surface-border">
+        <div className="formgrid grid align-items-end">
+          <div className="field col-12 md:col-3 mb-0">
+            <label>Cidade dos leads</label>
+            <Dropdown
+              className="w-full"
+              value={selectedCity}
+              options={citiesOptions}
+              onChange={(e) => {
+                localStorage.setItem("obrasPlusCity", e.value.id);
+                obrasPlusCity.set(e.value);
+                setSelectedCity(e.value);
+              }}
+              optionLabel="city"
+              filter
+              placeholder="Selecione uma cidade"
+              emptyMessage="Nenhuma cidade"
+            />
+          </div>
+
+          <div className="field col-12 md:col-3 mb-0">
+            <label>Pesquisar campanhas</label>
+            <span className="p-input-icon-left w-full">
+              <i className="pi pi-search" />
+              <InputText className="w-full" placeholder="Nome, mensagem..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </span>
+          </div>
+
+          <div className="field col-12 md:col-2 mb-0">
+            <label>Status</label>
+            <Dropdown className="w-full" value={statusFilter} options={statusOptions} onChange={(e) => setStatusFilter(e.value)} />
+          </div>
+
+          <div className="field col-12 md:col-3 mb-0">
+            <label>Ordenação</label>
+            <Dropdown className="w-full" value={sortMode} options={sortOptions} onChange={(e) => setSortMode(e.value)} />
+          </div>
+
+          <div className="field col-12 md:col-1 mb-0">
+            <Button
+              className="w-full"
+              icon="pi pi-filter-slash"
+              severity="secondary"
+              tooltip="Limpar"
+              tooltipOptions={{ position: "top" }}
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("ALL");
+                setSortMode("CREATED_DESC");
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border-round-3xl p-2 border-1 surface-border">
+        <DataTable 
+          value={filteredSorted} 
+          dataKey="id" 
+          rowHover 
+          loading={loadingCampaigns}
+          className="p-datatable-sm" 
+          emptyMessage="Nenhuma campanha encontrada. Crie uma nova campanha!"
+        >
+          <Column header="Campanha" body={campanhaCell} style={{ width: "30%" }} />
+          <Column header="Mensagem" body={mensagemCell} />
+          <Column header="Status" body={statusTag} style={{ width: "14%" }} />
+          <Column header="Ações" body={actionsCell} style={{ width: "18%" }} />
+        </DataTable>
+
+        <style>{`
+          .p-datatable .p-datatable-thead > tr > th {
+            background: #fff !important;
+            border: 0 !important;
+            color: #6B7280 !important;
+            font-weight: 600 !important;
+            padding: 1.1rem 1rem !important;
+          }
+          .p-datatable .p-datatable-tbody > tr > td {
+            border: 0 !important;
+            border-top: 1px solid rgba(0,0,0,0.04) !important;
+            padding: 1.1rem 1rem !important;
+            vertical-align: middle !important;
+          }
+        `}</style>
+      </div>
+
+      <CreateCampaignDialog
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        leadsOptions={leadsOptions}
+        onCreate={onCreateCampaign}
+        notify={notify}
+        conexaoWhatsAppId={conexaoWhatsAppId}
+        conexaoEmailId={conexaoEmailId}
+        teamId={teamId}
+        userId={userId}
+      />
+    </div>
+  );
+}
