@@ -56,6 +56,7 @@ func main() {
 		e.Router.Use(contextMiddleware)
 		
 		e.Router.GET("/query/obras-plus", server.QueryObrasPlus)
+		e.Router.GET("/query/leads-plus", server.QueryLeadsPlus)
 		e.Router.GET("/query/obras-plus-neighborhood", server.QueryCityNeighborhood)
 		e.Router.GET("/query/obras-plus-export", server.QueryObrasPlusExport)
 		e.Router.GET("/query/obras-plus-contacts", server.QueryObrasPlusContacts)
@@ -65,6 +66,7 @@ func main() {
 		e.Router.GET("/query/dashboard/history", server.QueryDashboardHistory)
 		e.Router.GET("/query/dashboard/leads", server.QueryDashboardLeads)
 		e.Router.GET("/query/dashboard/users", server.QueryDashboardUsers)
+		e.Router.GET("/query/dashboard/campanhas", server.CampanhasDashboard)
 
 		e.Router.GET("/query/crm/leads", server.QueryCrmLeads)
 		e.Router.GET("/query/crm/contacts", server.QueryCrmContacts)
@@ -82,6 +84,36 @@ func main() {
 		e.Router.GET("/messenger/user", server.MessengerGetOrCreateUser)
 		e.Router.POST("/messenger/generate-templates", server.MessengerGenerateTemplates)
 		e.Router.POST("/messenger/generate-lead-introduction", server.MessengerGenerateLeadIntroduction)
+
+		// ROTAS DO MESTRE-IA:
+		e.Router.POST("/conexoes/whatsapp", server.CriarConexaoWhatsapp)
+		e.Router.POST("/conexoes/whatsapp/connect", server.ConectarSessaoWhatsapp)
+		e.Router.GET("/conexoes/whatsapp/qr", server.ObterQRCodeWhatsapp)
+		e.Router.GET("/conexoes/whatsapp/status", server.StatusConexaoWhatsapp)
+		e.Router.POST("/conexoes/whatsapp/disconnect", server.DisconnectConexaoWhatsapp)
+		e.Router.POST("/conexoes/whatsapp/send-test", server.EnviarMensagemTesteWhatsapp)
+		e.Router.GET("/conexoes/whatsapp", server.ObterConexaoWhatsapp)
+		e.Router.POST("/conexoes/whatsapp/fix-webhook", server.FixWebhookWhatsapp)
+
+		// Email
+		e.Router.POST("/conexoes/email", server.SalvarConexaoEmail)
+		e.Router.GET("/conexoes/email", server.ObterConexaoEmail)
+		e.Router.POST("/conexoes/email/send-test", server.EnviarEmailTeste)
+
+		// Campanhas
+		e.Router.POST("/campanhas/:id/iniciar", server.IniciarCampanha)
+		e.Router.GET("/campanhas/:id/status", server.StatusCampanha)
+		e.Router.POST("/campanhas/:id/pausar", server.PausarCampanha)
+		e.Router.POST("/campanhas/:id/cancelar", server.CancelarCampanha)
+		e.Router.POST("/campanhas/:id/enriquecer", server.EnriquecerDestinatarios)
+		e.Router.PATCH("/campanha-destinatarios/marcar-enviado", server.MarcarDestinatariosEnviados)
+		e.Router.POST("/campanhas/gerar-mensagem-ia", server.GerarMensagemCampanhaIA)
+
+		// Agente IA
+		server.RegisterAgenteIARoutes(e.Router)
+
+		// Webhook do wuzapi — recebe eventos de sessão (Connected, Disconnected, etc.)
+		e.Router.POST("/webhooks/whatsmeow", server.WebhookWhatsmeow)
 
 		// Team management
 		e.Router.GET("/team/members", server.TeamMembers)
@@ -133,6 +165,12 @@ func main() {
 		// e.Router.PATCH("/patch/crm/stage-lead-add", server.PatchStageLeadAdd)
 		// e.Router.PATCH("/patch/crm/stage-lead-remove", server.PatchStageLeadRemove)
 
+		return nil
+	})
+
+	// Auto-sync webhook URL in wuzapi for all active WhatsApp connections on startup
+	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
+		go server.SyncWebhookURLs(app)
 		return nil
 	})
 
