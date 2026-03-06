@@ -5,13 +5,13 @@ import { allCities } from "./cities"
 import { isWaiting, loadUser, user, type User } from "./store"
 import PocketBase, { RecordService, type RecordModel, type ListResult, type CommonOptions, type RecordListOptions, type RecordOptions, type RecordFullListOptions } from 'pocketbase';
 
-export const isProd = () => window.location.hostname.includes('suaobra.com.br')
-export const isStage = () => window.location.hostname.includes('suaobra-backend-service-897274251845.us-central1.run.app')
+export const isProd = () => window.location.hostname.includes('app.suaobra.com.br')
+export const isStage = () => window.location.hostname.includes('app-hml.suaobra.com.br')
 export const isDev = () => !(isStage() || isProd())
 
 export const baseURL = () => {
   const url = isProd() ? 'https://api.suaobra.com.br' :
-    isStage() ? 'https://suaobra-backend-service-897274251845.us-central1.run.app' :
+    isStage() ? 'https://api-hml.suaobra.com.br' :
       window.location.hostname.includes('suaobra.test') ? `http://api.suaobra.test` :
         `http://${window.location.hostname}:8090`
   console.log('baseURL', url)
