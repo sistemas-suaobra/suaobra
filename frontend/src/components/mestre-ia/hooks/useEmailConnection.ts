@@ -55,7 +55,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
     setLoading(true);
     try {
       const token = currentUser.token;
-      const response = await fetch("http://api.suaobra.test/conexoes/email", {
+      const response = await fetch("https://api-hml.suaobra.com.br/conexoes/email", {
         headers: {
           Authorization: token,
         },
@@ -90,7 +90,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
       setSaving(true);
       try {
         const token = currentUser.token;
-        const response = await fetch("http://api.suaobra.test/conexoes/email", {
+        const response = await fetch("https://api-hml.suaobra.com.br/conexoes/email", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -132,7 +132,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
       setSending(true);
       try {
         const token = currentUser.token;
-        const response = await fetch("http://api.suaobra.test/conexoes/email/send-test", {
+        const response = await fetch("https://api-hml.suaobra.com.br/conexoes/email/send-test", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
