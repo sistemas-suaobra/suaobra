@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
-	"io"
 
 	"github.com/flarco/g"
 	"github.com/suaobra/suaobra-app/server/config"
@@ -47,7 +45,7 @@ func (c *Client) CreateAdminUser(name, token string) (CreateAdminUserResp, map[s
 
 	b, _ := json.Marshal(reqBody)
 
-	url := c.cfg.BaseURL + "/admin/users"
+	url := c.cfg.BaseURL + "admin/users"
 	r, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return parsed, nil, err
@@ -73,20 +71,17 @@ func (c *Client) CreateAdminUser(name, token string) (CreateAdminUserResp, map[s
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return parsed, raw, g.Error("wuzapi /admin/users failed status=%d raw=%v", res.StatusCode, raw)
 	}
-
-	if len(parsed.Data) == 0 || strings.TrimSpace(parsed.Data[0].ID) == "" {
+	if parsed.Data.ID == "" {
 		return parsed, raw, g.Error("wuzapi returned empty data.id: %v", raw)
 	}
 
-	item := parsed.Data[0]
-
 	// wuzapi ignora "events" no POST /admin/users — forçamos via PUT
-	if item.Events == "" || item.Events != "All" {
-		_ = c.UpdateAdminUser(item.ID, map[string]any{
+	if parsed.Data.Events == "" || parsed.Data.Events != "All" {
+		_ = c.UpdateAdminUser(parsed.Data.ID, map[string]any{
 			"events":  "All",
 			"webhook": c.cfg.WebhookURL(),
 		})
-		parsed.Data[0].Events = "All"
+		parsed.Data.Events = "All"
 	}
 
 	return parsed, raw, nil
@@ -97,18 +92,10 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 		return nil, g.Error("empty user token")
 	}
 
-	body := map[string]any{
-		"Subscribe": []string{
-			"Message",
-			"ChatPresence",
-		},
-		"Immediate": true,
-	}
+	body := map[string]any{"Immediate": true}
 	b, _ := json.Marshal(body)
 
-	url := c.BaseURL() + "session/connect"
-	g.Info("wuzapi SessionConnect url=%s", url)
-
+	url := c.cfg.BaseURL + "session/connect"
 	r, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
@@ -124,17 +111,10 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 	}
 	defer res.Body.Close()
 
-	respBytes, _ := io.ReadAll(res.Body)
-
 	var raw map[string]any
-	if err := json.Unmarshal(respBytes, &raw); err != nil {
-		return nil, g.Error("wuzapi /session/connect non-json status=%d body=%s", res.StatusCode, string(respBytes))
+	if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
+		return nil, g.Error("wuzapi returned non-json response (status=%d)", res.StatusCode)
 	}
-
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return raw, g.Error("wuzapi /session/connect failed status=%d raw=%v", res.StatusCode, raw)
-	}
-
 	return raw, nil
 }
 
@@ -268,4 +248,4 @@ func (c *Client) SendTextMessage(userToken, phone, body string) (map[string]any,
 	}
 
 	return raw, nil
-}	
+}
