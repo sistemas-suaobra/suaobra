@@ -106,7 +106,9 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 	}
 	b, _ := json.Marshal(body)
 
-	url := c.cfg.BaseURL + "/session/connect"
+	url := c.BaseURL() + "/session/connect"
+	g.Info("wuzapi SessionConnect url=%s", url)
+
 	r, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
