@@ -39,7 +39,7 @@ export default function MestreIaPage() {
       
       setIntents(mapped);
     } catch (err: any) {
-      console.error("Erro ao carregar intenções:", err);
+      console.error("Erro ao carregar intenções1:", err);
       notify("error", "Erro", err?.response?.data?.message || "Erro ao carregar intenções");
     } finally {
       setLoadingIntents(false);
@@ -87,7 +87,7 @@ export default function MestreIaPage() {
         // Atualiza intenção existente
         await api().patch(
           baseURL() + `/agente-ia/intencoes/${editingIntent.id}`,
-          backendPayload
+          backendPayload as any
         );
         notify("success", "Atualizado", "Intenção atualizada com sucesso");
       } else {
@@ -123,7 +123,7 @@ export default function MestreIaPage() {
     try {
       await api().patch(baseURL() + `/agente-ia/intencoes/${id}`, {
         ativa: next, // Boolean, não string
-      });
+      } as any);
       
       // Atualiza localmente
       setIntents((prev) => prev.map((i) => (i.id === id ? { ...i, ativo: next } : i)));
