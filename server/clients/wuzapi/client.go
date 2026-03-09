@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/flarco/g"
@@ -72,20 +71,17 @@ func (c *Client) CreateAdminUser(name, token string) (CreateAdminUserResp, map[s
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return parsed, raw, g.Error("wuzapi /admin/users failed status=%d raw=%v", res.StatusCode, raw)
 	}
-
-	if len(parsed.Data) == 0 || strings.TrimSpace(parsed.Data[0].ID) == "" {
+	if parsed.Data.ID == "" {
 		return parsed, raw, g.Error("wuzapi returned empty data.id: %v", raw)
 	}
 
-	item := parsed.Data[0]
-
 	// wuzapi ignora "events" no POST /admin/users — forçamos via PUT
-	if item.Events == "" || item.Events != "All" {
-		_ = c.UpdateAdminUser(item.ID, map[string]any{
+	if parsed.Data.Events == "" || parsed.Data.Events != "All" {
+		_ = c.UpdateAdminUser(parsed.Data.ID, map[string]any{
 			"events":  "All",
 			"webhook": c.cfg.WebhookURL(),
 		})
-		parsed.Data[0].Events = "All"
+		parsed.Data.Events = "All"
 	}
 
 	return parsed, raw, nil

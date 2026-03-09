@@ -346,7 +346,8 @@ func WebhookWhatsmeow(c echo.Context) error {
 	}
 
 	// WUZAPI v2 usa "type" para o tipo de evento e "userID" para identificar a instância
-	eventType := strings.ToLower(strings.TrimSpace(body["type"].(string)))
+	eventType, _ := body["type"].(string)
+	eventType = strings.ToLower(strings.TrimSpace(eventType))
 	userID, _ := body["userID"].(string)
 
 	// Fallback para formato antigo (testes manuais)
