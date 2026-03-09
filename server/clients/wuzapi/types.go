@@ -34,14 +34,18 @@ type CreateAdminUserReq struct {
 }
 
 type CreateAdminUserResp struct {
-	Code int `json:"code"`
-	Data struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		Token   string `json:"token"`
-		Webhook string `json:"webhook"`
-		Events  string `json:"events"`
-		History int    `json:"history"`
+	Code    int  `json:"code"`
+	Success bool `json:"success"`
+	Data    []struct {
+		ID         string `json:"id"`
+		Name       string `json:"name"`
+		Webhook    string `json:"webhook"`
+		Events     string `json:"events"`
+		Token      string `json:"token"`
+		JID        string `json:"jid"`
+		LoggedIn   bool   `json:"loggedIn"`
+		Connected  bool   `json:"connected"`
+		Expiration int    `json:"expiration"`
 	} `json:"data"`
 }
 
