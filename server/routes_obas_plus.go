@@ -1,3 +1,4 @@
+
 package server
 
 import (
@@ -17,6 +18,12 @@ import (
 	"github.com/suaobra/suaobra-app/store"
 	"golang.org/x/exp/slices"
 )
+
+// QueryLeadsPlus retorna todos os possíveis leads igual a tela de Obras-Plus
+func QueryLeadsPlus(c echo.Context) error {
+	// Reutiliza a lógica de QueryObrasPlus
+	return QueryObrasPlus(c)
+}
 
 type RecordObrasPlus struct {
 	Owner        string `json:"owner"`
@@ -469,7 +476,10 @@ func LeadToggle(req *Request) (data map[string]any, err error) {
 		return nil, ErrJSON(500, err, "error saving record")
 	}
 
+	// Quando favorita, enriquece com dados de contato do core.db
 	if !req.Record.GetDateTime("favorited_at").IsZero() {
+		enriquecerLeadComContato(req)
+		
 		if err = addLeadToVendaMaisList(req); err != nil {
 			return nil, ErrJSON(500, err, "error adding lead to list")
 		}
@@ -485,4 +495,183 @@ func LeadToggle(req *Request) (data map[string]any, err error) {
 		"professional_contacted_at", req.Record.GetDateTime("professional_contacted_at").String(),
 	)
 	return data, nil
+}
+
+// enriquecerLeadComContato busca dados de contato do core.db e salva em properties do lead
+func enriquecerLeadComContato(req *Request) {
+	obraID := req.Record.GetString("obra_id")
+	if obraID == "" {
+		return
+	}
+
+	// 1. Busca dados da obra
+	sqlObra := `
+		SELECT 
+			owner, 
+			professional,
+			city,
+			state
+		FROM core.core_obras_plus
+		WHERE id = {:obraID}
+		LIMIT 1
+	`
+	
+	boundSQL := store.BindSQL(sqlObra, map[string]any{"obraID": obraID})
+	dataObra, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		g.Warn("Erro ao buscar obra %s: %v", obraID, err)
+		return
+	}
+
+	recsObra := dataObra.RecordsCasted(true)
+	if len(recsObra) == 0 {
+		return
+	}
+
+	obra := recsObra[0]
+	owner := cast.ToString(obra["owner"])
+	professional := cast.ToString(obra["professional"])
+	cidade := cast.ToString(obra["city"])
+	uf := cast.ToString(obra["state"])
+
+	if owner == "" && professional == "" {
+		return
+	}
+
+	// 2. Busca telefone (owner primeiro, depois professional)
+	telefone := ""
+	nome := owner
+	if owner != "" {
+		telefone = buscarTelefoneParaLead(owner, cidade, uf)
+	}
+	if telefone == "" && professional != "" {
+		telefone = buscarTelefoneParaLead(professional, cidade, uf)
+		if telefone != "" {
+			nome = professional
+		}
+	}
+
+	// 3. Busca email (owner primeiro, depois professional)
+	email := ""
+	if owner != "" {
+		email = buscarEmailParaLead(owner, cidade, uf)
+		g.Info("Busca email owner '%s': resultado=%s", owner, email)
+	}
+	if email == "" && professional != "" {
+		email = buscarEmailParaLead(professional, cidade, uf)
+		g.Info("Busca email professional '%s': resultado=%s", professional, email)
+	}
+
+	g.Info("Enriquecimento lead obra_id=%s: nome=%s telefone=%s email=%s", obraID, nome, telefone, email)
+
+	// 4. Se encontrou algum contato, salva em properties
+	if telefone != "" || email != "" {
+		properties := req.Record.Get("properties")
+		propsMap := g.M()
+		
+		if properties != nil {
+			if m, ok := properties.(map[string]any); ok {
+				propsMap = m
+			}
+		}
+
+		propsMap["contato_nome"] = nome
+		propsMap["contato_telefone"] = telefone
+		propsMap["contato_email"] = email
+		propsMap["contato_cidade"] = cidade
+		propsMap["contato_uf"] = uf
+
+		req.Record.Set("properties", propsMap)
+		if err := req.SaveRecord(); err != nil {
+			g.Warn("Erro ao salvar properties do lead %s: %v", req.Record.Id, err)
+		} else {
+			g.Info("Lead %s enriquecido: nome=%s tel=%s email=%s", req.Record.Id, nome, telefone != "", email != "")
+		}
+	}
+}
+
+// buscarTelefoneParaLead busca telefone no core.db
+func buscarTelefoneParaLead(nome, cidade, uf string) string {
+	sql := `
+		WITH prep AS (
+			SELECT
+				telefone,
+				row_number() OVER(PARTITION BY telefone ORDER BY COALESCE(poder_aquisitivo, 1) DESC) as row_num
+			FROM core.core_obras_plus_phone
+			WHERE nome = {:nome}
+		)
+		SELECT telefone
+		FROM prep
+		WHERE row_num = 1
+		ORDER BY
+			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
+			telefone DESC
+		LIMIT 1
+	`
+	
+	boundSQL := store.BindSQL(sql, map[string]any{
+		"nome":   nome,
+		"cidade": cidade,
+		"uf":     uf,
+	})
+	
+	data, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		return ""
+	}
+	
+	recs := data.RecordsCasted(true)
+	if len(recs) == 0 {
+		return ""
+	}
+	
+	return cast.ToString(recs[0]["telefone"])
+}
+
+// buscarEmailParaLead busca email no core.db
+func buscarEmailParaLead(nome, cidade, uf string) string {
+	sql := `
+		WITH prep AS (
+			SELECT
+				email,
+				cidade,
+				uf,
+				poder_aquisitivo,
+				row_number() OVER(PARTITION BY email ORDER BY COALESCE(poder_aquisitivo, 1) DESC) as row_num
+			FROM core.core_obras_plus_email
+			WHERE nome = {:nome}
+		)
+		SELECT email
+		FROM prep
+		WHERE row_num = 1
+		ORDER BY
+			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
+			poder_aquisitivo DESC
+		LIMIT 1
+	`
+	
+	boundSQL := store.BindSQL(sql, map[string]any{
+		"nome":   nome,
+		"cidade": cidade,
+		"uf":     uf,
+	})
+	
+	g.Debug("Query email para nome=%s: %s", nome, boundSQL)
+	
+	data, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		g.Warn("Erro ao buscar email para %s: %v", nome, err)
+		return ""
+	}
+	
+	recs := data.RecordsCasted(true)
+	g.Debug("Email query retornou %d registros para nome=%s", len(recs), nome)
+	
+	if len(recs) == 0 {
+		return ""
+	}
+	
+	email := cast.ToString(recs[0]["email"])
+	g.Info("Email encontrado para %s: %s", nome, email)
+	return email
 }
