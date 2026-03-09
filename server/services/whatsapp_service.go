@@ -59,12 +59,6 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 		return false, nil, nil, g.Error("error creating wuzapi user: %v", err)
 	}
 
-	if len(created.Data) == 0 {
-		return false, nil, nil, g.Error("wuzapi returned empty data")
-	}
-
-	item := created.Data[0]
-
 	if con == nil {
 		con, err = s.conRepo.CreateWhatsapp(teamID, name)
 		if err != nil {
@@ -73,14 +67,14 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 	}
 
 	fields := map[string]any{
-		"provider":     "WUZAPI",
-		"api_base_url": s.wuzBaseURL(),
-		"numero_e164":  userToken,
-		"instancia_id": item.ID,
-		"device_jid":   "",
-		"name":         item.Name,
-		"webhook":      item.Webhook,
-		"events":       item.Events,
+		"provider":      "WUZAPI",
+		"api_base_url":  s.wuzBaseURL(),
+		"numero_e164":   userToken,
+		"instancia_id":  created.Data.ID,
+		"device_jid":    "",
+		"name":         created.Data.Name,
+		"webhook":      created.Data.Webhook,
+		"events":       created.Data.Events,
 		"raw_response": raw,
 		"ultimo_qr_em": time.Now().UTC(),
 	}
@@ -92,6 +86,7 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 
 	return false, con, wa, nil
 }
+
 func (s *WhatsAppService) ConnectSession(userToken string) (map[string]any, error) {
 	return s.wuz.SessionConnect(strings.TrimSpace(userToken))
 }
