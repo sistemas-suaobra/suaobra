@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"io"
 
 	"github.com/flarco/g"
 	"github.com/suaobra/suaobra-app/server/config"
@@ -96,7 +97,13 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 		return nil, g.Error("empty user token")
 	}
 
-	body := map[string]any{"Immediate": true}
+	body := map[string]any{
+		"Subscribe": []string{
+			"Message",
+			"ChatPresence",
+		},
+		"Immediate": true,
+	}
 	b, _ := json.Marshal(body)
 
 	url := c.cfg.BaseURL + "/session/connect"
@@ -115,10 +122,17 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 	}
 	defer res.Body.Close()
 
+	respBytes, _ := io.ReadAll(res.Body)
+
 	var raw map[string]any
-	if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
-		return nil, g.Error("wuzapi returned non-json response (status=%d)", res.StatusCode)
+	if err := json.Unmarshal(respBytes, &raw); err != nil {
+		return nil, g.Error("wuzapi /session/connect non-json status=%d body=%s", res.StatusCode, string(respBytes))
 	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return raw, g.Error("wuzapi /session/connect failed status=%d raw=%v", res.StatusCode, raw)
+	}
+
 	return raw, nil
 }
 
