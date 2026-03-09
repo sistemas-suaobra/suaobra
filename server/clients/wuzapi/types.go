@@ -33,16 +33,10 @@ type CreateAdminUserReq struct {
 	} `json:"s3Config"`
 }
 
+// Resposta real do POST /admin/users
+// Ex.: {"id": 2}
 type CreateAdminUserResp struct {
-	Code int `json:"code"`
-	Data struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		Token   string `json:"token"`
-		Webhook string `json:"webhook"`
-		Events  string `json:"events"`
-		History int    `json:"history"`
-	} `json:"data"`
+	ID int `json:"id"`
 }
 
 // AdminUserInfo representa um user retornado por GET /admin/users/:id

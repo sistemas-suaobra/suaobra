@@ -71,8 +71,8 @@ func (c *Client) CreateAdminUser(name, token string) (CreateAdminUserResp, map[s
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return parsed, raw, g.Error("wuzapi /admin/users failed status=%d raw=%v", res.StatusCode, raw)
 	}
-	if parsed.Data.ID == "" {
-		return parsed, raw, g.Error("wuzapi returned empty data.id: %v", raw)
+	if parsed.ID <= 0 {
+		return parsed, raw, g.Error("wuzapi returned empty id: %v", raw)
 	}
 
 	// wuzapi ignora "events" no POST /admin/users — forçamos via PUT
