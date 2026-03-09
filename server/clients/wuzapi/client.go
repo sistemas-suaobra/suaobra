@@ -122,7 +122,7 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 func (c *Client) GetAdminUser(userID string) (AdminUserInfo, error) {
 	var info AdminUserInfo
 
-	url := c.cfg.BaseURL + "/admin/users/" + userID
+	url := c.cfg.BaseURL + "admin/users/" + userID
 	r, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return info, err
@@ -153,7 +153,7 @@ func (c *Client) GetAdminUser(userID string) (AdminUserInfo, error) {
 func (c *Client) UpdateAdminUser(userID string, fields map[string]any) error {
 	b, _ := json.Marshal(fields)
 
-	url := c.cfg.BaseURL + "/admin/users/" + userID
+	url := c.cfg.BaseURL + "admin/users/" + userID
 	r, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(b))
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func (c *Client) SessionQR(userToken string) (SessionQRResp, map[string]any, err
 		return parsed, nil, g.Error("empty user token")
 	}
 
-	url := c.cfg.BaseURL + "/session/qr"
+	url := c.cfg.BaseURL + "session/qr"
 	r, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return parsed, nil, err
@@ -222,7 +222,7 @@ func (c *Client) SendTextMessage(userToken, phone, body string) (map[string]any,
 	}
 	b, _ := json.Marshal(reqBody)
 
-	url := c.cfg.BaseURL + "/chat/send/text"
+	url := c.cfg.BaseURL + "chat/send/text"
 	r, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
