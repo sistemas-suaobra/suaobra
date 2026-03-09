@@ -13,6 +13,7 @@ jobs:
   deploy:
     name: Deploy to VPS (Homolog)
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -25,6 +26,7 @@ jobs:
           key: ${{ secrets.HOSTINGER_SSH_KEY }}
           source: "."
           target: "/root/suaobra-app-hml"
+          rm: true
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -33,20 +35,32 @@ jobs:
           username: ${{ secrets.HOSTINGER_SSH_USER }}
           key: ${{ secrets.HOSTINGER_SSH_KEY }}
           script: |
+            set -e
+
             cd /root/suaobra-app-hml
-            
-            echo "Building Backend Image (Homolog)..."
-            docker buildx build -t suaobra/api:hml . -f Dockerfile
-            
-            echo "Building Frontend Image (Homolog)..."
-            docker buildx build -t suaobra/app:hml frontend/. -f frontend/Dockerfile
-            
+
             echo "Stopping old containers (Homolog)..."
             docker stop api-hml || true
             docker stop app-hml || true
             docker rm api-hml || true
             docker rm app-hml || true
-            
+
+            echo "Removing old images (Homolog)..."
+            docker rmi suaobra/api:hml || true
+            docker rmi suaobra/app:hml || true
+
+            echo "Building Backend Image (Homolog)..."
+            docker build --no-cache -t suaobra/api:hml -f Dockerfile .
+
+            echo "Backend image info:"
+            docker image inspect suaobra/api:hml --format='{{.Id}} {{.Created}}'
+
+            echo "Building Frontend Image (Homolog)..."
+            docker build --no-cache -t suaobra/app:hml -f frontend/Dockerfile frontend/.
+
+            echo "Frontend image info:"
+            docker image inspect suaobra/app:hml --format='{{.Id}} {{.Created}}'
+
             echo "Starting Backend (Homolog)..."
             docker run -d --restart unless-stopped --network my-tunnel-network --name api-hml \
               -p 8081:8080 \
@@ -56,20 +70,30 @@ jobs:
               -e WHATSMEOW_URL="${{ secrets.WHATSMEOW_URL }}" \
               -e WHATSMEOW_WEBHOOK_BASE="${{ secrets.WHATSMEOW_WEBHOOK_BASE }}" \
               suaobra/api:hml
-            
+
             echo "Starting Frontend (Homolog)..."
             docker run -d --restart unless-stopped --network my-tunnel-network --name app-hml \
               -p 81:80 \
               suaobra/app:hml
 
+            echo "Running containers:"
+            docker ps
+
+            echo "Backend logs:"
+            docker logs --tail=50 api-hml || true
+
+            echo "Frontend logs:"
+            docker logs --tail=50 app-hml || true
+
   purge-cache:
     name: Purge Cloudflare Cache (Homolog)
     needs: deploy
     runs-on: ubuntu-latest
+
     steps:
       - name: Purge Cache
         run: |
           curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ env.CF_ZONE_ID }}/purge_cache" \
-          -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-          -H "Content-Type: application/json" \
-          --data '{"purge_everything":true}'
+            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
