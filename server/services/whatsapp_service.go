@@ -92,7 +92,6 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 
 	return false, con, wa, nil
 }
-
 func (s *WhatsAppService) ConnectSession(userToken string) (map[string]any, error) {
 	return s.wuz.SessionConnect(strings.TrimSpace(userToken))
 }
