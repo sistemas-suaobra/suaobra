@@ -45,7 +45,6 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const [objetivo, setObjetivo] = React.useState("")
   const [generating, setGenerating] = React.useState(false)
 
-  // === Inserção de variáveis no cursor do textarea ===
   const cursorRef = React.useRef<CursorPos>({ start: 0, end: 0 })
   const textareaElRef = React.useRef<HTMLTextAreaElement | null>(null)
 
@@ -68,7 +67,6 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     const next = base.slice(0, s) + token + base.slice(e)
     setMessageText(next)
 
-    // tenta reposicionar o cursor depois do token
     setTimeout(() => {
       const el = textareaElRef.current
       if (!el) return
@@ -79,7 +77,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
         el.selectionEnd = pos
         cursorRef.current = { start: pos, end: pos }
       } catch {
-        // nada
+        //
       }
     }, 0)
   }
@@ -95,10 +93,13 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
       notify("warn", "Objetivo em branco", "Por favor, descreva o objetivo da campanha para a IA.")
       return
     }
+
     setGenerating(true)
+
     try {
       const resp = await api().post(`${baseURL()}/campanhas/gerar-mensagem-ia`, { objetivo })
       if (resp.error) throw new Error(resp.error)
+
       const data = await resp.response.json()
       setMessageText(data.mensagem)
       notify("success", "Mensagem gerada", "A IA gerou uma nova sugestão de mensagem.")
@@ -148,6 +149,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
   React.useEffect(() => {
     if (!visible) return
+
     setSelectedLeads([])
     setChannelWa(true)
     setChannelEmail(false)
@@ -159,7 +161,6 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     textareaElRef.current = null
   }, [visible])
 
-  // ✅ sempre string, nunca objeto/array
   const getCidadeBairroStr = React.useCallback(() => {
     const obraId = selectedLeads[0]
     const rec = obraId ? obraRecordMapRef.current.get(obraId) : null
@@ -172,12 +173,12 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
   const previewText = React.useMemo(() => {
     const obraId = selectedLeads[0]
+
     if (!obraId) {
       return applyLeadVariables(messageText, {
         nome: "Cliente",
         cidade: "",
         bairro: "",
-        // compat:
         nome_contato: "Cliente",
         city: "",
       })
@@ -185,15 +186,12 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
     const { cidadeStr, bairroStr, rec } = getCidadeBairroStr()
     const label = leadsOptionsLocal.find((o) => o.value === obraId)?.label || "Cliente"
-
     const nomeStr = safeStr(rec?.owner) || safeStr(rec?.professional) || safeStr(label) || "Cliente"
 
     const vars: any = {
       nome: nomeStr,
       cidade: cidadeStr,
       bairro: bairroStr,
-
-      // compat
       nome_contato: nomeStr,
       city: cidadeStr,
     }
@@ -201,57 +199,61 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     return applyLeadVariables(messageText, vars)
   }, [messageText, selectedLeads, leadsOptionsLocal, getCidadeBairroStr])
 
+  const footer = (
+    <div className="flex flex-column md:flex-row justify-content-end gap-2 w-full">
+      <Button
+        label="Cancelar"
+        icon="pi pi-times"
+        severity="secondary"
+        onClick={onClose}
+        disabled={saving}
+        className="w-full md:w-auto"
+      />
+      <Button
+        label="Criar campanha"
+        icon="pi pi-check"
+        loading={saving}
+        className="w-full md:w-auto"
+        onClick={() => {
+          const { cidadeStr, bairroStr } = getCidadeBairroStr()
+
+          createCampaign({
+            selectedLeads,
+            channelWa,
+            channelEmail,
+            iaContinuar,
+            emailSubject,
+            messageText,
+            selectedCity,
+            cidade: cidadeStr,
+            bairro: bairroStr,
+            conexaoWhatsAppId,
+            conexaoEmailId,
+            obraRecordMapRef,
+            fetchLeadComms,
+            onCreate,
+            onClose,
+          } as any)
+        }}
+      />
+    </div>
+  )
+
   return (
     <Dialog
       header="Criar nova campanha"
       visible={visible}
-      style={{ width: "920px", maxWidth: "96vw" }}
       onHide={onClose}
       draggable={false}
       dismissableMask
-      footer={
-        <div className="flex justify-content-end gap-2">
-          <Button
-            label="Cancelar"
-            icon="pi pi-times"
-            severity="secondary"
-            onClick={onClose}
-            disabled={saving}
-          />
-          <Button
-            label="Criar campanha"
-            icon="pi pi-check"
-            loading={saving}
-            onClick={() => {
-              const { cidadeStr, bairroStr } = getCidadeBairroStr()
-
-              createCampaign({
-                selectedLeads,
-                channelWa,
-                channelEmail,
-                iaContinuar,
-                emailSubject,
-                messageText,
-
-                selectedCity,
-
-                cidade: cidadeStr,
-                bairro: bairroStr,
-
-                conexaoWhatsAppId,
-                conexaoEmailId,
-                obraRecordMapRef,
-                fetchLeadComms,
-                onCreate,
-                onClose,
-              } as any)
-            }}
-          />
-        </div>
-      }
+      modal
+      breakpoints={{ "1100px": "94vw", "768px": "96vw", "560px": "100vw" }}
+      style={{ width: "92vw", maxWidth: "980px" }}
+      contentStyle={{ paddingBottom: "1rem" }}
+      footer={footer}
     >
       <div className="formgrid grid">
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Cidade</label>
           <Dropdown
             className="w-full"
@@ -268,7 +270,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
         </div>
 
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Bairro</label>
           <MultiSelect
             className="w-full"
@@ -282,65 +284,57 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
         </div>
 
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Palavra Chave</label>
-          <div className="p-inputgroup">
+          <div className="p-inputgroup w-full">
             <InputText
               className="w-full"
               placeholder="Nome, endereço..."
               value={filterValue}
               onChange={(e) => setFilterValue(e.target.value)}
             />
-            <Button icon="pi pi-search" />
+            <Button icon="pi pi-search" type="button" />
           </div>
         </div>
 
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Data de Início (De)</label>
-          <div className="p-inputgroup">
-            <InputText
-              className="w-full"
-              placeholder="Selecione uma data"
-              value={startDateFrom}
-              onChange={(e) => setStartDateFrom(e.target.value)}
-            />
-          </div>
+          <InputText
+            className="w-full"
+            placeholder="Selecione uma data"
+            value={startDateFrom}
+            onChange={(e) => setStartDateFrom(e.target.value)}
+          />
         </div>
 
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Data de Início (Até)</label>
-          <div className="p-inputgroup">
-            <InputText
-              className="w-full"
-              placeholder="Selecione uma data"
-              value={startDateTo}
-              onChange={(e) => setStartDateTo(e.target.value)}
-            />
-          </div>
+          <InputText
+            className="w-full"
+            placeholder="Selecione uma data"
+            value={startDateTo}
+            onChange={(e) => setStartDateTo(e.target.value)}
+          />
         </div>
 
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Data de Fim (De)</label>
-          <div className="p-inputgroup">
-            <InputText
-              className="w-full"
-              placeholder="Selecione uma data"
-              value={endDateFrom}
-              onChange={(e) => setEndDateFrom(e.target.value)}
-            />
-          </div>
+          <InputText
+            className="w-full"
+            placeholder="Selecione uma data"
+            value={endDateFrom}
+            onChange={(e) => setEndDateFrom(e.target.value)}
+          />
         </div>
 
-        <div className="field col-12 md:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Data de Fim (Até)</label>
-          <div className="p-inputgroup">
-            <InputText
-              className="w-full"
-              placeholder="Selecione uma data"
-              value={endDateTo}
-              onChange={(e) => setEndDateTo(e.target.value)}
-            />
-          </div>
+          <InputText
+            className="w-full"
+            placeholder="Selecione uma data"
+            value={endDateTo}
+            onChange={(e) => setEndDateTo(e.target.value)}
+          />
         </div>
 
         <div className="field col-12">
@@ -355,10 +349,10 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             maxSelectedLabels={3}
             emptyFilterMessage="Nenhum lead encontrado."
             itemTemplate={(opt: any) => (
-              <div className="flex align-items-center gap-2">
+              <div className="flex align-items-center gap-2 flex-wrap">
                 <span>{opt.label}</span>
                 {existingLeadSet.has(opt.value) ? (
-                  <Tag value="Já é lead" severity="info" style={{ fontSize: 11, marginLeft: 8 }} />
+                  <Tag value="Já é lead" severity="info" style={{ fontSize: 11 }} />
                 ) : null}
               </div>
             )}
@@ -368,9 +362,9 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           </div>
         </div>
 
-        <div className="field col-12 md:col-6">
+        <div className="field col-12 lg:col-6">
           <label style={{ fontWeight: 700 }}>Canais</label>
-          <div className="flex gap-3">
+          <div className="flex flex-column md:flex-row gap-3">
             <div className="flex align-items-center gap-2">
               <Checkbox
                 inputId="wa"
@@ -391,11 +385,11 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           </div>
         </div>
 
-        <div className="field col-12 md:col-6">
+        <div className="field col-12 lg:col-6">
           <label style={{ fontWeight: 700 }}>Manter IA após resposta</label>
-          <div className="flex align-items-center gap-3">
+          <div className="flex align-items-center justify-content-between gap-3 flex-wrap">
             <InputSwitch checked={iaContinuar} onChange={(e) => setIaContinuar(!!e.value)} />
-            <div className="text-secondary">
+            <div className="text-secondary" style={{ flex: 1, minWidth: 220 }}>
               {iaContinuar ? "IA continua a conversa após resposta" : "IA não continuará"}
             </div>
           </div>
@@ -415,11 +409,11 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
         <div className="field col-12">
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Mensagem</div>
 
-          {/* ✅ Variáveis como botões clicáveis */}
           <div className="flex align-items-center gap-2 flex-wrap" style={{ marginBottom: 12 }}>
             <span className="text-secondary" style={{ fontSize: 13 }}>
               Variáveis:
             </span>
+
             {VARIABLE_BUTTONS.map((v) => (
               <Button
                 key={v.token}
@@ -430,17 +424,20 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
                 onClick={() => insertVariable(v.token)}
               />
             ))}
+
             <span className="text-secondary" style={{ fontSize: 12 }}>
-              (clicou, entrou no texto)
+              (CLIQUE PARA ENTRAR NO TEXTO)
             </span>
           </div>
 
           <label style={{ fontWeight: 600, fontSize: 13 }}>Objetivo da campanha (para IA)</label>
-          <div className="p-inputgroup">
+
+          <div className="flex flex-column md:flex-row gap-2">
             <InputText
               value={objetivo}
               onChange={(e) => setObjetivo(e.currentTarget.value)}
               placeholder="Ex: Vender 20% a mais de cimento este mês para clientes de obras residenciais."
+              className="w-full"
             />
             <Button
               icon="pi pi-sparkles"
@@ -448,12 +445,14 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
               onClick={handleGenerate}
               loading={generating}
               type="button"
+              className="w-full md:w-auto"
             />
           </div>
 
           <label style={{ fontWeight: 600, fontSize: 13, marginTop: 12, display: "block" }}>
             Texto da Mensagem
           </label>
+
           <InputTextarea
             value={messageText}
             onChange={(e: any) => {
@@ -464,15 +463,21 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             onClick={syncCursorFromEvent}
             onKeyUp={syncCursorFromEvent}
             onSelect={syncCursorFromEvent}
-            rows={4}
+            rows={5}
             className="w-full"
+            autoResize
           />
 
           <div style={{ marginTop: 12 }}>
             <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Pré-visualização</div>
             <div
-              className="p-2 border-round-xl bg-white"
-              style={{ border: "1px solid rgba(0,0,0,0.04)", minHeight: 60 }}
+              className="p-3 border-round-xl bg-white"
+              style={{
+                border: "1px solid rgba(0,0,0,0.08)",
+                minHeight: 80,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
             >
               {previewText}
             </div>

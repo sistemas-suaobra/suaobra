@@ -439,7 +439,7 @@ export default function CampanhasTab() {
         <div className="flex flex-column sm:flex-row gap-2 w-full md:w-auto">
           <Button
             icon="pi pi-plus"
-            label="Criar nova campanha"
+            label="Nova campanha"
             onClick={() => setCreateOpen(true)}
             disabled={leadsOptions.length === 0}
             className="w-full sm:w-auto"
