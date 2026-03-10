@@ -8,7 +8,7 @@ import { Dropdown } from "primereact/dropdown";
 import { Tag } from "primereact/tag";
 import { useStore } from "@nanostores/react";
 
-import { obrasPlusCity, user, loadUserState, isWaiting } from "../../../store/store";
+import { obrasPlusCity, user, loadUserState } from "../../../store/store";
 import { type City, makeCity } from "../../../store/cities";
 import { api, baseURL, PB } from "../../../store/api";
 import type { LeadOption, Campaign, CampaignStatus } from "../types/campanhastab";
@@ -37,10 +37,38 @@ const statusOptions = [
 function fmtDate(iso: string) {
   try {
     const d = new Date(iso);
-    return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   } catch {
     return iso;
   }
+}
+
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  React.useEffect(() => {
+    const media = window.matchMedia(`(max-width: ${breakpoint}px)`);
+
+    const onChange = () => setIsMobile(media.matches);
+
+    onChange();
+
+    if (media.addEventListener) {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    }
+
+    media.addListener(onChange);
+    return () => media.removeListener(onChange);
+  }, [breakpoint]);
+
+  return isMobile;
 }
 
 // Interface de resultado da API obras-plus
@@ -62,43 +90,31 @@ interface Result {
 }
 
 export default function CampanhasTab() {
-  // Função de refresh manual
-  const [refreshKey, setRefreshKey] = React.useState(0);
+  const isMobile = useIsMobile(768);
 
-  // Função para criar campanha (usada no modal)
-  const onCreateCampaign = async (newCampaign: Campaign) => {
-    try {
-      // Adiciona nova campanha ao estado
-      setCampaigns((prev) => [newCampaign, ...prev]);
-      setCreateOpen(false);
-      setRefreshKey((k) => k + 1); // Atualiza tabela
-      notify("success", "Campanha criada", "A campanha foi criada com sucesso.");
-    } catch (error: any) {
-      notify("error", "Erro", error?.message || "Erro ao criar campanha");
-    }
-  };
+  const [refreshKey, setRefreshKey] = React.useState(0);
   const toast = React.useRef<Toast>(null);
   const $obrasPlusCity = useStore(obrasPlusCity);
 
-  const notify = (severity: "success" | "info" | "warn" | "error", summary: string, detail: string) => {
+  const notify = (
+    severity: "success" | "info" | "warn" | "error",
+    summary: string,
+    detail: string
+  ) => {
     toast.current?.show({ severity, summary, detail, life: 3000 });
   };
 
-  // Estados para leads (da API obras-plus)
   const [leadsOptions, setLeadsOptions] = React.useState<LeadOption[]>([]);
   const [loadingLeads, setLoadingLeads] = React.useState(false);
   const [selectedCity, setSelectedCity] = React.useState<City | null>($obrasPlusCity || null);
   const [citiesOptions, setCitiesOptions] = React.useState<City[]>([]);
 
-  // Estados para conexões do team (WhatsApp e Email)
   const [conexaoWhatsAppId, setConexaoWhatsAppId] = React.useState<string>("");
   const [conexaoEmailId, setConexaoEmailId] = React.useState<string>("");
 
-  // Team e User IDs (carregados pelo loadUserState)
   const [teamId, setTeamId] = React.useState<string>("");
   const [userId, setUserId] = React.useState<string>("");
 
-  // Estados para campanhas (do PocketBase)
   const [campaigns, setCampaigns] = React.useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = React.useState(false);
 
@@ -107,23 +123,35 @@ export default function CampanhasTab() {
   const [sortMode, setSortMode] = React.useState<SortMode>("CREATED_DESC");
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  // Carrega usuário e cidades permitidas
+  const onCreateCampaign = async (newCampaign: Campaign) => {
+    try {
+      setCampaigns((prev) => [newCampaign, ...prev]);
+      setCreateOpen(false);
+      setRefreshKey((k) => k + 1);
+      notify("success", "Campanha criada", "A campanha foi criada com sucesso.");
+    } catch (error: any) {
+      notify("error", "Erro", error?.message || "Erro ao criar campanha");
+    }
+  };
+
   React.useEffect(() => {
     loadUserState().then((userData) => {
       if (!userData) return;
-      
-      // Salva team e user IDs
+
       setTeamId(userData.team?.id || "");
       setUserId(userData.id || "");
-      
-      const cities = userData.team?.cities?.sort().map((id: string) => makeCity(id)) || [];
+
+      const cities =
+        userData.team?.cities?.sort().map((id: string) => makeCity(id)) || [];
+
       if (cities.length) {
         setCitiesOptions(cities);
-        
+
         let savedCity = localStorage.getItem("obrasPlusCity");
-        if (!cities.map((c: City) => c.id).includes(savedCity)) {
+        if (!cities.map((c: City) => c.id).includes(savedCity || "")) {
           savedCity = cities[0].id;
         }
+
         const city = makeCity(savedCity!);
         setSelectedCity(city);
         obrasPlusCity.set(city);
@@ -131,7 +159,6 @@ export default function CampanhasTab() {
     });
   }, []);
 
-  // Busca leads (obras favoritadas) quando cidade muda
   React.useEffect(() => {
     if (!selectedCity) return;
 
@@ -147,7 +174,7 @@ export default function CampanhasTab() {
           sizeMin: "0",
           sizeMax: "9999999",
           offset: "0",
-          itemsPerPage: "200", // Busca até 200 leads
+          itemsPerPage: "200",
           enriched: "false",
           startDateFrom: "",
           startDateTo: "",
@@ -155,15 +182,20 @@ export default function CampanhasTab() {
           endDateTo: "",
         };
 
-        // Busca todos os leads possíveis, igual à tela de Leads
         const resp = await api().get(`${baseURL()}/query/leads-plus`, payload);
         if (resp.error) throw new Error(resp.error);
+
         const data = (await resp.response.json()) as Result;
-        
-        // Converte para LeadOption
+
         const options: LeadOption[] = (data.records || []).map((r) => {
           const nome = r.owner || r.professional || "Sem nome";
-          const contato = r.has_owner_phone || r.has_professional_phone ? "📞" : r.has_owner_email || r.has_professional_email ? "✉️" : "";
+          const contato =
+            r.has_owner_phone || r.has_professional_phone
+              ? "📞"
+              : r.has_owner_email || r.has_professional_email
+              ? "✉️"
+              : "";
+
           return {
             label: `${nome} — ${r.city}, ${r.bairro} ${contato}`,
             value: r.obra_id,
@@ -190,17 +222,20 @@ export default function CampanhasTab() {
     fetchLeads();
   }, [selectedCity]);
 
-  // Busca campanhas do PocketBase
   const fetchCampaigns = React.useCallback(async () => {
     if (!teamId) return;
+
     setLoadingCampaigns(true);
+
     try {
       const pb = PB();
       pb.authStore.save(user.get().token, user.get());
+
       const records = await pb.collection("campanhas").getList(1, 100, {
         filter: `team_id = "${teamId}"`,
         sort: "-created",
       });
+
       const mapped: Campaign[] = records.items.map((r: any) => ({
         id: r.id,
         team_id: r.team_id,
@@ -218,6 +253,7 @@ export default function CampanhasTab() {
         channelEmail: false,
         iaContinuar: true,
       }));
+
       setCampaigns(mapped);
     } catch (error) {
       console.error("Erro ao buscar campanhas:", error);
@@ -230,7 +266,6 @@ export default function CampanhasTab() {
     fetchCampaigns();
   }, [teamId, fetchCampaigns, refreshKey]);
 
-  // Busca conexões do team (WhatsApp e Email)
   React.useEffect(() => {
     if (!teamId) return;
 
@@ -238,8 +273,7 @@ export default function CampanhasTab() {
       try {
         const pb = PB();
         pb.authStore.save(user.get().token, user.get());
-        
-        // Busca conexões ativas do team
+
         const conexoes = await pb.collection("conexoes").getFullList({
           filter: `team_id = "${teamId}" && ativo = true`,
         });
@@ -253,8 +287,6 @@ export default function CampanhasTab() {
         }
       } catch (error) {
         console.error("Erro ao buscar conexões:", error);
-        // Silently fail - não bloqueia criação de campanhas
-        // Usuário pode configurar conexão depois via banco
       }
     };
 
@@ -265,23 +297,28 @@ export default function CampanhasTab() {
     const q = search.trim().toLowerCase();
     let data = [...campaigns];
 
-    if (statusFilter !== "ALL") data = data.filter((c) => c.status === statusFilter);
+    if (statusFilter !== "ALL") {
+      data = data.filter((c) => c.status === statusFilter);
+    }
 
     if (q) {
       data = data.filter((c) => {
-        const blob = [
-          c.nome,
-          c.status,
-          c.mensagem_template || "",
-        ].join(" ").toLowerCase();
+        const blob = [c.nome, c.status, c.mensagem_template || ""]
+          .join(" ")
+          .toLowerCase();
+
         return blob.includes(q);
       });
     }
 
-    const byCreatedDesc = (a: Campaign, b: Campaign) => +new Date(b.created || "") - +new Date(a.created || "");
-    const byCreatedAsc = (a: Campaign, b: Campaign) => +new Date(a.created || "") - +new Date(b.created || "");
-    const byNameAsc = (a: Campaign, b: Campaign) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
-    const byNameDesc = (a: Campaign, b: Campaign) => b.nome.localeCompare(a.nome, "pt-BR", { sensitivity: "base" });
+    const byCreatedDesc = (a: Campaign, b: Campaign) =>
+      +new Date(b.created || "") - +new Date(a.created || "");
+    const byCreatedAsc = (a: Campaign, b: Campaign) =>
+      +new Date(a.created || "") - +new Date(b.created || "");
+    const byNameAsc = (a: Campaign, b: Campaign) =>
+      a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
+    const byNameDesc = (a: Campaign, b: Campaign) =>
+      b.nome.localeCompare(a.nome, "pt-BR", { sensitivity: "base" });
 
     if (sortMode === "CREATED_DESC") data.sort(byCreatedDesc);
     if (sortMode === "CREATED_ASC") data.sort(byCreatedAsc);
@@ -294,11 +331,17 @@ export default function CampanhasTab() {
   const startCampaign = async (id: string) => {
     try {
       await api().post(`${baseURL()}/campanhas/${id}/iniciar`, {});
-
-      setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, status: "EM_ANDAMENTO" as CampaignStatus } : c)));
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, status: "EM_ANDAMENTO" as CampaignStatus } : c
+        )
+      );
       notify("success", "Campanha iniciada", "O envio será processado em background.");
     } catch (error: any) {
-      const detail = error?.response?.data?.message || error?.message || "Erro ao iniciar campanha";
+      const detail =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Erro ao iniciar campanha";
       notify("error", "Erro", detail);
     }
   };
@@ -307,18 +350,17 @@ export default function CampanhasTab() {
     try {
       const pb = PB();
       pb.authStore.save(user.get().token, user.get());
-      
-      // Remove destinatários primeiro
+
       const destinatarios = await pb.collection("campanha_destinatarios").getFullList({
         filter: `campanha_id = "${id}"`,
       });
+
       for (const d of destinatarios) {
         await pb.collection("campanha_destinatarios").delete(d.id);
       }
-      
-      // Remove campanha
+
       await pb.collection("campanhas").delete(id);
-      
+
       setCampaigns((prev) => prev.filter((c) => c.id !== id));
       notify("success", "Campanha removida", "Campanha e destinatários excluídos.");
     } catch (error) {
@@ -326,8 +368,11 @@ export default function CampanhasTab() {
     }
   };
 
-  const statusTag = (row: Campaign) => {
-    const map: Record<CampaignStatus, { label: string; severity: "info" | "warning" | "success" | "danger" }> = {
+  const statusMeta = (status: CampaignStatus) => {
+    const map: Record<
+      CampaignStatus,
+      { label: string; severity: "info" | "warning" | "success" | "danger" }
+    > = {
       RASCUNHO: { label: "Rascunho", severity: "info" },
       AGENDADA: { label: "Agendada", severity: "info" },
       EM_ANDAMENTO: { label: "Em andamento", severity: "warning" },
@@ -335,7 +380,12 @@ export default function CampanhasTab() {
       CONCLUIDA: { label: "Concluída", severity: "success" },
       CANCELADA: { label: "Cancelada", severity: "danger" },
     };
-    const conf = map[row.status] || { label: row.status, severity: "info" };
+
+    return map[status] || { label: status, severity: "info" as const };
+  };
+
+  const statusTag = (row: Campaign) => {
+    const conf = statusMeta(row.status);
     return <Tag value={conf.label} severity={conf.severity} className="border-round-xl" />;
   };
 
@@ -350,12 +400,12 @@ export default function CampanhasTab() {
 
   const mensagemCell = (row: Campaign) => {
     const text = row.mensagem_template || "";
-    const short = text.length > 80 ? text.slice(0, 80) + "…" : text;
+    const short = text.length > 80 ? `${text.slice(0, 80)}…` : text;
     return <span className="text-secondary">{short || "—"}</span>;
   };
 
   const actionsCell = (row: Campaign, _opts: ColumnBodyOptions) => (
-    <div className="flex align-items-center gap-2 justify-content-end">
+    <div className="flex align-items-center gap-2 justify-content-end flex-wrap">
       <Button
         label="INICIAR"
         icon="pi pi-play"
@@ -378,32 +428,35 @@ export default function CampanhasTab() {
     <div className="w-full">
       <Toast ref={toast} />
 
-      <div className="flex align-items-center justify-content-between mb-3">
+      <div className="flex flex-column md:flex-row align-items-start md:align-items-center justify-content-between gap-3 mb-3">
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>Campanhas</div>
           <div className="text-secondary" style={{ marginTop: 4 }}>
             Crie campanhas de disparo para seus leads • {leadsOptions.length} lead(s) disponíveis
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            icon="pi pi-plus" 
-            label="Criar nova campanha" 
-            onClick={() => setCreateOpen(true)} 
+
+        <div className="flex flex-column sm:flex-row gap-2 w-full md:w-auto">
+          <Button
+            icon="pi pi-plus"
+            label="Criar nova campanha"
+            onClick={() => setCreateOpen(true)}
             disabled={leadsOptions.length === 0}
+            className="w-full sm:w-auto"
           />
-          <Button 
-            icon="pi pi-refresh" 
-            label="Atualizar" 
+          <Button
+            icon="pi pi-refresh"
+            label="Atualizar"
             severity="info"
             onClick={() => setRefreshKey((k) => k + 1)}
+            className="w-full sm:w-auto"
           />
         </div>
       </div>
 
       <div className="bg-white border-round-3xl p-3 mb-3 border-1 surface-border">
-        <div className="formgrid grid align-items-end">
-          <div className="field col-12 md:col-3 mb-0">
+        <div className="formgrid grid">
+          <div className="field col-12 md:col-3 mb-3 md:mb-0">
             <label>Cidade dos leads</label>
             <Dropdown
               className="w-full"
@@ -421,25 +474,41 @@ export default function CampanhasTab() {
             />
           </div>
 
-          <div className="field col-12 md:col-3 mb-0">
+          <div className="field col-12 md:col-3 mb-3 md:mb-0">
             <label>Pesquisar campanhas</label>
             <span className="p-input-icon-left w-full">
               <i className="pi pi-search" />
-              <InputText className="w-full" placeholder="Nome, mensagem..." value={search} onChange={(e) => setSearch(e.target.value)} />
+              <InputText
+                className="w-full"
+                placeholder="Nome, mensagem..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </span>
           </div>
 
-          <div className="field col-12 md:col-2 mb-0">
+          <div className="field col-12 md:col-2 mb-3 md:mb-0">
             <label>Status</label>
-            <Dropdown className="w-full" value={statusFilter} options={statusOptions} onChange={(e) => setStatusFilter(e.value)} />
+            <Dropdown
+              className="w-full"
+              value={statusFilter}
+              options={statusOptions}
+              onChange={(e) => setStatusFilter(e.value)}
+            />
           </div>
 
-          <div className="field col-12 md:col-3 mb-0">
+          <div className="field col-12 md:col-3 mb-3 md:mb-0">
             <label>Ordenação</label>
-            <Dropdown className="w-full" value={sortMode} options={sortOptions} onChange={(e) => setSortMode(e.value)} />
+            <Dropdown
+              className="w-full"
+              value={sortMode}
+              options={sortOptions}
+              onChange={(e) => setSortMode(e.value)}
+            />
           </div>
 
           <div className="field col-12 md:col-1 mb-0">
+            <label className="block md:hidden">&nbsp;</label>
             <Button
               className="w-full"
               icon="pi pi-filter-slash"
@@ -456,20 +525,106 @@ export default function CampanhasTab() {
         </div>
       </div>
 
-      <div className="bg-white border-round-3xl p-2 border-1 surface-border">
-        <DataTable 
-          value={filteredSorted} 
-          dataKey="id" 
-          rowHover 
-          loading={loadingCampaigns}
-          className="p-datatable-sm" 
-          emptyMessage="Nenhuma campanha encontrada. Crie uma nova campanha!"
-        >
-          <Column header="Campanha" body={campanhaCell} style={{ width: "30%" }} />
-          <Column header="Mensagem" body={mensagemCell} />
-          <Column header="Status" body={statusTag} style={{ width: "14%" }} />
-          <Column header="Ações" body={actionsCell} style={{ width: "18%" }} />
-        </DataTable>
+      <div className="bg-white border-round-3xl p-2 md:p-3 border-1 surface-border">
+        {!isMobile ? (
+          <DataTable
+            value={filteredSorted}
+            dataKey="id"
+            rowHover
+            loading={loadingCampaigns}
+            className="p-datatable-sm"
+            emptyMessage="Nenhuma campanha encontrada. Crie uma nova campanha!"
+            scrollable
+            tableStyle={{ minWidth: "56rem" }}
+          >
+            <Column header="Campanha" body={campanhaCell} style={{ width: "30%" }} />
+            <Column header="Mensagem" body={mensagemCell} />
+            <Column header="Status" body={statusTag} style={{ width: "14%" }} />
+            <Column header="Ações" body={actionsCell} style={{ width: "18%" }} />
+          </DataTable>
+        ) : (
+          <div className="flex flex-column gap-3">
+            {loadingCampaigns ? (
+              <div className="text-center text-secondary py-4">Carregando campanhas...</div>
+            ) : filteredSorted.length === 0 ? (
+              <div className="text-center text-secondary py-4">
+                Nenhuma campanha encontrada. Crie uma nova campanha!
+              </div>
+            ) : (
+              filteredSorted.map((row) => {
+                const conf = statusMeta(row.status);
+                const text = row.mensagem_template || "";
+                const short = text.length > 140 ? `${text.slice(0, 140)}…` : text;
+
+                return (
+                  <div
+                    key={row.id}
+                    className="border-1 surface-border border-round-2xl p-3"
+                    style={{ background: "#fff" }}
+                  >
+                    <div className="flex align-items-start justify-content-between gap-2 mb-2">
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 15,
+                            lineHeight: 1.3,
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {row.nome}
+                        </div>
+                        <div
+                          className="text-secondary"
+                          style={{ fontSize: 12, marginTop: 4 }}
+                        >
+                          Criada em {fmtDate(row.created || "")}
+                        </div>
+                      </div>
+
+                      <Tag
+                        value={conf.label}
+                        severity={conf.severity}
+                        className="border-round-xl"
+                      />
+                    </div>
+
+                    <div
+                      className="text-secondary"
+                      style={{
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        marginTop: 8,
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {short || "—"}
+                    </div>
+
+                    <div className="flex flex-column gap-2 mt-3">
+                      <Button
+                        label="INICIAR"
+                        icon="pi pi-play"
+                        className="p-button-sm w-full"
+                        disabled={
+                          row.status === "EM_ANDAMENTO" || row.status === "CONCLUIDA"
+                        }
+                        onClick={() => startCampaign(row.id)}
+                      />
+                      <Button
+                        label="Excluir"
+                        icon="pi pi-trash"
+                        className="p-button-sm p-button-outlined w-full"
+                        severity="danger"
+                        onClick={() => deleteCampaign(row.id)}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
 
         <style>{`
           .p-datatable .p-datatable-thead > tr > th {
@@ -479,11 +634,25 @@ export default function CampanhasTab() {
             font-weight: 600 !important;
             padding: 1.1rem 1rem !important;
           }
+
           .p-datatable .p-datatable-tbody > tr > td {
             border: 0 !important;
             border-top: 1px solid rgba(0,0,0,0.04) !important;
             padding: 1.1rem 1rem !important;
             vertical-align: middle !important;
+          }
+
+          @media (max-width: 768px) {
+            .p-dropdown,
+            .p-inputtext,
+            .p-button {
+              width: 100%;
+            }
+
+            .p-card,
+            .p-tag {
+              max-width: 100%;
+            }
           }
         `}</style>
       </div>
