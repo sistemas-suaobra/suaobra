@@ -284,7 +284,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
         </div>
 
-        <div className="field col-12 md:col-6 xl:col-3 mb-0">
+        <div className="field col-12 md:col-6 xl:col-6 mb-0">
           <label>Palavra Chave</label>
           <div className="p-inputgroup w-full">
             <InputText

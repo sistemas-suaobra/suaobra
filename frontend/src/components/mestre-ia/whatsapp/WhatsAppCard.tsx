@@ -251,22 +251,12 @@ export function WhatsAppCard(props: Props) {
               <div className="field col-12">
                 <div className="flex flex-column sm:flex-row gap-2">
                   <Button
-                    label={sending ? "Enviando..." : "Enviar Mensagem de Teste"}
+                    label={sending ? "Enviando..." : "Enviar Teste"}
                     icon="pi pi-send"
                     onClick={handleSendTest}
                     className="w-full"
                     severity="success"
                     disabled={sending || !testPhone || !testMessage}
-                  />
-
-                  <Button
-                    label={fixingWebhook ? "Corrigindo..." : "Corrigir Webhook"}
-                    icon="pi pi-wrench"
-                    onClick={handleFixWebhook}
-                    className="w-full sm:w-auto"
-                    severity="secondary"
-                    outlined
-                    disabled={fixingWebhook}
                   />
                 </div>
               </div>
