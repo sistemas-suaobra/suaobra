@@ -40,10 +40,12 @@ export function WhatsAppCard(props: Props) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": user.get().token || "",
+          Authorization: user.get().token || "",
         },
       });
+
       const data = await resp.json();
+
       if (resp.ok && data.ok) {
         alert(`Webhook atualizado!\nURL: ${data.webhook_url}`);
       } else {
@@ -56,14 +58,14 @@ export function WhatsAppCard(props: Props) {
     }
   };
 
-  // Formata o JID (5511999998888@s.whatsapp.net) em número legível
   const phoneDisplay = React.useMemo(() => {
     if (!props.waJid) return "";
     const raw = props.waJid.split("@")[0];
-    // +55 11 99999-8888
+
     if (raw.length >= 12) {
       return `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4, 9)}-${raw.slice(9)}`;
     }
+
     return `+${raw}`;
   }, [props.waJid]);
 
@@ -82,10 +84,15 @@ export function WhatsAppCard(props: Props) {
           value={phoneDisplay}
           severity="success"
           icon="pi pi-whatsapp"
-          style={{ background: "#25d366", border: "none" }}
+          style={{
+            background: "#25d366",
+            border: "none",
+            maxWidth: "100%",
+          }}
         />
       );
     }
+
     return (
       <Tag
         value={props.waSessionOk ? "Sessão iniciada" : "Sessão não iniciada"}
@@ -99,6 +106,7 @@ export function WhatsAppCard(props: Props) {
 
   const handleSendTest = async () => {
     if (!testPhone || !testMessage) return;
+
     setSending(true);
     try {
       await props.sendTestMessage(testPhone, testMessage);
@@ -107,7 +115,6 @@ export function WhatsAppCard(props: Props) {
     }
   };
 
-  // Quando já está conectado via QR (device_jid preenchido), não exibe mais o botão de QR
   const primaryActionLabel = props.waSessionOk
     ? "Ver QR Code"
     : props.waSessionLoading
@@ -122,40 +129,41 @@ export function WhatsAppCard(props: Props) {
       props.conectarSessaoWhatsApp();
       return;
     }
+
     props.abrirECarregarQRCode();
   };
 
   const primaryDisabled = props.waSessionLoading;
 
   return (
-    <div className="col-12 md:col-6">
-      <div className="bg-white border-round-3xl p-4 border-1 surface-border h-full">
-        <div className="flex align-items-center justify-content-between mb-3">
-          <div className="flex align-items-center gap-2">
-            <i className="pi pi-whatsapp text-2xl" />
-            <h3 className="m-0">WhatsApp</h3>
+    <div className="col-12 lg:col-6">
+      <div className="bg-white border-round-3xl p-3 md:p-4 border-1 surface-border h-full whatsapp-card">
+        <div className="flex flex-column gap-3 mb-3">
+          <div className="flex flex-column md:flex-row md:align-items-start md:justify-content-between gap-3">
+            <div className="flex align-items-center gap-2 min-w-0">
+              <i className="pi pi-whatsapp text-2xl" />
+              <h3 className="m-0">WhatsApp</h3>
+            </div>
+
+            <div className="flex flex-wrap gap-2 whatsapp-status-wrap">
+              <WhatsAppStatus />
+              <WhatsAppSessionStatus />
+            </div>
           </div>
 
-          <div className="flex gap-2">
-            <WhatsAppStatus />
-            <WhatsAppSessionStatus />
+          <div className="text-secondary" style={{ lineHeight: 1.6, wordBreak: "break-word" }}>
+            {fullyConnected ? (
+              <span style={{ color: "#25d366", fontWeight: 600 }}>
+                WhatsApp conectado! Número: {phoneDisplay}
+              </span>
+            ) : (
+              <>Fluxo certo: 1) Criar instância → 2) Iniciar sessão → 3) Ver QR.</>
+            )}
           </div>
-        </div>
-
-        <div className="text-secondary mb-3" style={{ lineHeight: 1.5 }}>
-          {fullyConnected ? (
-            <span style={{ color: "#25d366", fontWeight: 600 }}>
-              WhatsApp conectado! Número: {phoneDisplay}
-            </span>
-          ) : (
-            <>
-              Fluxo certo: 1) Criar instância → 2) Iniciar sessão → 3) Ver QR.
-            </>
-          )}
         </div>
 
         <div className="formgrid grid">
-          <div className="field col-12 flex gap-2">
+          <div className="field col-12">
             {!props.waConnected ? (
               <Button
                 label={props.waCreating ? "Criando..." : "Conectar (criar instância)"}
@@ -165,17 +173,17 @@ export function WhatsAppCard(props: Props) {
                 disabled={props.waCreating}
               />
             ) : fullyConnected ? (
-              // ── Estado: conectado via QR ──────────────────────────────────
-              <Button
-                label="Desconectar"
-                icon="pi pi-power-off"
-                onClick={props.disconnectWhatsApp}
-                className="w-full"
-                severity="secondary"
-              />
+              <div className="flex flex-column sm:flex-row gap-2">
+                <Button
+                  label="Desconectar"
+                  icon="pi pi-power-off"
+                  onClick={props.disconnectWhatsApp}
+                  className="w-full"
+                  severity="secondary"
+                />
+              </div>
             ) : (
-              // ── Estado: instância criada, sessão pendente / QR pendente ──
-              <>
+              <div className="flex flex-column sm:flex-row gap-2">
                 <Button
                   label={primaryActionLabel}
                   icon={primaryActionIcon}
@@ -192,18 +200,22 @@ export function WhatsAppCard(props: Props) {
                   className="w-full"
                   severity="secondary"
                 />
-              </>
+              </div>
             )}
           </div>
 
-          {/* ── Form de Teste (só aparece quando conectado) ── */}
           {fullyConnected && (
             <>
               <div className="col-12">
-                <hr className="my-3" style={{ border: "none", borderTop: "1px solid #dee2e6" }} />
-                <h4 className="m-0 mb-2 text-sm font-semibold">Testar Envio de Mensagem</h4>
+                <hr
+                  className="my-2 md:my-3"
+                  style={{ border: "none", borderTop: "1px solid #dee2e6" }}
+                />
+                <h4 className="m-0 mb-2 text-sm font-semibold">
+                  Testar Envio de Mensagem
+                </h4>
               </div>
-              
+
               <div className="field col-12">
                 <label htmlFor="test-phone" className="block text-sm font-medium mb-2">
                   Número de Destino (com DDI)
@@ -217,7 +229,7 @@ export function WhatsAppCard(props: Props) {
                   disabled={sending}
                 />
                 <small className="block mt-1 text-500">
-                  Formato: DDI + DDD + número (sem espaços ou caracteres especiais)
+                  Formato: DDI + DDD + número, sem espaços ou caracteres especiais
                 </small>
               </div>
 
@@ -229,21 +241,34 @@ export function WhatsAppCard(props: Props) {
                   id="test-message"
                   value={testMessage}
                   onChange={(e) => setTestMessage(e.target.value)}
-                  rows={3}
+                  rows={4}
+                  autoResize
                   className="w-full"
                   disabled={sending}
                 />
               </div>
 
               <div className="field col-12">
-                <Button
-                  label={sending ? "Enviando..." : "Enviar Mensagem de Teste"}
-                  icon="pi pi-send"
-                  onClick={handleSendTest}
-                  className="w-full"
-                  severity="success"
-                  disabled={sending || !testPhone || !testMessage}
-                />
+                <div className="flex flex-column sm:flex-row gap-2">
+                  <Button
+                    label={sending ? "Enviando..." : "Enviar Mensagem de Teste"}
+                    icon="pi pi-send"
+                    onClick={handleSendTest}
+                    className="w-full"
+                    severity="success"
+                    disabled={sending || !testPhone || !testMessage}
+                  />
+
+                  <Button
+                    label={fixingWebhook ? "Corrigindo..." : "Corrigir Webhook"}
+                    icon="pi pi-wrench"
+                    onClick={handleFixWebhook}
+                    className="w-full sm:w-auto"
+                    severity="secondary"
+                    outlined
+                    disabled={fixingWebhook}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -258,6 +283,32 @@ export function WhatsAppCard(props: Props) {
           onRefresh={props.carregarQRCode}
         />
       </div>
+
+      <style>{`
+        .whatsapp-card .p-tag {
+          white-space: normal !important;
+          word-break: break-word;
+          max-width: 100%;
+        }
+
+        .whatsapp-status-wrap .p-tag {
+          max-width: 100%;
+        }
+
+        @media screen and (max-width: 768px) {
+          .whatsapp-card {
+            border-radius: 1.25rem !important;
+          }
+
+          .whatsapp-card h3 {
+            font-size: 1.1rem;
+          }
+
+          .whatsapp-card .p-button {
+            width: 100%;
+          }
+        }
+      `}</style>
     </div>
   );
 }
