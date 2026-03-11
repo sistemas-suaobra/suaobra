@@ -53,7 +53,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
     try {
       setWaCreating(true);
 
-      const url = `https://api-hml.suaobra.com.br/conexoes/whatsapp`;
+      const url = `https://api.suaobra.com.br/conexoes/whatsapp`;
       const { data } = await requestWithLog<ConexaoWhatsappResponse>({
         label: "Criar Conexão WhatsApp",
         method: "POST",
