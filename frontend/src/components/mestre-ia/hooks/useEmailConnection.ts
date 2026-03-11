@@ -116,7 +116,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
 
         return false;
       } catch (error) {
-        console.error("Erro ao salvar configuração de email:", error);
+        console.error("Erro ao salvar configuração de email!:", error);
         return false;
       } finally {
         setSaving(false);
