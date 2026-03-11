@@ -46,6 +46,11 @@ func NewRequest(c echo.Context) (req Request) {
 
 	var userID, teamID, userEmail string
 	var userIsManager bool
+	
+	// DEBUG: Log auth state
+	authToken := c.Request().Header.Get(echo.HeaderAuthorization)
+	g.Info("NewRequest DEBUG", "hasAuthRecord", req.AuthRecord() != nil, "hasAdmin", req.Admin() != nil, "hasTeamID", c.Get("team_id") != nil, "tokenPrefix", g.F("%.20s...", authToken))
+	
 	if req.AuthRecord() != nil {
 		userID = cast.ToString(req.AuthRecord().Get("id"))
 		teamID = cast.ToString(req.AuthRecord().Get("team_id"))
@@ -56,9 +61,10 @@ func NewRequest(c echo.Context) (req Request) {
 		userEmail = cast.ToString(req.Admin().Email)
 	} else if c.Get("team_id") != nil {
 		teamID = cast.ToString(c.Get("team_id"))
-	} else if token := c.Request().Header.Get(echo.HeaderAuthorization); token != "" && token == MessengerAuthorization {
+	} else if authToken != "" && authToken == MessengerAuthorization {
 		// allow in
 	} else {
+		g.Warn("NewRequest: forbidden", "authToken", authToken, "path", c.Request().URL.Path)
 		req.Error = g.Error("forbidden")
 		return
 	}

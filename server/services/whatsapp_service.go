@@ -1,0 +1,240 @@
+package services
+
+import (
+	"strings"
+	"time"
+
+	"github.com/flarco/g"
+	"github.com/pocketbase/pocketbase/models"
+
+	"github.com/suaobra/suaobra-app/server/clients/wuzapi"
+	"github.com/suaobra/suaobra-app/server/repositories"
+)
+
+type WhatsAppService struct {
+	conRepo *repositories.ConexaoRepo
+	waRepo  *repositories.WhatsAppRepo
+	wuz     *wuzapi.Client
+	tokens  *TokenService
+}
+
+func NewWhatsAppService(
+	conRepo *repositories.ConexaoRepo,
+	waRepo *repositories.WhatsAppRepo,
+	wuz *wuzapi.Client,
+	tokens *TokenService,
+) *WhatsAppService {
+	return &WhatsAppService{conRepo: conRepo, waRepo: waRepo, wuz: wuz, tokens: tokens}
+}
+
+// Idempotente: se já existir, retorna.
+func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) (already bool, con *models.Record, wa *models.Record, err error) {
+	exCon, _ := s.conRepo.FindActiveWhatsappByTeam(teamID)
+	if exCon != nil && exCon.Id != "" {
+		exWa, _ := s.waRepo.FindByConexao(exCon.Id)
+		if exWa != nil && exWa.Id != "" {
+			return true, exCon, exWa, nil
+		}
+		con = exCon
+	} else {
+		con = nil
+	}
+
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "USER_" + userID
+	}
+
+	if strings.TrimSpace(apiKey) == "" {
+		return false, nil, nil, g.Error("WHATSMEOW_APIKEY not set")
+	}
+
+	userToken, err := s.tokens.Generate(apiKey)
+	if err != nil {
+		return false, nil, nil, err
+	}
+
+	created, raw, err := s.wuz.CreateAdminUser(name, userToken)
+	if err != nil {
+		return false, nil, nil, g.Error("error creating wuzapi user: %v", err)
+	}
+
+	if con == nil {
+		con, err = s.conRepo.CreateWhatsapp(teamID, name)
+		if err != nil {
+			return false, nil, nil, err
+		}
+	}
+
+	fields := map[string]any{
+		"provider":      "WUZAPI",
+		"api_base_url":  s.wuzBaseURL(),
+		"numero_e164":   userToken,
+		"instancia_id":  created.Data.ID,
+		"device_jid":    "",
+		"name":         created.Data.Name,
+		"webhook":      created.Data.Webhook,
+		"events":       created.Data.Events,
+		"raw_response": raw,
+		"ultimo_qr_em": time.Now().UTC(),
+	}
+
+	wa, err = s.waRepo.Create(con.Id, fields)
+	if err != nil {
+		return false, con, nil, err
+	}
+
+	return false, con, wa, nil
+}
+
+func (s *WhatsAppService) ConnectSession(userToken string) (map[string]any, error) {
+	return s.wuz.SessionConnect(strings.TrimSpace(userToken))
+}
+
+func (s *WhatsAppService) GetQR(userToken string) (wuzapi.SessionQRResp, error) {
+	parsed, _, err := s.wuz.SessionQR(strings.TrimSpace(userToken))
+	return parsed, err
+}
+
+// ----------- NOVO: por Team -----------
+
+func (s *WhatsAppService) getTokenAndRecordByTeam(teamID string) (token string, wa *models.Record, err error) {
+	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+	if err != nil || con == nil || con.Id == "" {
+		return "", nil, g.Error("whatsapp connection not found")
+	}
+
+	wa, err = s.waRepo.FindByConexao(con.Id)
+	if err != nil || wa == nil || wa.Id == "" {
+		return "", nil, g.Error("whatsapp details not found")
+	}
+
+	token = strings.TrimSpace(wa.GetString("numero_e164"))
+	if token == "" {
+		return "", nil, g.Error("numero_e164 token is empty")
+	}
+
+	return token, wa, nil
+}
+
+func (s *WhatsAppService) ConnectByTeam(teamID string) (map[string]any, error) {
+	token, _, err := s.getTokenAndRecordByTeam(teamID)
+	if err != nil {
+		return nil, err
+	}
+	return s.ConnectSession(token)
+}
+
+func (s *WhatsAppService) GetQRByTeam(teamID string) (code int, qr string, err error) {
+	token, wa, err := s.getTokenAndRecordByTeam(teamID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	parsed, err := s.GetQR(token)
+	if err != nil {
+		return 0, "", err
+	}
+
+	// atualiza timestamp do QR
+	s.waRepo.TouchUltimoQR(wa)
+
+	return parsed.Code, parsed.Data.QRCode, nil
+}
+
+func (s *WhatsAppService) wuzBaseURL() string {
+	return s.wuz.BaseURL()
+}
+
+// SendTestMessage envia uma mensagem de teste via WhatsApp.
+func (s *WhatsAppService) SendTestMessage(teamID, phone, body string) (map[string]any, error) {
+	token, _, err := s.getTokenAndRecordByTeam(teamID)
+	if err != nil {
+		return nil, err
+	}
+	return s.wuz.SendTextMessage(token, phone, body)
+}
+
+// CheckAndUpdateStatus consulta o wuzapi para saber se o user está connected,
+// e atualiza conectado_em + device_jid no registro local se necessário.
+// Retorna (connected, jid, error).
+func (s *WhatsAppService) CheckAndUpdateStatus(teamID string) (connected bool, jid string, err error) {
+	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+	if err != nil || con == nil || con.Id == "" {
+		return false, "", g.Error("whatsapp connection not found")
+	}
+
+	wa, err := s.waRepo.FindByConexao(con.Id)
+	if err != nil || wa == nil || wa.Id == "" {
+		return false, "", g.Error("whatsapp details not found")
+	}
+
+	instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
+	if instanciaID == "" {
+		return false, "", g.Error("instancia_id is empty")
+	}
+
+	info, err := s.wuz.GetAdminUser(instanciaID)
+	if err != nil {
+		return false, "", err
+	}
+
+	// Verifica se está LOGADO (não apenas connected aos servidores)
+	// Connected = conectado ao servidor WhatsApp
+	// LoggedIn = escaneou QR e autenticou de fato
+	if !info.LoggedIn {
+		return false, "", nil
+	}
+
+	// Logado! Mas só salva conectado_em se for uma conexão RECENTE.
+	// Verifica se ultimo_qr_em é recente (últimos 5 min) — evita detectar sessões antigas.
+	conectadoEm := wa.GetDateTime("conectado_em")
+	ultimoQrEm := wa.GetDateTime("ultimo_qr_em")
+	
+	qrRecente := !ultimoQrEm.Time().IsZero() && time.Since(ultimoQrEm.Time()) < 5*time.Minute
+	
+	if (conectadoEm.Time().IsZero() || wa.GetString("device_jid") != info.JID) && qrRecente {
+		if saveErr := s.waRepo.UpdateConnected(wa, info.JID); saveErr != nil {
+			g.Error(saveErr, "erro ao salvar conectado_em para instancia=%s", instanciaID)
+		} else {
+			g.Info("conectado_em salvo para instancia=%s jid=%s (QR recente, LOGADO)", instanciaID, info.JID)
+		}
+	}
+
+	return true, info.JID, nil
+}
+
+// Disconnect limpa conectado_em e device_jid no banco.
+func (s *WhatsAppService) Disconnect(teamID string) error {
+	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+	if err != nil || con == nil || con.Id == "" {
+		return g.Error("whatsapp connection not found")
+	}
+
+	wa, err := s.waRepo.FindByConexao(con.Id)
+	if err != nil || wa == nil || wa.Id == "" {
+		return g.Error("whatsapp details not found")
+	}
+
+	return s.waRepo.ClearConnected(wa)
+}
+
+func (s *WhatsAppService) GetByTeam(teamID string) (exists bool, con *models.Record, wa *models.Record, err error) {
+	con, err = s.conRepo.FindActiveWhatsappByTeam(teamID)
+	if err != nil {
+		return false, nil, nil, err
+	}
+	if con == nil || con.Id == "" {
+		return false, nil, nil, nil
+	}
+
+	wa, err = s.waRepo.FindByConexao(con.Id)
+	if err != nil {
+		return true, con, nil, err
+	}
+	if wa == nil || wa.Id == "" {
+		return true, con, nil, nil
+	}
+
+	return true, con, wa, nil
+}
