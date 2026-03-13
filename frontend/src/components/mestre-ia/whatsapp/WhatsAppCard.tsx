@@ -20,10 +20,10 @@ type Props = {
   waQrError: string;
 
   criarConexaoWhatsApp: () => void;
-  conectarSessaoWhatsApp: () => void;
   abrirECarregarQRCode: () => void;
-  carregarQRCode: () => void;
-  disconnectWhatsApp: () => void;
+  carregarQRCode: () => Promise<void>;
+  verificarStatusWhatsapp: () => Promise<boolean>;
+  disconnectWhatsApp: () => Promise<void>;
   sendTestMessage: (phone: string, body: string) => Promise<void>;
 };
 
@@ -95,9 +95,9 @@ export function WhatsAppCard(props: Props) {
 
     return (
       <Tag
-        value={props.waSessionOk ? "Sessão iniciada" : "Sessão não iniciada"}
-        severity={props.waSessionOk ? "success" : "warning"}
-        icon={props.waSessionOk ? "pi pi-check" : "pi pi-exclamation-triangle"}
+        value="Sessão não autenticada"
+        severity="warning"
+        icon="pi pi-exclamation-triangle"
       />
     );
   };
@@ -115,25 +115,10 @@ export function WhatsAppCard(props: Props) {
     }
   };
 
-  const primaryActionLabel = props.waSessionOk
-    ? "Ver QR Code"
-    : props.waSessionLoading
-    ? "Iniciando..."
-    : "Iniciar Sessão";
+  const primaryActionLabel =
+    props.waSessionLoading || props.waQrLoading ? "Gerando QR..." : "Ver QR Code";
 
-  const primaryActionIcon = props.waSessionOk ? "pi pi-qrcode" : "pi pi-link";
-  const primaryActionSeverity = props.waSessionOk ? ("info" as const) : ("help" as const);
-
-  const onPrimaryAction = () => {
-    if (!props.waSessionOk) {
-      props.conectarSessaoWhatsApp();
-      return;
-    }
-
-    props.abrirECarregarQRCode();
-  };
-
-  const primaryDisabled = props.waSessionLoading;
+  const primaryActionDisabled = props.waSessionLoading || props.waQrLoading;
 
   return (
     <div className="col-12 lg:col-6">
@@ -156,8 +141,10 @@ export function WhatsAppCard(props: Props) {
               <span style={{ color: "#25d366", fontWeight: 600 }}>
                 WhatsApp conectado! Número: {phoneDisplay}
               </span>
+            ) : props.waConnected ? (
+              <>Conecte ao seu WhatsApp e dispare mensagens para seus leads.</>
             ) : (
-              <>Fluxo certo: 1) Criar instância → 2) Iniciar sessão → 3) Ver QR.</>
+              <>Crie a instância para começar a conexão com o WhatsApp.</>
             )}
           </div>
         </div>
@@ -173,34 +160,22 @@ export function WhatsAppCard(props: Props) {
                 disabled={props.waCreating}
               />
             ) : fullyConnected ? (
-              <div className="flex flex-column sm:flex-row gap-2">
-                <Button
-                  label="Desconectar"
-                  icon="pi pi-power-off"
-                  onClick={props.disconnectWhatsApp}
-                  className="w-full"
-                  severity="secondary"
-                />
-              </div>
+              <Button
+                label="Desconectar"
+                icon="pi pi-power-off"
+                onClick={props.disconnectWhatsApp}
+                className="w-full"
+                severity="secondary"
+              />
             ) : (
-              <div className="flex flex-column sm:flex-row gap-2">
-                <Button
-                  label={primaryActionLabel}
-                  icon={primaryActionIcon}
-                  onClick={onPrimaryAction}
-                  className="w-full"
-                  severity={primaryActionSeverity}
-                  disabled={primaryDisabled}
-                />
-
-                <Button
-                  label="Desconectar"
-                  icon="pi pi-power-off"
-                  onClick={props.disconnectWhatsApp}
-                  className="w-full"
-                  severity="secondary"
-                />
-              </div>
+              <Button
+                label={primaryActionLabel}
+                icon="pi pi-qrcode"
+                onClick={props.abrirECarregarQRCode}
+                className="w-full"
+                severity="help"
+                disabled={primaryActionDisabled}
+              />
             )}
           </div>
 
@@ -271,6 +246,7 @@ export function WhatsAppCard(props: Props) {
           waQr={props.waQr}
           waQrError={props.waQrError}
           onRefresh={props.carregarQRCode}
+          onCheckConnected={props.verificarStatusWhatsapp}
         />
       </div>
 

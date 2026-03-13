@@ -1,14 +1,38 @@
 import React from "react"
 import type { ObrasPlusRecord, LeadOption } from "../types/create-campaign"
-import { api, baseURL, PB } from "../../../store/api"
-import { user } from "../../../store/store"
-import { fetchLeadIdMap } from "../utils/pb"
+import { api, baseURL } from "../../../store/api"
 
-function pickBairro(selectedNeighborhood: any[]): string {
-  const first = selectedNeighborhood?.[0]
-  if (!first) return ""
-  if (typeof first === "string") return first.trim()
-  return String(first?.bairro ?? "").trim()
+type RecipientKind = "OWNER" | "PROFISSIONAL"
+
+const makeRecipientKey = (obraId: string, contatoTipo: RecipientKind) =>
+  `${obraId}::${contatoTipo}`
+
+function pickBairros(selectedNeighborhood: any[]): string {
+  if (!Array.isArray(selectedNeighborhood) || !selectedNeighborhood.length) return ""
+
+  return selectedNeighborhood
+    .map((item) => {
+      if (!item) return ""
+      if (typeof item === "string") return item.trim()
+      return String(item?.bairro ?? "").trim()
+    })
+    .filter(Boolean)
+    .join("|")
+}
+
+function isTruthyContactStatus(value: unknown) {
+  if (typeof value === "boolean") return value
+  if (value == null) return false
+
+  const raw = String(value).trim().toUpperCase()
+
+  return (
+    raw === "1" ||
+    raw === "TRUE" ||
+    raw === "SIM" ||
+    raw === "YES" ||
+    raw === "ENVIADO"
+  )
 }
 
 export function useCampaignLeadOptions(params: {
@@ -21,6 +45,7 @@ export function useCampaignLeadOptions(params: {
   startDateTo: string
   endDateFrom: string
   endDateTo: string
+  ocultarJaContactados?: boolean
   fallbackOptions: LeadOption[]
 }) {
   const {
@@ -33,11 +58,12 @@ export function useCampaignLeadOptions(params: {
     startDateTo,
     endDateFrom,
     endDateTo,
+    ocultarJaContactados = true,
     fallbackOptions,
   } = params
 
   const [leadsOptionsLocal, setLeadsOptionsLocal] = React.useState<LeadOption[]>(fallbackOptions)
-  const [existingLeadSet, setExistingLeadSet] = React.useState<Set<string>>(new Set())
+  const [contactedRecipientSet, setContactedRecipientSet] = React.useState<Set<string>>(new Set())
 
   const obraRecordMapRef = React.useRef<Map<string, ObrasPlusRecord>>(new Map())
 
@@ -47,14 +73,16 @@ export function useCampaignLeadOptions(params: {
 
   React.useEffect(() => {
     if (!visible) return
-    if (!selectedCity) return
-    if (!teamId) return
+    if (!selectedCity?.city) return
 
-    const fetchLeads = async () => {
+    let cancelled = false
+
+    const fetchObras = async () => {
       try {
         const payload = {
+          teamId,
           city: selectedCity.city || "",
-          bairro: pickBairro(selectedNeighborhood), // ✅ aqui
+          bairro: pickBairros(selectedNeighborhood),
           order: "first_listing_date-desc,start_date-desc",
           filter: filterValue,
           sizeMin: "0",
@@ -66,39 +94,84 @@ export function useCampaignLeadOptions(params: {
           startDateTo,
           endDateFrom,
           endDateTo,
+          ocultarJaContactados: ocultarJaContactados ? "true" : "false",
         }
 
-        const resp = await api().get(`${baseURL()}/query/obras-plus`, payload)
+        const resp = await api().get(`${baseURL()}/query/leads-plus`, payload)
         if (resp.error) throw new Error(resp.error)
+
         const data = await resp.response.json()
-        const records: ObrasPlusRecord[] = Array.isArray(data.records) ? data.records : []
+        const records: ObrasPlusRecord[] = Array.isArray(data?.records) ? data.records : []
 
-        obraRecordMapRef.current = new Map()
-        for (const r of records) if (r?.obra_id) obraRecordMapRef.current.set(r.obra_id, r)
+        if (cancelled) return
 
-        const options: LeadOption[] = records.map((r) => ({
-          label: r.owner || r.professional || r.address || r.obra_id,
-          value: r.obra_id,
-        }))
+        const nextMap = new Map<string, ObrasPlusRecord>()
+        const nextOptions: LeadOption[] = []
+        const nextContactedRecipientSet = new Set<string>()
 
-        setLeadsOptionsLocal(options)
+        for (const r of records) {
+          const obraId = String((r as any)?.obra_id ?? "").trim()
+          if (!obraId) continue
 
-        const obraIds = records.map((r) => r.obra_id).filter(Boolean)
-        const pb = PB()
-        pb.authStore.save(user.get().token, user.get())
+          nextMap.set(obraId, r)
 
-        const leadMap = await fetchLeadIdMap(pb, teamId, obraIds)
-        setExistingLeadSet(new Set(Array.from(leadMap.keys())))
+          nextOptions.push({
+            label: (r as any)?.owner || (r as any)?.professional || (r as any)?.address || obraId,
+            value: obraId,
+          })
+
+          const ownerContacted =
+            !!(r as any)?.owner_contacted_at ||
+            !!(r as any)?.owner_enviado_em ||
+            isTruthyContactStatus((r as any)?.owner_contacted) ||
+            isTruthyContactStatus((r as any)?.owner_status)
+
+          const professionalContacted =
+            !!(r as any)?.professional_contacted_at ||
+            !!(r as any)?.professional_enviado_em ||
+            isTruthyContactStatus((r as any)?.professional_contacted) ||
+            isTruthyContactStatus((r as any)?.professional_status)
+
+          if (ownerContacted) {
+            nextContactedRecipientSet.add(makeRecipientKey(obraId, "OWNER"))
+          }
+
+          if (professionalContacted) {
+            nextContactedRecipientSet.add(makeRecipientKey(obraId, "PROFISSIONAL"))
+          }
+        }
+
+        obraRecordMapRef.current = nextMap
+        setLeadsOptionsLocal(nextOptions)
+        setContactedRecipientSet(nextContactedRecipientSet)
       } catch (e) {
         console.error(e)
+
+        if (cancelled) return
+
         setLeadsOptionsLocal([])
-        setExistingLeadSet(new Set())
+        setContactedRecipientSet(new Set())
         obraRecordMapRef.current = new Map()
       }
     }
 
-    fetchLeads()
-  }, [visible, teamId, selectedCity, selectedNeighborhood, filterValue, startDateFrom, startDateTo, endDateFrom, endDateTo])
+    fetchObras()
 
-  return { leadsOptionsLocal, obraRecordMapRef, existingLeadSet }
+    return () => {
+      cancelled = true
+    }
+  }, [
+    visible,
+    teamId,
+    selectedCity,
+    selectedNeighborhood,
+    filterValue,
+    startDateFrom,
+    startDateTo,
+    endDateFrom,
+    endDateTo,
+    ocultarJaContactados,
+  ])
+
+  return { leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet }
 }

@@ -15,11 +15,91 @@ import { safeStr } from "../utils/obrasPlus"
 
 import { useObrasPlusFilters } from "../hooks/useObrasPlusFilters"
 import { useCampaignLeadOptions } from "../hooks/useCampaignLeadOptions"
-import { useLeadComms } from "../hooks/useLeadComms"
 import { useCreateCampaign } from "../hooks/useCreateCampaign"
 import { api, baseURL } from "../../../store/api"
 
 type CursorPos = { start: number; end: number }
+type RecipientKind = "OWNER" | "PROFISSIONAL"
+type RecipientFilter = "ALL" | RecipientKind
+
+type RecipientOption = {
+  value: string
+  obraId: string
+  contatoTipo: RecipientKind
+  nomeContato: string
+  label: string
+  cidade: string
+  bairro: string
+  uf: string
+  address: string
+  hasPhone: boolean
+  hasEmail: boolean
+}
+
+const normalizeRecipientKind = (value: unknown): RecipientKind | null => {
+  const kind = String(value ?? "")
+    .toUpperCase()
+    .trim()
+
+  if (kind === "OWNER") return "OWNER"
+  if (kind === "PROFISSIONAL" || kind === "PROFESSIONAL") return "PROFISSIONAL"
+
+  return null
+}
+
+const makeRecipientValue = (obraId: string, contatoTipo: RecipientKind) =>
+  `${obraId}::${contatoTipo}`
+
+const parseRecipientValue = (
+  value: string
+): { obra_id: string; contato_tipo: RecipientKind } | null => {
+  if (!value) return null
+
+  const [obraId, contatoTipoRaw] = String(value).split("::")
+  if (!obraId) return null
+
+  const contatoTipo = normalizeRecipientKind(contatoTipoRaw)
+  if (!contatoTipo) return null
+
+  return {
+    obra_id: obraId,
+    contato_tipo: contatoTipo,
+  }
+}
+
+function formatLocation(bairro?: string, cidade?: string, uf?: string) {
+  const parts: string[] = []
+
+  if (safeStr(bairro)) parts.push(safeStr(bairro))
+  if (safeStr(cidade)) parts.push(safeStr(cidade))
+
+  const base = parts.join(" - ")
+  const state = safeStr(uf)
+
+  if (!base && !state) return ""
+  if (!base) return state
+  if (!state) return base
+
+  return `${base}/${state}`
+}
+
+function getRecipientTypeLabel(kind: RecipientKind) {
+  return kind === "OWNER" ? "Proprietário" : "Profissional"
+}
+
+function getRecipientChannelsLabel(hasPhone: boolean, hasEmail: boolean) {
+  const channels = [hasPhone ? "telefone" : "", hasEmail ? "email" : ""].filter(Boolean)
+
+  if (!channels.length) return "contato a resolver"
+
+  return channels.join(" + ")
+}
+
+function getPlaceholderByFilter(filter: RecipientFilter) {
+  if (filter === "OWNER") return "Selecione proprietários para esta campanha"
+  if (filter === "PROFISSIONAL") return "Selecione profissionais para esta campanha"
+  return "Selecione destinatários para esta campanha"
+}
 
 export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const {
@@ -34,7 +114,8 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     userId,
   } = props
 
-  const [selectedLeads, setSelectedLeads] = React.useState<string[]>([])
+  const [selectedRecipients, setSelectedRecipients] = React.useState<string[]>([])
+  const [recipientFilter, setRecipientFilter] = React.useState<RecipientFilter>("ALL")
   const [channelWa, setChannelWa] = React.useState(true)
   const [channelEmail, setChannelEmail] = React.useState(false)
   const [iaContinuar, setIaContinuar] = React.useState(true)
@@ -44,6 +125,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   )
   const [objetivo, setObjetivo] = React.useState("")
   const [generating, setGenerating] = React.useState(false)
+  const [ocultarJaContactados, setOcultarJaContactados] = React.useState(true)
 
   const cursorRef = React.useRef<CursorPos>({ start: 0, end: 0 })
   const textareaElRef = React.useRef<HTMLTextAreaElement | null>(null)
@@ -51,9 +133,14 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const syncCursorFromEvent = (e: any) => {
     const el = (e?.target || e?.currentTarget) as HTMLTextAreaElement | undefined
     if (!el) return
+
     textareaElRef.current = el
-    const start = typeof el.selectionStart === "number" ? el.selectionStart : el.value.length
-    const end = typeof el.selectionEnd === "number" ? el.selectionEnd : el.value.length
+
+    const start =
+      typeof el.selectionStart === "number" ? el.selectionStart : el.value.length
+    const end =
+      typeof el.selectionEnd === "number" ? el.selectionEnd : el.value.length
+
     cursorRef.current = { start, end }
   }
 
@@ -70,6 +157,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     setTimeout(() => {
       const el = textareaElRef.current
       if (!el) return
+
       try {
         el.focus()
         const pos = s + token.length
@@ -89,23 +177,29 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   ]
 
   const handleGenerate = async () => {
-    if (!objetivo) {
-      notify("warn", "Objetivo em branco", "Por favor, descreva o objetivo da campanha para a IA.")
+    if (!objetivo.trim()) {
+      notify("warn", "Objetivo em branco", "Descreva o objetivo da campanha para a IA.")
       return
     }
 
     setGenerating(true)
 
     try {
-      const resp = await api().post(`${baseURL()}/campanhas/gerar-mensagem-ia`, { objetivo })
+      const resp = await api().post(`${baseURL()}/campanhas/gerar-mensagem-ia`, {
+        objetivo: objetivo.trim(),
+      })
+
       if (resp.error) throw new Error(resp.error)
 
       const data = await resp.response.json()
-      setMessageText(data.mensagem)
+      setMessageText(data?.mensagem || "")
       notify("success", "Mensagem gerada", "A IA gerou uma nova sugestão de mensagem.")
     } catch (error: any) {
       const detail =
-        error?.response?.data?.message || error?.message || "Não foi possível gerar a mensagem."
+        error?.response?.data?.message ||
+        error?.message ||
+        "Não foi possível gerar a mensagem."
+
       notify("error", "Erro de IA", detail)
     } finally {
       setGenerating(false)
@@ -131,7 +225,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     setEndDateTo,
   } = useObrasPlusFilters(visible)
 
-  const { leadsOptionsLocal, obraRecordMapRef, existingLeadSet } = useCampaignLeadOptions({
+  const { leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet } = useCampaignLeadOptions({
     visible,
     teamId,
     selectedCity,
@@ -141,40 +235,212 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     startDateTo,
     endDateFrom,
     endDateTo,
+    ocultarJaContactados,
     fallbackOptions: leadsOptions,
   })
 
-  const { fetchLeadComms } = useLeadComms(selectedCity, obraRecordMapRef)
   const { saving, createCampaign } = useCreateCampaign({ teamId, userId, notify })
 
   React.useEffect(() => {
     if (!visible) return
 
-    setSelectedLeads([])
+    setSelectedRecipients([])
+    setRecipientFilter("ALL")
     setChannelWa(true)
     setChannelEmail(false)
     setIaContinuar(true)
     setEmailSubject("")
-    setMessageText("Olá, {{nome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?")
+    setMessageText(
+      "Olá, {{nome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
+    )
     setObjetivo("")
+    setOcultarJaContactados(true)
     cursorRef.current = { start: 0, end: 0 }
     textareaElRef.current = null
   }, [visible])
 
+  const recipientOptionsLocal = React.useMemo<RecipientOption[]>(() => {
+    const list: RecipientOption[] = []
+    const seen = new Set<string>()
+
+    for (const opt of leadsOptionsLocal ?? []) {
+      const obraId = String(opt?.value ?? "").trim()
+      if (!obraId) continue
+
+      const rec: any = obraRecordMapRef.current.get(obraId)
+      if (!rec) continue
+
+      const cidade = safeStr(rec?.city)
+      const bairro = safeStr(rec?.bairro)
+      const uf = safeStr(rec?.state)
+      const address = safeStr(rec?.address)
+
+      const ownerName = safeStr(rec?.owner)
+      const professionalName = safeStr(rec?.professional)
+
+      const ownerHasPhone = !!rec?.has_owner_phone
+      const ownerHasEmail = !!rec?.has_owner_email
+      const professionalHasPhone = !!rec?.has_professional_phone
+      const professionalHasEmail = !!rec?.has_professional_email
+
+      if (ownerName) {
+        const value = makeRecipientValue(obraId, "OWNER")
+        const ownerJaContactado = contactedRecipientSet.has(value)
+
+        if (!seen.has(value) && (!ocultarJaContactados || !ownerJaContactado)) {
+          const location = formatLocation(bairro, cidade, uf)
+          const channels = getRecipientChannelsLabel(ownerHasPhone, ownerHasEmail)
+
+          list.push({
+            value,
+            obraId,
+            contatoTipo: "OWNER",
+            nomeContato: ownerName,
+            cidade,
+            bairro,
+            uf,
+            address,
+            hasPhone: ownerHasPhone,
+            hasEmail: ownerHasEmail,
+            label: `${ownerName} (Proprietário)${location ? ` — ${location}` : ""}${
+              address ? ` • ${address}` : ""
+            } • ${channels}`,
+          })
+
+          seen.add(value)
+        }
+      }
+
+      if (professionalName) {
+        const value = makeRecipientValue(obraId, "PROFISSIONAL")
+        const professionalJaContactado = contactedRecipientSet.has(value)
+
+        if (!seen.has(value) && (!ocultarJaContactados || !professionalJaContactado)) {
+          const location = formatLocation(bairro, cidade, uf)
+          const channels = getRecipientChannelsLabel(
+            professionalHasPhone,
+            professionalHasEmail
+          )
+
+          list.push({
+            value,
+            obraId,
+            contatoTipo: "PROFISSIONAL",
+            nomeContato: professionalName,
+            cidade,
+            bairro,
+            uf,
+            address,
+            hasPhone: professionalHasPhone,
+            hasEmail: professionalHasEmail,
+            label: `${professionalName} (Profissional)${
+              location ? ` — ${location}` : ""
+            }${address ? ` • ${address}` : ""} • ${channels}`,
+          })
+
+          seen.add(value)
+        }
+      }
+    }
+
+    return list
+  }, [leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet, ocultarJaContactados])
+
+  const recipientOptionMap = React.useMemo(() => {
+    const map = new Map<string, RecipientOption>()
+
+    for (const item of recipientOptionsLocal) {
+      map.set(item.value, item)
+    }
+
+    return map
+  }, [recipientOptionsLocal])
+
+  React.useEffect(() => {
+    setSelectedRecipients((prev) => prev.filter((value) => recipientOptionMap.has(value)))
+  }, [recipientOptionMap])
+
+  const recipientStats = React.useMemo(() => {
+    let owners = 0
+    let professionals = 0
+
+    for (const item of recipientOptionsLocal) {
+      if (item.contatoTipo === "OWNER") owners++
+      if (item.contatoTipo === "PROFISSIONAL") professionals++
+    }
+
+    return {
+      owners,
+      professionals,
+      total: recipientOptionsLocal.length,
+    }
+  }, [recipientOptionsLocal])
+
+  const filteredRecipientOptions = React.useMemo(() => {
+    if (recipientFilter === "ALL") return recipientOptionsLocal
+    return recipientOptionsLocal.filter((item) => item.contatoTipo === recipientFilter)
+  }, [recipientFilter, recipientOptionsLocal])
+
+  const selectedRecipientStats = React.useMemo(() => {
+    let owners = 0
+    let professionals = 0
+
+    for (const value of selectedRecipients) {
+      const item = recipientOptionMap.get(value)
+      if (!item) continue
+
+      if (item.contatoTipo === "OWNER") owners++
+      if (item.contatoTipo === "PROFISSIONAL") professionals++
+    }
+
+    return {
+      owners,
+      professionals,
+      total: selectedRecipients.length,
+    }
+  }, [selectedRecipients, recipientOptionMap])
+
+  const handleRecipientFilterChange = React.useCallback(
+    (filter: RecipientFilter) => {
+      setRecipientFilter(filter)
+
+      if (filter === "ALL") return
+
+      setSelectedRecipients((prev) =>
+        prev.filter((value) => recipientOptionMap.get(value)?.contatoTipo === filter)
+      )
+    },
+    [recipientOptionMap]
+  )
+
+  const clearRecipients = React.useCallback(() => {
+    setSelectedRecipients([])
+  }, [])
+
   const getCidadeBairroStr = React.useCallback(() => {
-    const obraId = selectedLeads[0]
-    const rec = obraId ? obraRecordMapRef.current.get(obraId) : null
+    const firstRecipientValue = selectedRecipients[0]
+    const selectedRecipient = firstRecipientValue
+      ? recipientOptionMap.get(firstRecipientValue)
+      : null
 
-    const cidadeStr = safeStr(rec?.city) || safeStr(selectedCity?.city) || ""
-    const bairroStr = safeStr(rec?.bairro) || safeStr(selectedNeighborhood?.[0]?.bairro) || ""
+    const cidadeStr =
+      safeStr(selectedRecipient?.cidade) || safeStr(selectedCity?.city) || ""
 
-    return { cidadeStr, bairroStr, rec }
-  }, [selectedLeads, selectedCity, selectedNeighborhood, obraRecordMapRef])
+    const bairroStr =
+      safeStr(selectedRecipient?.bairro) ||
+      safeStr(selectedNeighborhood?.[0]?.bairro) ||
+      ""
+
+    return { cidadeStr, bairroStr, selectedRecipient }
+  }, [selectedRecipients, recipientOptionMap, selectedCity, selectedNeighborhood])
 
   const previewText = React.useMemo(() => {
-    const obraId = selectedLeads[0]
+    const firstRecipientValue = selectedRecipients[0]
+    const selectedRecipient = firstRecipientValue
+      ? recipientOptionMap.get(firstRecipientValue)
+      : null
 
-    if (!obraId) {
+    if (!selectedRecipient) {
       return applyLeadVariables(messageText, {
         nome: "Cliente",
         cidade: "",
@@ -184,20 +450,46 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
       })
     }
 
-    const { cidadeStr, bairroStr, rec } = getCidadeBairroStr()
-    const label = leadsOptionsLocal.find((o) => o.value === obraId)?.label || "Cliente"
-    const nomeStr = safeStr(rec?.owner) || safeStr(rec?.professional) || safeStr(label) || "Cliente"
+    return applyLeadVariables(messageText, {
+      nome: safeStr(selectedRecipient.nomeContato) || "Cliente",
+      cidade: safeStr(selectedRecipient.cidade),
+      bairro: safeStr(selectedRecipient.bairro),
+      nome_contato: safeStr(selectedRecipient.nomeContato) || "Cliente",
+      city: safeStr(selectedRecipient.cidade),
+    })
+  }, [messageText, selectedRecipients, recipientOptionMap])
 
-    const vars: any = {
-      nome: nomeStr,
-      cidade: cidadeStr,
-      bairro: bairroStr,
-      nome_contato: nomeStr,
-      city: cidadeStr,
-    }
+  const recipientItemTemplate = (option: RecipientOption) => {
+    const channels = getRecipientChannelsLabel(option.hasPhone, option.hasEmail)
+    const location = formatLocation(option.bairro, option.cidade, option.uf)
 
-    return applyLeadVariables(messageText, vars)
-  }, [messageText, selectedLeads, leadsOptionsLocal, getCidadeBairroStr])
+    return (
+      <div className="flex flex-column gap-1 py-1">
+        <div className="flex align-items-center gap-2 flex-wrap">
+          <span style={{ fontWeight: 600 }}>{option.nomeContato}</span>
+          <Tag
+            value={getRecipientTypeLabel(option.contatoTipo)}
+            severity={option.contatoTipo === "OWNER" ? "info" : "success"}
+          />
+          <span className="text-secondary" style={{ fontSize: 12 }}>
+            {channels}
+          </span>
+        </div>
+
+        <div className="text-secondary" style={{ fontSize: 12 }}>
+          {location}
+          {option.address ? ` • ${option.address}` : ""}
+        </div>
+      </div>
+    )
+  }
+
+  const selectedRecipientTemplate = (value: string) => {
+    const item = recipientOptionMap.get(value)
+    if (!item) return value
+
+    return `${item.nomeContato} (${item.contatoTipo === "OWNER" ? "Prop." : "Prof."})`
+  }
 
   const footer = (
     <div className="flex flex-column md:flex-row justify-content-end gap-2 w-full">
@@ -209,31 +501,65 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
         disabled={saving}
         className="w-full md:w-auto"
       />
+
       <Button
         label="Criar campanha"
         icon="pi pi-check"
         loading={saving}
         className="w-full md:w-auto"
         onClick={() => {
+          if (!selectedRecipients.length) {
+            notify(
+              "warn",
+              "Selecione os destinatários",
+              "Escolha pelo menos um proprietário ou profissional."
+            )
+            return
+          }
+
+          if (!channelWa && !channelEmail) {
+            notify(
+              "warn",
+              "Selecione um canal",
+              "Marque pelo menos WhatsApp ou E-mail."
+            )
+            return
+          }
+
+          if (channelEmail && !emailSubject.trim()) {
+            notify(
+              "warn",
+              "Assunto obrigatório",
+              "Preencha o assunto do e-mail para continuar."
+            )
+            return
+          }
+
           const { cidadeStr, bairroStr } = getCidadeBairroStr()
 
+          const destinatarios = selectedRecipients
+            .map(parseRecipientValue)
+            .filter(Boolean) as Array<{
+            obra_id: string
+            contato_tipo: RecipientKind
+          }>
+
           createCampaign({
-            selectedLeads,
+            destinatarios,
             channelWa,
             channelEmail,
             iaContinuar,
-            emailSubject,
+            emailSubject: emailSubject.trim(),
             messageText,
             selectedCity,
             cidade: cidadeStr,
             bairro: bairroStr,
             conexaoWhatsAppId,
             conexaoEmailId,
-            obraRecordMapRef,
-            fetchLeadComms,
+            ocultarJaContactados,
             onCreate,
             onClose,
-          } as any)
+          })
         }}
       />
     </div>
@@ -337,28 +663,84 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
         </div>
 
+        <div className="field col-12" style={{ marginTop: "1rem" }}>
+          <div className="flex align-items-center justify-content-between flex-wrap gap-3">
+            <div className="flex align-items-center gap-2">
+              <InputSwitch
+                checked={ocultarJaContactados}
+                onChange={(e) => setOcultarJaContactados(!!e.value)}
+              />
+              <label style={{ margin: 0 }}>Ocultar já contactados</label>
+            </div>
+
+            <div className="text-secondary" style={{ fontSize: 12 }}>
+              Quando ativo, a lista já esconde leads que já receberam contato.
+            </div>
+          </div>
+        </div>
+
         <div className="field col-12">
-          <label style={{ fontWeight: 700 }}>Leads ({leadsOptionsLocal.length} disponíveis)</label>
+          <div className="flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <label style={{ fontWeight: 700, marginBottom: 0 }}>
+              Destinatários ({recipientStats.total} disponíveis)
+            </label>
+
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                type="button"
+                label={`Proprietários (${recipientStats.owners})`}
+                className={
+                  recipientFilter === "OWNER" ? "p-button-sm" : "p-button-sm p-button-outlined"
+                }
+                onClick={() => handleRecipientFilterChange("OWNER")}
+              />
+              <Button
+                type="button"
+                label={`Profissionais (${recipientStats.professionals})`}
+                className={
+                  recipientFilter === "PROFISSIONAL"
+                    ? "p-button-sm"
+                    : "p-button-sm p-button-outlined"
+                }
+                onClick={() => handleRecipientFilterChange("PROFISSIONAL")}
+              />
+              <Button
+                type="button"
+                label="Todos"
+                className={
+                  recipientFilter === "ALL" ? "p-button-sm" : "p-button-sm p-button-outlined"
+                }
+                onClick={() => handleRecipientFilterChange("ALL")}
+              />
+              <Button
+                type="button"
+                label="Limpar"
+                className="p-button-sm p-button-text"
+                onClick={clearRecipients}
+              />
+            </div>
+          </div>
+
           <MultiSelect
-            value={selectedLeads}
-            options={leadsOptionsLocal}
-            onChange={(e) => setSelectedLeads(e.value as string[])}
-            placeholder="Selecione leads para esta campanha"
+            value={selectedRecipients}
+            options={filteredRecipientOptions}
+            onChange={(e) => setSelectedRecipients((e.value || []) as string[])}
+            placeholder={getPlaceholderByFilter(recipientFilter)}
             className="w-full"
             filter
             maxSelectedLabels={3}
-            emptyFilterMessage="Nenhum lead encontrado."
-            itemTemplate={(opt: any) => (
-              <div className="flex align-items-center gap-2 flex-wrap">
-                <span>{opt.label}</span>
-                {existingLeadSet.has(opt.value) ? (
-                  <Tag value="Já é lead" severity="info" style={{ fontSize: 11 }} />
-                ) : null}
-              </div>
-            )}
+            optionLabel="label"
+            optionValue="value"
+            itemTemplate={recipientItemTemplate}
+            selectedItemTemplate={selectedRecipientTemplate}
+            emptyFilterMessage="Nenhum destinatário encontrado."
+            display="chip"
           />
-          <div className="text-secondary" style={{ fontSize: 12, marginTop: 4 }}>
-            {selectedLeads.length} lead(s) selecionado(s) {channelWa ? "• WhatsApp máx. 50" : ""}
+
+          <div className="text-secondary" style={{ fontSize: 12, marginTop: 8 }}>
+            Selecionados: {selectedRecipientStats.total} • Proprietários:{" "}
+            {selectedRecipientStats.owners} • Profissionais:{" "}
+            {selectedRecipientStats.professionals}
           </div>
         </div>
 
@@ -388,9 +770,14 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
         <div className="field col-12 lg:col-6">
           <label style={{ fontWeight: 700 }}>Manter IA após resposta</label>
           <div className="flex align-items-center justify-content-between gap-3 flex-wrap">
-            <InputSwitch checked={iaContinuar} onChange={(e) => setIaContinuar(!!e.value)} />
+            <InputSwitch
+              checked={iaContinuar}
+              onChange={(e) => setIaContinuar(!!e.value)}
+            />
             <div className="text-secondary" style={{ flex: 1, minWidth: 220 }}>
-              {iaContinuar ? "IA continua a conversa após resposta" : "IA não continuará"}
+              {iaContinuar
+                ? "IA continua a conversa após resposta"
+                : "IA não continuará"}
             </div>
           </div>
         </div>
@@ -402,14 +789,20 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
               value={emailSubject}
               onChange={(e) => setEmailSubject(e.currentTarget.value)}
               className="w-full"
+              placeholder="Assunto do e-mail"
             />
           </div>
         ) : null}
 
         <div className="field col-12">
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Mensagem</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+            Mensagem
+          </div>
 
-          <div className="flex align-items-center gap-2 flex-wrap" style={{ marginBottom: 12 }}>
+          <div
+            className="flex align-items-center gap-2 flex-wrap"
+            style={{ marginBottom: 12 }}
+          >
             <span className="text-secondary" style={{ fontSize: 13 }}>
               Variáveis:
             </span>
@@ -426,22 +819,24 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             ))}
 
             <span className="text-secondary" style={{ fontSize: 12 }}>
-              (CLIQUE PARA ENTRAR NO TEXTO)
+              clique para inserir no texto
             </span>
           </div>
 
-          <label style={{ fontWeight: 600, fontSize: 13 }}>Objetivo da campanha (para IA)</label>
+          <label style={{ fontWeight: 600, fontSize: 13 }}>
+            Objetivo da campanha (para IA)
+          </label>
 
           <div className="flex flex-column md:flex-row gap-2">
             <InputText
               value={objetivo}
               onChange={(e) => setObjetivo(e.currentTarget.value)}
-              placeholder="Ex: Vender 20% a mais de cimento este mês para clientes de obras residenciais."
+              placeholder="Ex: Reativar clientes de obras residenciais em andamento."
               className="w-full"
             />
             <Button
-              icon="pi pi-sparkles"
-              label="Gerar com IA"
+              icon="pi pi-bolt"
+              label="Gerar IA"
               onClick={handleGenerate}
               loading={generating}
               type="button"
@@ -449,7 +844,14 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             />
           </div>
 
-          <label style={{ fontWeight: 600, fontSize: 13, marginTop: 12, display: "block" }}>
+          <label
+            style={{
+              fontWeight: 600,
+              fontSize: 13,
+              marginTop: 12,
+              display: "block",
+            }}
+          >
             Texto da Mensagem
           </label>
 
@@ -469,7 +871,10 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
 
           <div style={{ marginTop: 12 }}>
-            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Pré-visualização</div>
+            <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
+              Pré-visualização
+            </div>
+
             <div
               className="p-3 border-round-xl bg-white"
               style={{

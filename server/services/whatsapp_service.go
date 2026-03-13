@@ -96,8 +96,6 @@ func (s *WhatsAppService) GetQR(userToken string) (wuzapi.SessionQRResp, error) 
 	return parsed, err
 }
 
-// ----------- NOVO: por Team -----------
-
 func (s *WhatsAppService) getTokenAndRecordByTeam(teamID string) (token string, wa *models.Record, err error) {
 	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
 	if err != nil || con == nil || con.Id == "" {
@@ -204,16 +202,17 @@ func (s *WhatsAppService) CheckAndUpdateStatus(teamID string) (connected bool, j
 	return true, info.JID, nil
 }
 
-// Disconnect limpa conectado_em e device_jid no banco.
 func (s *WhatsAppService) Disconnect(teamID string) error {
-	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
-	if err != nil || con == nil || con.Id == "" {
-		return g.Error("whatsapp connection not found")
+	token, wa, err := s.getTokenAndRecordByTeam(teamID)
+	if err != nil {
+		return err
 	}
 
-	wa, err := s.waRepo.FindByConexao(con.Id)
-	if err != nil || wa == nil || wa.Id == "" {
-		return g.Error("whatsapp details not found")
+	raw, err := s.wuz.SessionDisconnect(token)
+	if err != nil {
+		g.Warn("wuzapi disconnect failed team=%s err=%v", teamID, err)
+	} else {
+		g.Info("wuzapi disconnect success team=%s response=%v", teamID, raw)
 	}
 
 	return s.waRepo.ClearConnected(wa)

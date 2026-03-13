@@ -118,6 +118,38 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 	return raw, nil
 }
 
+func (c *Client) SessionDisconnect(userToken string) (map[string]any, error) {
+	if userToken == "" {
+		return nil, g.Error("empty user token")
+	}
+
+	url := c.cfg.BaseURL + "session/logout"
+	r, err := http.NewRequest(http.MethodPost, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	r.Header.Set("Accept", "application/json")
+	SetUserToken(r, userToken)
+
+	res, err := c.http.Do(r)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	var raw map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
+		return nil, g.Error("wuzapi returned non-json response (status=%d)", res.StatusCode)
+	}
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return raw, g.Error("wuzapi /session/disconnect failed status=%d raw=%v", res.StatusCode, raw)
+	}
+
+	return raw, nil
+}
+
 // GetAdminUser retorna os dados de um user wuzapi pelo ID (admin auth).
 func (c *Client) GetAdminUser(userID string) (AdminUserInfo, error) {
 	var info AdminUserInfo

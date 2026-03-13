@@ -105,6 +105,7 @@ func main() {
 		e.Router.GET("/campanhas/:id/status", server.StatusCampanha)
 		e.Router.POST("/campanhas/:id/pausar", server.PausarCampanha)
 		e.Router.POST("/campanhas/:id/cancelar", server.CancelarCampanha)
+		e.Router.POST("/campanhas/:id/destinatarios/obras-plus", server.AdicionarDestinatariosObrasPlus)
 		e.Router.POST("/campanhas/:id/enriquecer", server.EnriquecerDestinatarios)
 		e.Router.PATCH("/campanha-destinatarios/marcar-enviado", server.MarcarDestinatariosEnviados)
 		e.Router.POST("/campanhas/gerar-mensagem-ia", server.GerarMensagemCampanhaIA)

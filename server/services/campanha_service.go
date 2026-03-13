@@ -16,12 +16,44 @@ const (
 	maxEnviosPorHora = 5
 	maxEnviosPorDia  = 100
 	delayEntreEnvios = 10 * time.Second
+
+	ContatoTipoOwner        = "OWNER"
+	ContatoTipoProfessional = "PROFISSIONAL"
+
+	maxTelefonesPorContato = 10
+	maxEmailsPorContato    = 10
 )
 
+type CampanhaDestinatarioInput struct {
+	ObraID      string `json:"obra_id"`
+	ContatoTipo string `json:"contato_tipo"` // OWNER | PROFISSIONAL
+}
+
+type ObraContatoCampanha struct {
+	ObraID        string
+	ContatoTipo   string
+	NomeContato   string
+	TelefonesE164 []string
+	Emails        []string
+	Cidade        string
+	Bairro        string
+	UF            string
+	Endereco      string
+}
+
+type obraBase struct {
+	Owner        string
+	Professional string
+	Address      string
+	Bairro       string
+	Cidade       string
+	UF           string
+}
+
 type CampanhaService struct {
-	repo        *repositories.CampanhaRepo
-	waSvc       *WhatsAppService
-	emailSvc    *EmailService
+	repo         *repositories.CampanhaRepo
+	waSvc        *WhatsAppService
+	emailSvc     *EmailService
 	conversaRepo *repositories.ConversaRepo
 }
 
@@ -31,85 +63,294 @@ func NewCampanhaService(
 	emailSvc *EmailService,
 	conversaRepo *repositories.ConversaRepo,
 ) *CampanhaService {
-	return &CampanhaService{repo: repo, waSvc: waSvc, emailSvc: emailSvc, conversaRepo: conversaRepo}
+	return &CampanhaService{
+		repo:         repo,
+		waSvc:        waSvc,
+		emailSvc:     emailSvc,
+		conversaRepo: conversaRepo,
+	}
 }
 
-// IniciarCampanha inicia uma campanha e dispara o processamento em background
-func (s *CampanhaService) IniciarCampanha(teamID, campanhaID string) error {
-	campanha, err := s.repo.FindByID(campanhaID)
-	if err != nil {
-		return g.Error(err, "campanha não encontrada")
+func normalizarContatoTipo(v string) string {
+	val := strings.ToUpper(strings.TrimSpace(v))
+
+	switch val {
+	case "OWNER", "PROPRIETARIO", "PROPRIETÁRIO":
+		return ContatoTipoOwner
+	case "PROFESSIONAL", "PROFISSIONAL":
+		return ContatoTipoProfessional
+	default:
+		return ""
+	}
+}
+
+func uniqueNonEmpty(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, exists := seen[v]; exists {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
 	}
 
-	if campanha.GetString("team_id") != teamID {
-		return g.Error("não autorizado")
+	return out
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func (s *CampanhaService) getCampaignChannels(campanha *models.Record) (usaWhatsApp bool, usaEmail bool) {
+	if campanha == nil {
+		return false, false
 	}
 
-	status := campanha.GetString("status")
-	if status == repositories.CampanhaStatusEmAndamento || status == repositories.CampanhaStatusConcluida {
-		return g.Error("campanha já iniciada ou concluída")
-	}
-
-	// Verifica canais da campanha
 	canais := campanha.GetStringSlice("canal")
 	if len(canais) == 0 {
-		canalStr := campanha.GetString("canal")
+		canalStr := strings.TrimSpace(campanha.GetString("canal"))
 		if canalStr != "" {
 			canais = []string{canalStr}
 		}
 	}
 
-	usaWhatsApp := false
-	usaEmail := false
 	for _, c := range canais {
-		if c == "WHATSAPP" {
+		switch strings.ToUpper(strings.TrimSpace(c)) {
+		case "WHATSAPP":
 			usaWhatsApp = true
-		}
-		if c == "EMAIL" {
+		case "EMAIL":
 			usaEmail = true
 		}
 	}
 
-	// Valida que WhatsApp está conectado
-	if usaWhatsApp {
-		_, _, wa, err := s.waSvc.GetByTeam(teamID)
-		if err != nil || wa == nil {
-			return g.Error("Conexão WhatsApp não encontrada. Configure o WhatsApp em Conexões.")
-		}
-		if wa.GetDateTime("conectado_em").Time().IsZero() {
-			return g.Error("WhatsApp não está conectado. Conecte o WhatsApp antes de iniciar a campanha.")
-		}
-	}
-
-	// Valida que e-mail está configurado
-	if usaEmail && s.emailSvc != nil {
-		exists, _, _, err := s.emailSvc.GetConfig(teamID)
-		if err != nil || !exists {
-			return g.Error("Configuração de e-mail não encontrada. Configure o E-mail em Conexões.")
-		}
-	}
-
-	// Verifica limite diário
-	enviadosHoje, _ := s.repo.CountEnviadosHojeByTeam(teamID)
-	if enviadosHoje >= maxEnviosPorDia {
-		return g.Error("Limite diário de %d mensagens já atingido. Tente novamente amanhã.", maxEnviosPorDia)
-	}
-
-	// Auto-enriquece destinatários com dados de contato do core.db
-	s.EnriquecerDestinatarios(teamID, campanhaID)
-
-	// Atualiza status
-	if err := s.repo.UpdateStatus(campanha, repositories.CampanhaStatusEmAndamento); err != nil {
-		return g.Error(err, "erro ao atualizar status")
-	}
-
-	// Dispara processamento em background
-	go s.ProcessarCampanhaAsync(campanhaID)
-
-	return nil
+	return usaWhatsApp, usaEmail
 }
 
-// ProcessarCampanhaAsync processa os envios de uma campanha em background
+func (s *CampanhaService) getTargetChannelsForDest(
+	dest *models.Record,
+	usaWhatsApp, usaEmail bool,
+) (targetWhatsApp bool, targetEmail bool) {
+	if dest == nil {
+		return usaWhatsApp, usaEmail
+	}
+
+	hasPhone := strings.TrimSpace(dest.GetString("telefone_e164")) != ""
+	hasEmail := strings.TrimSpace(dest.GetString("email")) != ""
+
+	switch {
+	case hasPhone && !hasEmail:
+		return usaWhatsApp, false
+	case hasEmail && !hasPhone:
+		return false, usaEmail
+	default:
+		return usaWhatsApp, usaEmail
+	}
+}
+
+func (s *CampanhaService) jaFoiContactado(teamID, obraID, contatoTipo string) (bool, error) {
+	tipo := normalizarContatoTipo(contatoTipo)
+	if teamID == "" || obraID == "" || tipo == "" {
+		return false, nil
+	}
+
+	return s.repo.ExistsContatoEnviado(teamID, obraID, tipo)
+}
+
+// AdicionarDestinatariosObrasPlus cria destinatários direto da base Obras Plus.
+// Agora também respeita a flag "ocultar já contactados".
+func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
+	teamID, campanhaID string,
+	inputs []CampanhaDestinatarioInput,
+	ocultarJaContactados bool,
+) (int, int, error) {
+	campanha, err := s.repo.FindByID(campanhaID)
+	if err != nil {
+		return 0, 0, g.Error(err, "campanha não encontrada")
+	}
+
+	if campanha.GetString("team_id") != teamID {
+		return 0, 0, g.Error("não autorizado")
+	}
+
+	usaWhatsApp, usaEmail := s.getCampaignChannels(campanha)
+	if !usaWhatsApp && !usaEmail {
+		return 0, 0, g.Error("a campanha não possui canais configurados")
+	}
+
+	criados := 0
+	ignorados := 0
+
+	for _, item := range inputs {
+		obraID := strings.TrimSpace(item.ObraID)
+		contatoTipo := normalizarContatoTipo(item.ContatoTipo)
+
+		if obraID == "" || contatoTipo == "" {
+			ignorados++
+			continue
+		}
+
+		if ocultarJaContactados {
+			jaFoi, err := s.jaFoiContactado(teamID, obraID, contatoTipo)
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao verificar histórico de contato")
+			}
+			if jaFoi {
+				ignorados++
+				continue
+			}
+		}
+
+		contato, err := s.BuscarContatoObraPorTipo(obraID, contatoTipo)
+		if err != nil {
+			g.Warn("erro ao resolver contato da obra %s (%s): %v", obraID, contatoTipo, err)
+			ignorados++
+			continue
+		}
+		if contato == nil {
+			ignorados++
+			continue
+		}
+
+		telefones := make([]string, 0)
+		emails := make([]string, 0)
+
+		if usaWhatsApp {
+			telefones = contato.TelefonesE164
+		}
+		if usaEmail {
+			emails = contato.Emails
+		}
+
+		criadosItem := 0
+
+		for _, telefone := range telefones {
+			existente, err := s.repo.FindDestinatarioByCampanhaContatoValor(
+				campanhaID,
+				contato.ObraID,
+				contato.ContatoTipo,
+				telefone,
+				"",
+			)
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao verificar destinatário existente (telefone)")
+			}
+			if existente != nil {
+				ignorados++
+				continue
+			}
+
+			_, err = s.repo.CreateDestinatario(map[string]any{
+				"team_id":       teamID,
+				"campanha_id":   campanhaID,
+				"obra_id":       contato.ObraID,
+				"contato_tipo":  contato.ContatoTipo,
+				"nome_contato":  contato.NomeContato,
+				"telefone_e164": telefone,
+				"email":         "",
+				"cidade":        contato.Cidade,
+				"bairro":        contato.Bairro,
+				"uf":            contato.UF,
+				"address":       contato.Endereco,
+				"status":        repositories.DestStatusPendente,
+				"erro":          "",
+				"tentativas":    0,
+			})
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao criar destinatário de telefone")
+			}
+
+			criados++
+			criadosItem++
+		}
+
+		for _, email := range emails {
+			existente, err := s.repo.FindDestinatarioByCampanhaContatoValor(
+				campanhaID,
+				contato.ObraID,
+				contato.ContatoTipo,
+				"",
+				email,
+			)
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao verificar destinatário existente (email)")
+			}
+			if existente != nil {
+				ignorados++
+				continue
+			}
+
+			_, err = s.repo.CreateDestinatario(map[string]any{
+				"team_id":       teamID,
+				"campanha_id":   campanhaID,
+				"obra_id":       contato.ObraID,
+				"contato_tipo":  contato.ContatoTipo,
+				"nome_contato":  contato.NomeContato,
+				"telefone_e164": "",
+				"email":         email,
+				"cidade":        contato.Cidade,
+				"bairro":        contato.Bairro,
+				"uf":            contato.UF,
+				"address":       contato.Endereco,
+				"status":        repositories.DestStatusPendente,
+				"erro":          "",
+				"tentativas":    0,
+			})
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao criar destinatário de email")
+			}
+
+			criados++
+			criadosItem++
+		}
+
+		if criadosItem == 0 {
+			semContatoExistente, err := s.repo.FindDestinatarioByCampanhaContatoValor(
+				campanhaID,
+				contato.ObraID,
+				contato.ContatoTipo,
+				"",
+				"",
+			)
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao verificar destinatário ignorado")
+			}
+
+			if semContatoExistente == nil {
+				_, err = s.repo.CreateDestinatario(map[string]any{
+					"team_id":       teamID,
+					"campanha_id":   campanhaID,
+					"obra_id":       contato.ObraID,
+					"contato_tipo":  contato.ContatoTipo,
+					"nome_contato":  contato.NomeContato,
+					"telefone_e164": "",
+					"email":         "",
+					"cidade":        contato.Cidade,
+					"bairro":        contato.Bairro,
+					"uf":            contato.UF,
+					"address":       contato.Endereco,
+					"status":        repositories.DestStatusIgnorado,
+					"erro":          "Sem contato disponível para os canais selecionados",
+					"tentativas":    0,
+				})
+				if err != nil {
+					return criados, ignorados, g.Error(err, "erro ao criar destinatário ignorado")
+				}
+			}
+
+			ignorados++
+		}
+	}
+
+	return criados, ignorados, nil
+}
+
+// ProcessarCampanhaAsync processa os envios de uma campanha em background.
 func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
@@ -125,28 +366,9 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 		assuntoEmail = campanha.GetString("nome")
 	}
 
-	canais := campanha.GetStringSlice("canal")
-	if len(canais) == 0 {
-		canalStr := campanha.GetString("canal")
-		if canalStr != "" {
-			canais = []string{canalStr}
-		} else {
-			canais = []string{"WHATSAPP"}
-		}
-	}
+	usaWhatsApp, usaEmail := s.getCampaignChannels(campanha)
 
-	usaWhatsApp := false
-	usaEmail := false
-	for _, c := range canais {
-		if c == "WHATSAPP" {
-			usaWhatsApp = true
-		}
-		if c == "EMAIL" {
-			usaEmail = true
-		}
-	}
-
-	g.Info("Processando campanha %s para team %s canais %v", campanhaID, teamID, canais)
+	g.Info("Processando campanha %s para team %s (WHATSAPP=%v EMAIL=%v)", campanhaID, teamID, usaWhatsApp, usaEmail)
 
 	destinatarios, err := s.repo.FindDestinatariosPendentes(campanhaID)
 	if err != nil {
@@ -190,90 +412,49 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			enviosNestaHora = 0
 		}
 
-		nomeContato := dest.GetString("nome_contato")
-		telefone := dest.GetString("telefone_e164")
-		email := dest.GetString("email")
+		targetWhatsApp, targetEmail := s.getTargetChannelsForDest(dest, usaWhatsApp, usaEmail)
 
-		cidade := ""
-		bairro := ""
-		uf := ""
+		nomeContato := strings.TrimSpace(dest.GetString("nome_contato"))
+		telefone := strings.TrimSpace(dest.GetString("telefone_e164"))
+		email := strings.TrimSpace(dest.GetString("email"))
+		cidade := strings.TrimSpace(dest.GetString("cidade"))
+		bairro := strings.TrimSpace(dest.GetString("bairro"))
+		uf := strings.TrimSpace(dest.GetString("uf"))
 
-		leadID := dest.GetString("lead_id")
-		leadRecord, _ := s.repo.FindLeadByID(leadID)
-
-		if leadRecord != nil {
-			propsAny := leadRecord.Get("properties")
-			props := cast.ToStringMap(propsAny)
-
-			if nomeContato == "" {
-				nomeContato = cast.ToString(props["nome_contato"])
-				if nomeContato == "" {
-					nomeContato = cast.ToString(props["contato_nome"])
-				}
-			}
-
-			if telefone == "" {
-				telefone = cast.ToString(props["telefone_e164"])
-				if telefone == "" {
-					telefone = cast.ToString(props["contato_telefone"])
-				}
-				if telefone != "" {
-					telefone = s.formatPhone(telefone)
-				}
-			}
-
-			if email == "" {
-				email = cast.ToString(props["email"])
-				if email == "" {
-					email = cast.ToString(props["contato_email"])
-				}
-			}
-
-			cidade = cast.ToString(props["city"])
-			bairro = cast.ToString(props["bairro"])
-			uf = cast.ToString(props["state"])
-
-			if (nomeContato == "" && telefone == "" && email == "") || (cidade == "" && uf == "") {
-				obraID := leadRecord.GetString("obra_id")
-				if contato, err := s.BuscarContatoObra(obraID); err == nil && contato != nil {
-					if nomeContato == "" {
-						nomeContato = contato["nome"]
-					}
-					if telefone == "" {
-						telefone = s.formatPhone(contato["telefone"])
-					}
-					if email == "" {
-						email = contato["email"]
-					}
-					if cidade == "" {
-						cidade = contato["cidade"]
-					}
-					if uf == "" {
-						uf = contato["uf"]
-					}
-				}
-			}
-
-			changed := false
-			if dest.GetString("nome_contato") == "" && nomeContato != "" {
-				dest.Set("nome_contato", nomeContato)
-				changed = true
-			}
-			if dest.GetString("telefone_e164") == "" && telefone != "" {
-				dest.Set("telefone_e164", telefone)
-				changed = true
-			}
-			if dest.GetString("email") == "" && email != "" {
-				dest.Set("email", email)
-				changed = true
-			}
-			if changed {
-				_ = s.repo.SaveDestinatario(dest)
-			}
+		needsEnrichment := nomeContato == "" || cidade == "" || uf == ""
+		if targetWhatsApp && telefone == "" {
+			needsEnrichment = true
+		}
+		if targetEmail && email == "" {
+			needsEnrichment = true
 		}
 
-		if nomeContato == "" && telefone == "" && email == "" {
-			s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusIgnorado, "Sem contato disponível")
+		if needsEnrichment {
+			changed, enrichErr := s.enriquecerDestinatarioComObra(dest, targetWhatsApp, targetEmail)
+			if enrichErr != nil {
+				g.Warn("erro ao enriquecer destinatário %s: %v", dest.Id, enrichErr)
+			} else if changed {
+				if err := s.repo.SaveDestinatario(dest); err != nil {
+					g.Warn("erro ao salvar destinatário enriquecido %s: %v", dest.Id, err)
+				}
+			}
+
+			nomeContato = strings.TrimSpace(dest.GetString("nome_contato"))
+			telefone = strings.TrimSpace(dest.GetString("telefone_e164"))
+			email = strings.TrimSpace(dest.GetString("email"))
+			cidade = strings.TrimSpace(dest.GetString("cidade"))
+			bairro = strings.TrimSpace(dest.GetString("bairro"))
+			uf = strings.TrimSpace(dest.GetString("uf"))
+		}
+
+		if nomeContato == "" {
+			nomeContato = "Cliente"
+		}
+
+		if (!targetWhatsApp || telefone != "") && (!targetEmail || email != "") {
+			// ok
+		} else {
+			s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusIgnorado, "Sem contato para os canais selecionados")
 			falhas++
 			continue
 		}
@@ -288,7 +469,7 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 		var sendErr error
 		enviouAlgum := false
 
-		if usaWhatsApp && telefone != "" {
+		if targetWhatsApp && telefone != "" {
 			sendErr = s.enviarWhatsApp(teamID, telefone, mensagem)
 			if sendErr == nil {
 				enviouAlgum = true
@@ -298,12 +479,12 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 					existente, _ := s.conversaRepo.FindByTelefone(teamID, telefone)
 					if existente == nil {
 						_, cErr := s.conversaRepo.Create(map[string]interface{}{
-							"team_id":           teamID,
-							"campanha_id":       campanhaID,
-							"telefone":          telefone,
-							"nome_contato":      nomeContato,
-							"mensagens":         []map[string]interface{}{{"role": "assistant", "content": mensagem, "timestamp": time.Now().UTC().Format(time.RFC3339)}},
-							"status":            "ATIVA",
+							"team_id":            teamID,
+							"campanha_id":        campanhaID,
+							"telefone":           telefone,
+							"nome_contato":       nomeContato,
+							"mensagens":          []map[string]interface{}{{"role": "assistant", "content": mensagem, "timestamp": time.Now().UTC().Format(time.RFC3339)}},
+							"status":             "ATIVA",
 							"ultima_mensagem_em": time.Now().UTC(),
 						})
 						if cErr != nil {
@@ -316,7 +497,7 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			}
 		}
 
-		if usaEmail && email != "" {
+		if targetEmail && email != "" {
 			emailErr := s.enviarEmail(teamID, email, assuntoEmail, mensagem)
 			if emailErr == nil {
 				enviouAlgum = true
@@ -342,7 +523,19 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 		s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusEnviado, "")
 		enviados++
 		enviosNestaHora++
-		g.Info("Enviado %d/%d lead=%s cidade=%s bairro=%s uf=%s", enviados, len(destinatarios), dest.GetString("lead_id"), cidade, bairro, uf)
+
+		g.Info(
+			"Enviado %d/%d obra=%s tipo=%s cidade=%s bairro=%s uf=%s telefone=%s email=%s",
+			enviados,
+			len(destinatarios),
+			dest.GetString("obra_id"),
+			dest.GetString("contato_tipo"),
+			cidade,
+			bairro,
+			uf,
+			telefone,
+			email,
+		)
 
 		time.Sleep(delayEntreEnvios)
 	}
@@ -354,22 +547,120 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 	g.Info("Campanha %s finalizada: %d enviados, %d falhas", campanhaID, enviados, falhas)
 }
 
-// BuscarContatoObra busca o contato (telefone/email) de uma obra pelo ID
-// Usa a mesma estratégia do Obras Plus: busca owner/professional da obra,
-// depois busca telefone e email separadamente nas tabelas específicas
+// restante do arquivo continua igual...
+func (s *CampanhaService) BuscarContatoObraPorTipo(obraID, contatoTipo string) (*ObraContatoCampanha, error) {
+	tipo := normalizarContatoTipo(contatoTipo)
+	if tipo == "" {
+		return nil, g.Error("contato_tipo inválido")
+	}
+
+	obra, err := s.buscarObraBase(obraID)
+	if err != nil {
+		return nil, err
+	}
+	if obra == nil {
+		return nil, nil
+	}
+
+	nome := ""
+	switch tipo {
+	case ContatoTipoOwner:
+		nome = strings.TrimSpace(obra.Owner)
+	case ContatoTipoProfessional:
+		nome = strings.TrimSpace(obra.Professional)
+	}
+
+	if nome == "" {
+		return nil, nil
+	}
+
+	telefones := s.buscarTelefones(nome, obra.Cidade, obra.UF)
+	emails := s.buscarEmails(nome, obra.Cidade, obra.UF)
+
+	return &ObraContatoCampanha{
+		ObraID:        obraID,
+		ContatoTipo:   tipo,
+		NomeContato:   nome,
+		TelefonesE164: telefones,
+		Emails:        emails,
+		Cidade:        obra.Cidade,
+		Bairro:        obra.Bairro,
+		UF:            obra.UF,
+		Endereco:      obra.Address,
+	}, nil
+}
+
 func (s *CampanhaService) BuscarContatoObra(obraID string) (map[string]string, error) {
-	// 1. Busca dados da obra (owner, professional, cidade, uf)
+	obra, err := s.buscarObraBase(obraID)
+	if err != nil {
+		return nil, err
+	}
+	if obra == nil {
+		return nil, nil
+	}
+
+	if obra.Owner == "" && obra.Professional == "" {
+		return nil, nil
+	}
+
+	nome := strings.TrimSpace(obra.Owner)
+	contatoTipo := ContatoTipoOwner
+
+	telefones := make([]string, 0)
+	emails := make([]string, 0)
+
+	if nome != "" {
+		telefones = s.buscarTelefones(nome, obra.Cidade, obra.UF)
+		emails = s.buscarEmails(nome, obra.Cidade, obra.UF)
+	}
+
+	if len(telefones) == 0 && len(emails) == 0 && strings.TrimSpace(obra.Professional) != "" {
+		nome = strings.TrimSpace(obra.Professional)
+		contatoTipo = ContatoTipoProfessional
+		telefones = s.buscarTelefones(nome, obra.Cidade, obra.UF)
+		emails = s.buscarEmails(nome, obra.Cidade, obra.UF)
+	}
+
+	if len(telefones) == 0 && len(emails) == 0 {
+		return nil, nil
+	}
+
+	telefone := ""
+	email := ""
+
+	if len(telefones) > 0 {
+		telefone = telefones[0]
+	}
+	if len(emails) > 0 {
+		email = emails[0]
+	}
+
+	return map[string]string{
+		"nome":         nome,
+		"telefone":     telefone,
+		"email":        email,
+		"cidade":       obra.Cidade,
+		"bairro":       obra.Bairro,
+		"uf":           obra.UF,
+		"address":      obra.Address,
+		"contato_tipo": contatoTipo,
+	}, nil
+}
+
+func (s *CampanhaService) buscarObraBase(obraID string) (*obraBase, error) {
 	sqlObra := `
-		SELECT 
-			owner, 
+		SELECT
+			owner,
 			professional,
+			address,
+			bairro,
 			city,
 			state
 		FROM core.core_obras_plus
 		WHERE id = {:obraID}
 		LIMIT 1
 	`
-	
+
 	boundSQL := store.BindSQL(sqlObra, map[string]any{"obraID": obraID})
 	dataObra, err := store.MainDB.Query(boundSQL)
 	if err != nil {
@@ -382,141 +673,17 @@ func (s *CampanhaService) BuscarContatoObra(obraID string) (map[string]string, e
 	}
 
 	obra := recsObra[0]
-	owner := cast.ToString(obra["owner"])
-	professional := cast.ToString(obra["professional"])
-	cidade := cast.ToString(obra["city"])
-	uf := cast.ToString(obra["state"])
 
-	if owner == "" && professional == "" {
-		return nil, nil
-	}
-
-	// 2. Busca telefone do owner primeiro, depois professional
-	telefone := ""
-	nome := owner
-	if owner != "" {
-		telefone = s.buscarTelefone(owner, cidade, uf)
-	}
-	if telefone == "" && professional != "" {
-		telefone = s.buscarTelefone(professional, cidade, uf)
-		if telefone != "" {
-			nome = professional
-		}
-	}
-
-	// 3. Busca email do owner primeiro, depois professional
-	email := ""
-	if owner != "" {
-		email = s.buscarEmail(owner, cidade, uf)
-	}
-	if email == "" && professional != "" {
-		email = s.buscarEmail(professional, cidade, uf)
-	}
-
-	// Se não encontrou nenhum contato, retorna nil
-	if telefone == "" && email == "" {
-		return nil, nil
-	}
-
-	return map[string]string{
-		"nome":     nome,
-		"telefone": telefone,
-		"email":    email,
-		"cidade":   cidade,
-		"uf":       uf,
+	return &obraBase{
+		Owner:        cast.ToString(obra["owner"]),
+		Professional: cast.ToString(obra["professional"]),
+		Address:      cast.ToString(obra["address"]),
+		Bairro:       cast.ToString(obra["bairro"]),
+		Cidade:       cast.ToString(obra["city"]),
+		UF:           cast.ToString(obra["state"]),
 	}, nil
 }
 
-// buscarTelefone busca telefone de uma pessoa na tabela core_obras_plus_phone
-func (s *CampanhaService) buscarTelefone(nome, cidade, uf string) string {
-	sql := `
-		WITH prep AS (
-			SELECT
-				telefone,
-				cidade,
-				uf,
-				row_number() OVER(PARTITION BY telefone ORDER BY COALESCE(poder_aquisitivo, 1) DESC) as row_num
-			FROM core.core_obras_plus_phone
-			WHERE nome = {:nome}
-		)
-		SELECT telefone
-		FROM prep
-		WHERE row_num = 1
-		ORDER BY
-			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
-			telefone DESC
-		LIMIT 1
-	`
-	
-	boundSQL := store.BindSQL(sql, map[string]any{
-		"nome":   nome,
-		"cidade": cidade,
-		"uf":     uf,
-	})
-	
-	data, err := store.MainDB.Query(boundSQL)
-	if err != nil {
-		return ""
-	}
-	
-	recs := data.RecordsCasted(true)
-	if len(recs) == 0 {
-		return ""
-	}
-	
-	return cast.ToString(recs[0]["telefone"])
-}
-
-// buscarEmail busca email de uma pessoa na tabela core_obras_plus_email
-func (s *CampanhaService) buscarEmail(nome, cidade, uf string) string {
-	sql := `
-		WITH prep AS (
-			SELECT
-				email,
-				cidade,
-				uf,
-				poder_aquisitivo,
-				row_number() OVER(PARTITION BY email ORDER BY COALESCE(poder_aquisitivo, 1) DESC) as row_num
-			FROM core.core_obras_plus_email
-			WHERE nome = {:nome}
-		)
-		SELECT email
-		FROM prep
-		WHERE row_num = 1
-		ORDER BY
-			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
-			poder_aquisitivo DESC
-		LIMIT 1
-	`
-	
-	boundSQL := store.BindSQL(sql, map[string]any{
-		"nome":   nome,
-		"cidade": cidade,
-		"uf":     uf,
-	})
-	
-	g.Debug("Query email para nome=%s: %s", nome, boundSQL)
-	
-	data, err := store.MainDB.Query(boundSQL)
-	if err != nil {
-		g.Warn("Erro ao buscar email para %s: %v", nome, err)
-		return ""
-	}
-	
-	recs := data.RecordsCasted(true)
-	g.Debug("Email query retornou %d registros para nome=%s", len(recs), nome)
-	
-	if len(recs) == 0 {
-		return ""
-	}
-	
-	email := cast.ToString(recs[0]["email"])
-	g.Info("Email encontrado para %s: %s", nome, email)
-	return email
-}
-
-// EnriquecerDestinatarios preenche nome_contato, telefone_e164 e email
-// de todos os destinatários pendentes de uma campanha usando dados do core.db
 func (s *CampanhaService) EnriquecerDestinatarios(teamID, campanhaID string) (int, int, error) {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
@@ -527,6 +694,8 @@ func (s *CampanhaService) EnriquecerDestinatarios(teamID, campanhaID string) (in
 		return 0, 0, g.Error("não autorizado")
 	}
 
+	usaWhatsApp, usaEmail := s.getCampaignChannels(campanha)
+
 	destinatarios, err := s.repo.FindDestinatariosPendentes(campanhaID)
 	if err != nil {
 		return 0, 0, g.Error(err, "erro ao buscar destinatários")
@@ -536,101 +705,248 @@ func (s *CampanhaService) EnriquecerDestinatarios(teamID, campanhaID string) (in
 	semContato := 0
 
 	for _, dest := range destinatarios {
-		leadID := dest.GetString("lead_id")
-		leadRecord, err := s.repo.FindLeadByID(leadID)
-		if err != nil || leadRecord == nil {
-			semContato++
-			continue
-		}
+		targetWhatsApp, targetEmail := s.getTargetChannelsForDest(dest, usaWhatsApp, usaEmail)
 
 		nome := strings.TrimSpace(dest.GetString("nome_contato"))
 		telefone := strings.TrimSpace(dest.GetString("telefone_e164"))
 		email := strings.TrimSpace(dest.GetString("email"))
+		cidade := strings.TrimSpace(dest.GetString("cidade"))
+		uf := strings.TrimSpace(dest.GetString("uf"))
 
-		propsAny := leadRecord.Get("properties")
-		props := cast.ToStringMap(propsAny)
-
-		if nome == "" {
-			nome = cast.ToString(props["nome_contato"])
-			if nome == "" {
-				nome = cast.ToString(props["contato_nome"])
-			}
+		needsEnrichment := nome == "" || cidade == "" || uf == ""
+		if targetWhatsApp && telefone == "" {
+			needsEnrichment = true
+		}
+		if targetEmail && email == "" {
+			needsEnrichment = true
 		}
 
-		if telefone == "" {
-			telefone = cast.ToString(props["telefone_e164"])
-			if telefone == "" {
-				telefone = cast.ToString(props["contato_telefone"])
-			}
-			if telefone != "" {
-				telefone = s.formatPhone(telefone)
-			}
-		}
-
-		if email == "" {
-			email = cast.ToString(props["email"])
-			if email == "" {
-				email = cast.ToString(props["contato_email"])
-			}
-		}
-
-		if nome == "" && telefone == "" && email == "" {
-			obraID := leadRecord.GetString("obra_id")
-			contato, err := s.BuscarContatoObra(obraID)
-			if err != nil || contato == nil {
-				semContato++
-				continue
-			}
-
-			nome = strings.TrimSpace(contato["nome"])
-			telefone = strings.TrimSpace(contato["telefone"])
-			email = strings.TrimSpace(contato["email"])
-
-			if telefone != "" {
-				telefone = s.formatPhone(telefone)
-			}
-		}
-
-		if nome == "" && telefone == "" && email == "" {
-			semContato++
-			continue
-		}
-
-		changed := false
-
-		if strings.TrimSpace(dest.GetString("nome_contato")) == "" && nome != "" {
-			dest.Set("nome_contato", nome)
-			changed = true
-		}
-
-		if strings.TrimSpace(dest.GetString("telefone_e164")) == "" && telefone != "" {
-			dest.Set("telefone_e164", telefone)
-			changed = true
-		}
-
-		if strings.TrimSpace(dest.GetString("email")) == "" && email != "" {
-			dest.Set("email", email)
-			changed = true
-		}
-
-		if !changed {
+		if !needsEnrichment {
 			enriquecidos++
 			continue
 		}
 
-		if err := s.repo.SaveDestinatario(dest); err != nil {
-			g.Error(err, "erro ao salvar destinatário %s", dest.Id)
+		changed, err := s.enriquecerDestinatarioComObra(dest, targetWhatsApp, targetEmail)
+		if err != nil {
+			semContato++
 			continue
 		}
 
-		enriquecidos++
+		if changed {
+			if err := s.repo.SaveDestinatario(dest); err != nil {
+				g.Error(err, "erro ao salvar destinatário %s", dest.Id)
+				continue
+			}
+		}
+
+		telefone = strings.TrimSpace(dest.GetString("telefone_e164"))
+		email = strings.TrimSpace(dest.GetString("email"))
+
+		if (!targetWhatsApp || telefone != "") && (!targetEmail || email != "") {
+			enriquecidos++
+		} else {
+			semContato++
+		}
 	}
 
 	g.Info("Enriquecimento campanha %s: %d enriquecidos, %d sem contato", campanhaID, enriquecidos, semContato)
 	return enriquecidos, semContato, nil
 }
 
-// PersonalizarMensagem substitui os placeholders na mensagem
+func (s *CampanhaService) enriquecerDestinatarioComObra(
+	dest *models.Record,
+	fillPhone bool,
+	fillEmail bool,
+) (bool, error) {
+	if dest == nil {
+		return false, nil
+	}
+
+	obraID := strings.TrimSpace(dest.GetString("obra_id"))
+	if obraID == "" {
+		return false, nil
+	}
+
+	contatoTipo := normalizarContatoTipo(dest.GetString("contato_tipo"))
+
+	var contato *ObraContatoCampanha
+	var err error
+
+	if contatoTipo != "" {
+		contato, err = s.BuscarContatoObraPorTipo(obraID, contatoTipo)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		m, err := s.BuscarContatoObra(obraID)
+		if err != nil {
+			return false, err
+		}
+		if m != nil {
+			telefones := make([]string, 0, 1)
+			emails := make([]string, 0, 1)
+
+			if m["telefone"] != "" {
+				telefones = append(telefones, m["telefone"])
+			}
+			if m["email"] != "" {
+				emails = append(emails, m["email"])
+			}
+
+			contato = &ObraContatoCampanha{
+				ObraID:        obraID,
+				ContatoTipo:   m["contato_tipo"],
+				NomeContato:   m["nome"],
+				TelefonesE164: telefones,
+				Emails:        emails,
+				Cidade:        m["cidade"],
+				Bairro:        m["bairro"],
+				UF:            m["uf"],
+				Endereco:      m["address"],
+			}
+		}
+	}
+
+	if contato == nil {
+		return false, nil
+	}
+
+	changed := false
+
+	if dest.GetString("contato_tipo") == "" && contato.ContatoTipo != "" {
+		dest.Set("contato_tipo", contato.ContatoTipo)
+		changed = true
+	}
+	if dest.GetString("nome_contato") == "" && contato.NomeContato != "" {
+		dest.Set("nome_contato", contato.NomeContato)
+		changed = true
+	}
+	if fillPhone && dest.GetString("telefone_e164") == "" && len(contato.TelefonesE164) > 0 {
+		dest.Set("telefone_e164", contato.TelefonesE164[0])
+		changed = true
+	}
+	if fillEmail && dest.GetString("email") == "" && len(contato.Emails) > 0 {
+		dest.Set("email", contato.Emails[0])
+		changed = true
+	}
+	if dest.GetString("cidade") == "" && contato.Cidade != "" {
+		dest.Set("cidade", contato.Cidade)
+		changed = true
+	}
+	if dest.GetString("bairro") == "" && contato.Bairro != "" {
+		dest.Set("bairro", contato.Bairro)
+		changed = true
+	}
+	if dest.GetString("uf") == "" && contato.UF != "" {
+		dest.Set("uf", contato.UF)
+		changed = true
+	}
+	if dest.GetString("address") == "" && contato.Endereco != "" {
+		dest.Set("address", contato.Endereco)
+		changed = true
+	}
+
+	return changed, nil
+}
+
+func (s *CampanhaService) buscarTelefones(nome, cidade, uf string) []string {
+	sql := `
+		WITH prep AS (
+			SELECT
+				telefone,
+				cidade,
+				uf,
+				row_number() OVER(PARTITION BY telefone ORDER BY COALESCE(poder_aquisitivo, 1) DESC) AS row_num
+			FROM core.core_obras_plus_phone
+			WHERE nome = {:nome}
+		)
+		SELECT telefone
+		FROM prep
+		WHERE row_num = 1
+		ORDER BY
+			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
+			telefone DESC
+		LIMIT {:limite}
+	`
+
+	boundSQL := store.BindSQL(sql, map[string]any{
+		"nome":   nome,
+		"cidade": cidade,
+		"uf":     uf,
+		"limite": maxTelefonesPorContato,
+	})
+
+	data, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		return []string{}
+	}
+
+	recs := data.RecordsCasted(true)
+	if len(recs) == 0 {
+		return []string{}
+	}
+
+	telefones := make([]string, 0, len(recs))
+	for _, rec := range recs {
+		telefone := s.formatPhone(cast.ToString(rec["telefone"]))
+		if telefone != "" {
+			telefones = append(telefones, telefone)
+		}
+	}
+
+	return uniqueNonEmpty(telefones)
+}
+
+func (s *CampanhaService) buscarEmails(nome, cidade, uf string) []string {
+	sql := `
+		WITH prep AS (
+			SELECT
+				email,
+				cidade,
+				uf,
+				poder_aquisitivo,
+				row_number() OVER(PARTITION BY email ORDER BY COALESCE(poder_aquisitivo, 1) DESC) AS row_num
+			FROM core.core_obras_plus_email
+			WHERE nome = {:nome}
+		)
+		SELECT email
+		FROM prep
+		WHERE row_num = 1
+		ORDER BY
+			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
+			poder_aquisitivo DESC
+		LIMIT {:limite}
+	`
+
+	boundSQL := store.BindSQL(sql, map[string]any{
+		"nome":   nome,
+		"cidade": cidade,
+		"uf":     uf,
+		"limite": maxEmailsPorContato,
+	})
+
+	data, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		g.Warn("Erro ao buscar emails para %s: %v", nome, err)
+		return []string{}
+	}
+
+	recs := data.RecordsCasted(true)
+	if len(recs) == 0 {
+		return []string{}
+	}
+
+	emails := make([]string, 0, len(recs))
+	for _, rec := range recs {
+		email := normalizeEmail(cast.ToString(rec["email"]))
+		if email != "" {
+			emails = append(emails, email)
+		}
+	}
+
+	return uniqueNonEmpty(emails)
+}
+
 func (s *CampanhaService) PersonalizarMensagem(template string, contato map[string]string) string {
 	nome := contato["nome"]
 	if nome == "" {
@@ -663,11 +979,11 @@ func (s *CampanhaService) PersonalizarMensagem(template string, contato map[stri
 	replace("SAUDACAO", saudacao)
 	replace("CIDADE", contato["cidade"])
 	replace("BAIRRO", contato["bairro"])
+	replace("UF", contato["uf"])
 
 	return msg
 }
 
-// PausarCampanha pausa uma campanha em andamento
 func (s *CampanhaService) PausarCampanha(teamID, campanhaID string) error {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
@@ -685,7 +1001,6 @@ func (s *CampanhaService) PausarCampanha(teamID, campanhaID string) error {
 	return s.repo.UpdateStatus(campanha, repositories.CampanhaStatusPausada)
 }
 
-// CancelarCampanha cancela uma campanha
 func (s *CampanhaService) CancelarCampanha(teamID, campanhaID string) error {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
@@ -699,7 +1014,6 @@ func (s *CampanhaService) CancelarCampanha(teamID, campanhaID string) error {
 	return s.repo.UpdateStatus(campanha, repositories.CampanhaStatusCancelada)
 }
 
-// GetStatus retorna o status detalhado de uma campanha
 func (s *CampanhaService) GetStatus(teamID, campanhaID string) (*models.Record, map[string]any, error) {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
@@ -714,13 +1028,12 @@ func (s *CampanhaService) GetStatus(teamID, campanhaID string) (*models.Record, 
 	if err != nil {
 		return campanha, nil, err
 	}
-	
+
 	stats := make(map[string]any)
 	for k, v := range destStats {
 		stats[k] = v
 	}
 
-	// Adiciona estatísticas de respostas
 	respostas, err := s.repo.CountRespostas(campanhaID)
 	if err != nil {
 		g.Warn("Erro ao contar respostas para campanha %s: %v", campanhaID, err)
@@ -739,7 +1052,6 @@ func (s *CampanhaService) GetStatus(teamID, campanhaID string) (*models.Record, 
 	return campanha, stats, nil
 }
 
-// formatPhone formata telefone para E164
 func (s *CampanhaService) formatPhone(phone string) string {
 	result := ""
 	for _, c := range phone {
@@ -747,22 +1059,18 @@ func (s *CampanhaService) formatPhone(phone string) string {
 			result += string(c)
 		}
 	}
-	// Adiciona código do país se não tiver
 	if len(result) == 10 || len(result) == 11 {
 		result = "55" + result
 	}
 	return result
 }
 
-// enviarWhatsApp envia mensagem via WhatsApp
 func (s *CampanhaService) enviarWhatsApp(teamID, telefone, mensagem string) error {
 	phone := s.formatPhone(telefone)
 	_, err := s.waSvc.SendTestMessage(teamID, phone, mensagem)
 	return err
 }
 
-// waitWithCancelCheck aguarda uma duração, verificando pause/cancel a cada 30s.
-// Retorna true se a campanha foi pausada/cancelada durante a espera.
 func (s *CampanhaService) waitWithCancelCheck(campanhaID string, duration time.Duration) bool {
 	remaining := duration
 	for remaining > 0 {
@@ -784,7 +1092,6 @@ func (s *CampanhaService) waitWithCancelCheck(campanhaID string, duration time.D
 	return false
 }
 
-// enviarEmail envia mensagem via Email usando o serviço de email configurado
 func (s *CampanhaService) enviarEmail(teamID, email, assunto, mensagem string) error {
 	if s.emailSvc == nil {
 		return g.Error("serviço de email não configurado")
@@ -792,7 +1099,6 @@ func (s *CampanhaService) enviarEmail(teamID, email, assunto, mensagem string) e
 	return s.emailSvc.SendTestEmail(teamID, email, assunto, mensagem)
 }
 
-// GetDashboardStats retorna estatísticas agregadas para o dashboard
 func (s *CampanhaService) GetDashboardStats(teamID string) (map[string]any, error) {
 	stats, err := s.repo.GetDashboardStats(teamID)
 	if err != nil {
@@ -801,7 +1107,7 @@ func (s *CampanhaService) GetDashboardStats(teamID string) (map[string]any, erro
 
 	enviadas, _ := stats["enviadas"].(int)
 	respostas, _ := stats["respostas"].(int)
-	
+
 	taxa := 0.0
 	if enviadas > 0 {
 		taxa = float64(respostas) / float64(enviadas)

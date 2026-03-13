@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useStore } from "@nanostores/react";
 import { user } from "../../../store/store";
-import { PB } from "../../../store/api";
+import { baseURL, PB } from "../../../store/api";
 
 interface EmailConfig {
   nome: string;
@@ -55,7 +55,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
     setLoading(true);
     try {
       const token = currentUser.token;
-      const response = await fetch("https://api.suaobra.com.br/conexoes/email", {
+      const response = await fetch(`${baseURL()}/conexoes/email`, {
         headers: {
           Authorization: token,
         },
@@ -90,7 +90,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
       setSaving(true);
       try {
         const token = currentUser.token;
-        const response = await fetch("https://api.suaobra.com.br/conexoes/email", {
+        const response = await fetch(`${baseURL()}/conexoes/email`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -132,7 +132,7 @@ export function useEmailConnection(): UseEmailConnectionReturn {
       setSending(true);
       try {
         const token = currentUser.token;
-        const response = await fetch("https://api.suaobra.com.br/conexoes/email/send-test", {
+        const response = await fetch(`${baseURL()}/conexoes/email/send-test`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

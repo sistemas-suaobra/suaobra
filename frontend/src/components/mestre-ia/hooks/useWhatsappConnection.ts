@@ -32,13 +32,19 @@ type WhatsMeowConnectResp = {
   raw?: any;
 };
 
+type WhatsMeowStatusResp = {
+  connected?: boolean;
+  jid?: string;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function useWhatsappConnection(notify: NotifyFn) {
   const [waConnected, setWaConnected] = React.useState(false);
   const [waSessionOk, setWaSessionOk] = React.useState(false);
-  /** JID do dispositivo (ex: 5511999998888@s.whatsapp.net) — preenchido pelo webhook Connected */
   const [waJid, setWaJid] = React.useState<string>("");
-  /** ID do registro conexoes_whatsapp no PocketBase — necessário para o realtime */
-  const [waRecordId, setWaRecordId] = React.useState<string>("");
 
   const [waDialogVisible, setWaDialogVisible] = React.useState(false);
 
@@ -49,11 +55,22 @@ export function useWhatsappConnection(notify: NotifyFn) {
   const [waQr, setWaQr] = React.useState<string>("");
   const [waQrError, setWaQrError] = React.useState<string>("");
 
+  const fetchQrOnce = React.useCallback(async (): Promise<string> => {
+    const url = `${baseURL()}/conexoes/whatsapp/qr`;
+    const { data } = await requestWithLog<WhatsMeowQrResp>({
+      label: "Obter QRCode WhatsApp",
+      method: "GET",
+      url,
+    });
+
+    return normalizeQr(data?.data?.QRCode);
+  }, []);
+
   const criarConexaoWhatsApp = React.useCallback(async () => {
     try {
       setWaCreating(true);
 
-      const url = `https://api.suaobra.com.br/conexoes/whatsapp`;
+      const url = `${baseURL()}/conexoes/whatsapp`;
       const { data } = await requestWithLog<ConexaoWhatsappResponse>({
         label: "Criar Conexão WhatsApp",
         method: "POST",
@@ -63,17 +80,14 @@ export function useWhatsappConnection(notify: NotifyFn) {
 
       setWaConnected(true);
       setWaSessionOk(false);
-
-      if (data?.whatsapp?.id) {
-        setWaRecordId(data.whatsapp.id);
-      }
+      setWaJid("");
 
       notify(
         "success",
         "WhatsApp",
         data?.alreadyExists
-          ? "Instância já existia. Reutilizando."
-          : "Instância criada. Agora clique em 'Conectar Sessão'."
+          ? "Instância já existia. Agora clique em 'Ver QR Code'."
+          : "Instância criada. Agora clique em 'Ver QR Code'."
       );
 
       console.log("conexao_whatsapp (parsed):", data);
@@ -85,51 +99,20 @@ export function useWhatsappConnection(notify: NotifyFn) {
     }
   }, [notify]);
 
-  const conectarSessaoWhatsApp = React.useCallback(async () => {
-    try {
-      setWaSessionLoading(true);
-
-      const url = `${baseURL()}/conexoes/whatsapp/connect`;
-      const { data } = await requestWithLog<WhatsMeowConnectResp>({
-        label: "Conectar Sessão WhatsApp",
-        method: "POST",
-        url,
-        body: {},
-      });
-
-      setWaSessionOk(true);
-      notify("success", "WhatsApp", "Sessão conectando. Agora clique em 'Ver QR Code'.");
-      console.log("whatsapp_connect_raw (parsed):", data?.raw);
-    } catch (e: any) {
-      console.error(e);
-      setWaSessionOk(false);
-      notify("error", "WhatsApp", e?.message || "Falha ao conectar sessão.");
-    } finally {
-      setWaSessionLoading(false);
-    }
-  }, [notify]);
-
   const carregarQRCode = React.useCallback(async () => {
     setWaQrLoading(true);
     setWaQr("");
     setWaQrError("");
 
     try {
-      const url = `${baseURL()}/conexoes/whatsapp/qr`;
-      const { data } = await requestWithLog<WhatsMeowQrResp>({
-        label: "Obter QRCode WhatsApp",
-        method: "GET",
-        url,
-      });
-
-      const qr = normalizeQr(data?.data?.QRCode);
+      const qr = await fetchQrOnce();
 
       if (!qr) {
         setWaQr("");
         setWaQrError(
-          "QR vazio. Se já estiver logado, é normal. Se não, clique em 'Conectar Sessão' e tente novamente."
+          "QR vazio no momento. Clique em 'Atualizar QR' para tentar novamente."
         );
-        notify("warn", "WhatsApp", "QR Code vazio.");
+        notify("warn", "WhatsApp", "QR Code ainda não está disponível.");
         return;
       }
 
@@ -142,48 +125,111 @@ export function useWhatsappConnection(notify: NotifyFn) {
     } finally {
       setWaQrLoading(false);
     }
-  }, [notify]);
+  }, [fetchQrOnce, notify]);
 
   const abrirECarregarQRCode = React.useCallback(async () => {
-    setWaDialogVisible(true);
-    await carregarQRCode();
-  }, [carregarQRCode]);
-
-  const disconnectWhatsApp = React.useCallback(async () => {
-    try {
-      const url = `${baseURL()}/conexoes/whatsapp/disconnect`;
-      await requestWithLog({ label: "Disconnect WhatsApp", method: "POST", url, body: {} });
-    } catch (e) {
-      console.error("disconnect error:", e);
+    if (!waConnected) {
+      notify("warn", "WhatsApp", "Crie a instância antes de gerar o QR Code.");
+      return;
     }
-    setWaConnected(false);
-    setWaSessionOk(false);
-    setWaJid("");
-    notify("info", "WhatsApp", "Desconectado.");
-  }, [notify]);
 
-  const sendTestMessage = React.useCallback(async (phone: string, body: string): Promise<void> => {
+    setWaDialogVisible(true);
+    setWaSessionLoading(true);
+    setWaQrLoading(true);
+    setWaQr("");
+    setWaQrError("");
+
     try {
-      const url = `${baseURL()}/conexoes/whatsapp/send-test`;
-      const { data } = await requestWithLog<{ success?: boolean; error?: string; data?: any }>({
-        label: "Enviar Mensagem Teste",
+      const connectUrl = `${baseURL()}/conexoes/whatsapp/connect`;
+      const { data } = await requestWithLog<WhatsMeowConnectResp>({
+        label: "Conectar Sessão WhatsApp",
         method: "POST",
-        url,
-        body: { phone, body },
+        url: connectUrl,
+        body: {},
       });
 
-      if (data?.success) {
-        notify("success", "WhatsApp", "Mensagem enviada com sucesso!");
-      } else {
-        notify("error", "WhatsApp", data?.error || "Falha ao enviar mensagem.");
+      console.log("whatsapp_connect_raw (parsed):", data?.raw);
+
+      let qr = "";
+      const maxAttempts = 5;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          qr = await fetchQrOnce();
+          if (qr) break;
+        } catch (err) {
+          if (attempt === maxAttempts) throw err;
+        }
+
+        if (attempt < maxAttempts) {
+          await sleep(900);
+        }
       }
+
+      if (!qr) {
+        setWaQr("");
+        setWaQrError(
+          "Não foi possível gerar o QR agora. Clique em 'Atualizar QR' para tentar novamente."
+        );
+        notify("warn", "WhatsApp", "Sessão iniciada, mas o QR ainda não ficou disponível.");
+        return;
+      }
+
+      setWaQr(qr);
+      notify("success", "WhatsApp", "QR Code carregado. Escaneie no WhatsApp.");
     } catch (e: any) {
       console.error(e);
-      notify("error", "WhatsApp", e?.message || "Falha ao enviar mensagem.");
+      setWaQr("");
+      setWaQrError(e?.message || "Falha ao iniciar a sessão e gerar o QR Code.");
+      notify(
+        "error",
+        "WhatsApp",
+        e?.message || "Falha ao iniciar a sessão e gerar o QR Code."
+      );
+    } finally {
+      setWaSessionLoading(false);
+      setWaQrLoading(false);
+    }
+  }, [fetchQrOnce, notify, waConnected]);
+
+  const verificarStatusWhatsapp = React.useCallback(async (): Promise<boolean> => {
+    try {
+      setWaSessionLoading(true);
+
+      const url = `${baseURL()}/conexoes/whatsapp/status`;
+      const { data } = await requestWithLog<WhatsMeowStatusResp>({
+        label: "Check WA Status",
+        method: "GET",
+        url,
+      });
+
+      if (data?.connected) {
+        const jid = data.jid ?? "";
+        setWaSessionOk(true);
+        setWaJid(jid);
+        setWaDialogVisible(false);
+
+        const phone = jid ? `+${jid.split("@")[0]}` : "";
+        notify(
+          "success",
+          "WhatsApp conectado!",
+          phone ? `Número: ${phone}` : "Conexão estabelecida!"
+        );
+
+        return true;
+      }
+
+      notify("info", "WhatsApp", "Ainda aguardando a leitura do QR Code.");
+      return false;
+    } catch (e: any) {
+      console.error(e);
+      notify("error", "WhatsApp", e?.message || "Falha ao verificar status da conexão.");
+      return false;
+    } finally {
+      setWaSessionLoading(false);
     }
   }, [notify]);
 
-  /** Verifica se já conectou — retorna true se conectado (apenas PB, NÃO consulta wuzapi) */
   const checkConnected = React.useCallback(async (): Promise<boolean> => {
     try {
       const url = `${baseURL()}/conexoes/whatsapp`;
@@ -196,13 +242,9 @@ export function useWhatsappConnection(notify: NotifyFn) {
       const exists = !!data?.exists && !!data?.conexao && !!data?.whatsapp;
       setWaConnected(exists);
 
-      if (data?.whatsapp?.id) {
-        setWaRecordId(data.whatsapp.id);
-      }
-
       const jid: string = data?.whatsapp?.device_jid ?? "";
       const conectadoEm: string = data?.whatsapp?.conectado_em ?? "";
-      // Só mostra conectado se AMBOS existirem (device_jid preenchido E conectado_em preenchido)
+
       if (conectadoEm && jid) {
         setWaSessionOk(true);
         setWaJid(jid);
@@ -218,44 +260,56 @@ export function useWhatsappConnection(notify: NotifyFn) {
     }
   }, []);
 
-  const loadWhatsapp = checkConnected;
+  const disconnectWhatsApp = React.useCallback(async (): Promise<void> => {
+    try {
+      const url = `${baseURL()}/conexoes/whatsapp/disconnect`;
+      await requestWithLog({
+        label: "Disconnect WhatsApp",
+        method: "POST",
+        url,
+        body: {},
+      });
 
-  // ── Polling: enquanto o dialog de QR estiver aberto, verifica a cada 3s ──
-  React.useEffect(() => {
-    if (!waDialogVisible) return;
+      setWaDialogVisible(false);
+      setWaQr("");
+      setWaQrError("");
+      setWaSessionOk(false);
+      setWaJid("");
 
-    console.log("[WA Poll] iniciando polling (dialog aberto)");
-    const interval = setInterval(async () => {
-      console.log("[WA Poll] verificando conexão via /status...");
+      await checkConnected();
+
+      notify("info", "WhatsApp", "Sessão desconectada.");
+    } catch (e: any) {
+      console.error("disconnect error:", e);
+      notify("error", "WhatsApp", e?.message || "Falha ao desconectar.");
+    }
+  }, [checkConnected, notify]);
+
+  const sendTestMessage = React.useCallback(
+    async (phone: string, body: string): Promise<void> => {
       try {
-        const url = `${baseURL()}/conexoes/whatsapp/status`;
-        const { data } = await requestWithLog<{ connected?: boolean; jid?: string }>({
-          label: "Check WA Status",
-          method: "GET",
+        const url = `${baseURL()}/conexoes/whatsapp/send-test`;
+        const { data } = await requestWithLog<{ success?: boolean; error?: string; data?: any }>({
+          label: "Enviar Mensagem Teste",
+          method: "POST",
           url,
+          body: { phone, body },
         });
 
-        if (data?.connected) {
-          console.log("[WA Poll] CONECTADO! jid=", data.jid, " Fechando dialog...");
-          const jid = data.jid ?? "";
-          setWaSessionOk(true);
-          setWaJid(jid);
-          setWaDialogVisible(false);
-          const phone = jid ? `+${jid.split("@")[0]}` : "";
-          notify("success", "WhatsApp conectado!", phone ? `Número: ${phone}` : "Conexão estabelecida!");
-          clearInterval(interval);
+        if (data?.success) {
+          notify("success", "WhatsApp", "Mensagem enviada com sucesso!");
+        } else {
+          notify("error", "WhatsApp", data?.error || "Falha ao enviar mensagem.");
         }
-      } catch (e) {
-        console.error("[WA Poll] erro:", e);
+      } catch (e: any) {
+        console.error(e);
+        notify("error", "WhatsApp", e?.message || "Falha ao enviar mensagem.");
       }
-    }, 3000);
+    },
+    [notify]
+  );
 
-    return () => {
-      console.log("[WA Poll] parando polling");
-      clearInterval(interval);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waDialogVisible]);
+  const loadWhatsapp = checkConnected;
 
   return {
     waConnected,
@@ -263,7 +317,6 @@ export function useWhatsappConnection(notify: NotifyFn) {
     waJid,
     waDialogVisible,
     setWaDialogVisible,
-
 
     waCreating,
     waSessionLoading,
@@ -274,9 +327,9 @@ export function useWhatsappConnection(notify: NotifyFn) {
 
     loadWhatsapp,
     criarConexaoWhatsApp,
-    conectarSessaoWhatsApp,
     abrirECarregarQRCode,
     carregarQRCode,
+    verificarStatusWhatsapp,
     disconnectWhatsApp,
     sendTestMessage,
   };

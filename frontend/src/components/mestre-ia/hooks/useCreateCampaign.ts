@@ -1,71 +1,106 @@
 import React from "react"
-import type { NotifyFn, ObrasPlusRecord, LeadComms } from "../types/create-campaign"
-import { PB, makeURL, api } from "../../../store/api"
+import type { NotifyFn } from "../types/create-campaign"
+import { PB, api, baseURL } from "../../../store/api"
 import { user } from "../../../store/store"
 import { buildChannels, generateCampaignName } from "../utils/campaign"
-import { safeStr } from "../utils/obrasPlus"
-import { fetchLeadIdMap } from "../utils/pb"
+
+type RecipientKind = "OWNER" | "PROFISSIONAL"
+
+type CreateCampaignArgs = {
+  destinatarios: Array<{
+    obra_id: string
+    contato_tipo: RecipientKind | "PROFESSIONAL"
+  }>
+  channelWa: boolean
+  channelEmail: boolean
+  iaContinuar: boolean
+  emailSubject: string
+  messageText: string
+  selectedCity?: any
+  cidade?: string
+  bairro?: string
+  conexaoWhatsAppId?: string
+  conexaoEmailId?: string
+  ocultarJaContactados: boolean
+  onCreate: (created: any) => void
+  onClose: () => void
+}
+
+const normalizeRecipientKind = (value: unknown): RecipientKind | null => {
+  const kind = String(value ?? "")
+    .toUpperCase()
+    .trim()
+
+  if (kind === "OWNER") return "OWNER"
+  if (kind === "PROFISSIONAL" || kind === "PROFESSIONAL") return "PROFISSIONAL"
+
+  return null
+}
 
 export function useCreateCampaign(params: { teamId: string; userId: string; notify: NotifyFn }) {
   const { teamId, userId, notify } = params
   const [saving, setSaving] = React.useState(false)
 
-  const toggleFavorite = async (obraId: string) => {
-    const resp = await api().patch(makeURL("/patch/lead-toggle"), {
-      team_id: teamId,
-      obra_id: obraId,
-      toggle_col: "favorited_at",
-    })
-    if (resp?.error) throw new Error(resp.error)
-  }
-
   const createCampaign = React.useCallback(
-    async (args: {
-      selectedLeads: string[]
-      channelWa: boolean
-      channelEmail: boolean
-      iaContinuar: boolean
-      emailSubject: string
-      messageText: string
-      selectedCity: any
-      selectedNeighborhood: any[] // MultiSelect retorna array de objetos
-      conexaoWhatsAppId?: string
-      conexaoEmailId?: string
-      obraRecordMapRef: React.MutableRefObject<Map<string, ObrasPlusRecord>>
-      fetchLeadComms: (obraId: string) => Promise<LeadComms>
-      onCreate: (created: any) => void
-      onClose: () => void
-    }) => {
+    async (args: CreateCampaignArgs) => {
       const {
-        selectedLeads,
+        destinatarios,
         channelWa,
         channelEmail,
         iaContinuar,
         emailSubject,
         messageText,
-        selectedCity,
-        selectedNeighborhood,
         conexaoWhatsAppId,
         conexaoEmailId,
-        obraRecordMapRef,
-        fetchLeadComms,
+        ocultarJaContactados,
         onCreate,
         onClose,
       } = args
 
-      if (!channelWa && !channelEmail) return notify("warn", "Canais", "Selecione ao menos um canal (WhatsApp ou E-mail).")
-      if (channelEmail && !emailSubject.trim()) return notify("warn", "Assunto", "Informe o assunto do e-mail.")
-      if (!selectedLeads.length) return notify("warn", "Leads", "Selecione pelo menos 1 lead.")
-      if (channelWa && selectedLeads.length > 50)
-        return notify("warn", "Leads", "WhatsApp permite até 50 leads por disparo. Você selecionou " + selectedLeads.length + ".")
-      if (!messageText.trim()) return notify("warn", "Mensagem", "A mensagem é obrigatória.")
+      const destinatariosValidos = Array.isArray(destinatarios)
+        ? destinatarios
+            .map((d) => {
+              const obraId = String(d?.obra_id ?? "").trim()
+              const contatoTipo = normalizeRecipientKind(d?.contato_tipo)
 
-      // ✅ bairro do filtro (1 só, como você quer)
-      const bairroFiltroStr =
-        safeStr(selectedNeighborhood?.[0]?.bairro) || ""
+              if (!obraId || !contatoTipo) return null
+
+              return {
+                obra_id: obraId,
+                contato_tipo: contatoTipo as RecipientKind,
+              }
+            })
+            .filter(Boolean) as Array<{
+            obra_id: string
+            contato_tipo: RecipientKind
+          }>
+        : []
+
+      if (!channelWa && !channelEmail) {
+        return notify("warn", "Canais", "Selecione ao menos um canal (WhatsApp ou E-mail).")
+      }
+
+      if (channelEmail && !emailSubject.trim()) {
+        return notify("warn", "Assunto", "Informe o assunto do e-mail.")
+      }
+
+      if (!destinatariosValidos.length) {
+        return notify("warn", "Destinatários", "Selecione pelo menos 1 destinatário.")
+      }
+
+      if (channelWa && destinatariosValidos.length > 50) {
+        return notify(
+          "warn",
+          "Destinatários",
+          `WhatsApp permite até 50 destinatários por disparo. Você selecionou ${destinatariosValidos.length}.`
+        )
+      }
+
+      if (!messageText.trim()) {
+        return notify("warn", "Mensagem", "A mensagem é obrigatória.")
+      }
 
       setSaving(true)
-      let campanhaId: string | null = null
 
       try {
         const pb = PB()
@@ -74,54 +109,7 @@ export function useCreateCampaign(params: { teamId: string; userId: string; noti
         const now = new Date()
         const nome = generateCampaignName(now)
         const canais = buildChannels(channelWa, channelEmail)
-        const conexaoId = channelWa ? conexaoWhatsAppId : conexaoEmailId
-        const obraIds = (channelWa ? selectedLeads.slice(0, 50) : selectedLeads).filter(Boolean)
         const template = messageText.trim()
-
-        const commsByObra = new Map<string, LeadComms>()
-        for (const obraId of obraIds) commsByObra.set(obraId, await fetchLeadComms(obraId))
-
-        const leadIdMapBefore = await fetchLeadIdMap(pb, teamId, obraIds)
-        const missing = obraIds.filter((id) => !leadIdMapBefore.has(id))
-        for (const obraId of missing) await toggleFavorite(obraId)
-
-        const leadIdMap = await fetchLeadIdMap(pb, teamId, obraIds)
-
-        for (const obraId of obraIds) {
-          const leadId = leadIdMap.get(obraId)
-          if (!leadId) continue
-
-          const rec = obraRecordMapRef.current.get(obraId)
-          const comms = commsByObra.get(obraId)
-
-          const props = {
-            email: safeStr(comms?.email),
-            telefone_e164: safeStr(comms?.telefone_e164),
-            nome_contato: safeStr(comms?.nome_contato) || "Cliente",
-            obra_id: obraId,
-            address: safeStr(rec?.address),
-
-            // ✅ AQUI: bairro sempre string, com fallback do filtro
-            bairro: safeStr(rec?.bairro) || bairroFiltroStr,
-
-            // cidade já tava ok
-            city: safeStr(rec?.city) || safeStr(selectedCity?.city),
-            state: safeStr(rec?.state) || safeStr(selectedCity?.state),
-            source: "obras-plus",
-          }
-
-          await pb.collection("lead").update(leadId, { properties: props })
-        }
-
-        const validObras = obraIds.filter((obraId) => {
-          const c = commsByObra.get(obraId)
-          if (!c) return false
-          if (channelWa && !safeStr(c.telefone_e164)) return false
-          if (channelEmail && !safeStr(c.email)) return false
-          return true
-        })
-
-        if (!validObras.length) return notify("warn", "Leads", "Nenhum lead possui telefone/e-mail suficiente para os canais escolhidos.")
 
         const campanhaPayload: any = {
           team_id: teamId,
@@ -133,57 +121,58 @@ export function useCreateCampaign(params: { teamId: string; userId: string; noti
           criado_por: userId,
           manter_ia: iaContinuar,
         }
-        if (conexaoId) campanhaPayload.conexao_id = conexaoId
+
+        if (conexaoWhatsAppId) campanhaPayload.conexao_whatsapp_id = conexaoWhatsAppId
+        if (conexaoEmailId) campanhaPayload.conexao_email_id = conexaoEmailId
 
         const campanhaRecord = await pb.collection("campanhas").create(campanhaPayload)
-        campanhaId = campanhaRecord.id
 
-        let destinatariosCriados = 0
-        for (const obraId of validObras) {
-          const leadId = leadIdMap.get(obraId)
-          const comms = commsByObra.get(obraId)
-          if (!leadId || !comms) continue
-
-          const destPayload: any = {
-            team_id: teamId,
-            campanha_id: campanhaRecord.id,
-            lead_id: leadId,
-            status: "PENDENTE",
-            tentativas: 0,
-            nome_contato: comms.nome_contato || "Cliente",
+        const resp = await api().post(
+          `${baseURL()}/campanhas/${campanhaRecord.id}/destinatarios/obras-plus`,
+          {
+            destinatarios: destinatariosValidos,
+            ocultar_ja_contactados: ocultarJaContactados,
           }
-          if (safeStr(comms.telefone_e164)) destPayload.telefone_e164 = comms.telefone_e164
-          if (safeStr(comms.email)) destPayload.email = comms.email
+        )
 
-          await pb.collection("campanha_destinatarios").create(destPayload)
-          destinatariosCriados++
+        if (resp?.error) {
+          throw new Error(resp.error)
         }
 
-        notify("success", "Campanha criada", `Campanha criada com ${destinatariosCriados} destinatário(s)`)
+        const json = await resp.response.json().catch(() => null)
+        const criados = Number(json?.criados || 0)
+        const ignorados = Number(json?.ignorados || 0)
+
+        notify(
+          "success",
+          "Campanha criada",
+          `Campanha criada com ${criados} destinatário(s)${
+            ignorados ? ` e ${ignorados} ignorado(s)` : ""
+          }.`
+        )
 
         onCreate({
           id: campanhaRecord.id,
           team_id: teamId,
           nome,
-          conexao_id: conexaoId || "",
           status: "RASCUNHO",
           mensagem_template: template,
           criado_por: userId,
-          iniciado_em: campanhaRecord.iniciado_em,
-          finalizado_em: campanhaRecord.finalizado_em,
+          assunto_email: channelEmail ? emailSubject.trim() : "",
+          manter_ia: iaContinuar,
+          canal: canais,
           created: campanhaRecord.created,
           updated: campanhaRecord.updated,
-          leads: validObras,
+          destinatarios: destinatariosValidos,
           channelWa,
           channelEmail,
-          iaContinuar,
+          ocultarJaContactados,
         })
 
         onClose()
-      } catch (e) {
+      } catch (e: any) {
         console.error(e)
-        if (!campanhaId) notify("error", "Erro", "Erro ao criar campanha. Tente novamente.")
-        else args.onClose()
+        notify("error", "Erro", e?.message || "Erro ao criar campanha. Tente novamente.")
       } finally {
         setSaving(false)
       }

@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -35,6 +36,8 @@ func NewCampanhaRepo(dao *daos.Dao) *CampanhaRepo {
 	return &CampanhaRepo{dao: dao}
 }
 
+// ---------------- Campanhas ----------------
+
 // FindByID busca uma campanha pelo ID
 func (r *CampanhaRepo) FindByID(id string) (*models.Record, error) {
 	return r.dao.FindRecordById("campanhas", id)
@@ -45,7 +48,8 @@ func (r *CampanhaRepo) FindConexaoByID(id string) (*models.Record, error) {
 	return r.dao.FindRecordById("conexoes", id)
 }
 
-// FindLeadByID busca um lead pelo ID do PocketBase
+// LEGADO: mantém por compatibilidade caso algum ponto ainda chame.
+// O fluxo novo de campanhas não deve depender mais de lead.
 func (r *CampanhaRepo) FindLeadByID(id string) (*models.Record, error) {
 	return r.dao.FindRecordById("lead", id)
 }
@@ -56,7 +60,8 @@ func (r *CampanhaRepo) FindByTeam(teamID string, limit, offset int) ([]*models.R
 		"campanhas",
 		"team_id = {:teamId}",
 		"-created",
-		limit, offset,
+		limit,
+		offset,
 		dbx.Params{"teamId": teamID},
 	)
 }
@@ -67,7 +72,8 @@ func (r *CampanhaRepo) FindByTeamAndStatus(teamID string, status string) ([]*mod
 		"campanhas",
 		"team_id = {:teamId} && status = {:status}",
 		"-created",
-		0, 0,
+		0,
+		0,
 		dbx.Params{"teamId": teamID, "status": status},
 	)
 }
@@ -89,13 +95,14 @@ func (r *CampanhaRepo) Create(teamID, nome, mensagemTemplate, canal string) (*mo
 	if err := r.dao.SaveRecord(rec); err != nil {
 		return nil, err
 	}
+
 	return rec, nil
 }
 
 // UpdateStatus atualiza o status de uma campanha
 func (r *CampanhaRepo) UpdateStatus(rec *models.Record, status string) error {
 	rec.Set("status", status)
-	
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	switch status {
 	case CampanhaStatusEmAndamento:
@@ -103,7 +110,7 @@ func (r *CampanhaRepo) UpdateStatus(rec *models.Record, status string) error {
 	case CampanhaStatusConcluida, CampanhaStatusCancelada:
 		rec.Set("finalizado_em", now)
 	}
-	
+
 	return r.dao.SaveRecord(rec)
 }
 
@@ -120,7 +127,8 @@ func (r *CampanhaRepo) FindDestinatariosByCampanha(campanhaID string) ([]*models
 		"campanha_destinatarios",
 		"campanha_id = {:campanhaId}",
 		"-created",
-		0, 0,
+		0,
+		0,
 		dbx.Params{"campanhaId": campanhaID},
 	)
 }
@@ -131,47 +139,179 @@ func (r *CampanhaRepo) FindDestinatariosPendentes(campanhaID string) ([]*models.
 		"campanha_destinatarios",
 		"campanha_id = {:campanhaId} && status = {:status}",
 		"-created",
-		0, 0,
-		dbx.Params{"campanhaId": campanhaID, "status": DestStatusPendente},
+		0,
+		0,
+		dbx.Params{
+			"campanhaId": campanhaID,
+			"status":     DestStatusPendente,
+		},
 	)
 }
 
-// CreateDestinatario cria um destinatário para a campanha
-func (r *CampanhaRepo) CreateDestinatario(campanhaID, leadID, nomeContato string) (*models.Record, error) {
+// FindDestinatarioByID busca um destinatário pelo ID
+func (r *CampanhaRepo) FindDestinatarioByID(id string) (*models.Record, error) {
+	return r.dao.FindRecordById("campanha_destinatarios", id)
+}
+
+// LEGADO: dedup antigo por campanha + obra + tipo.
+// Mantido por compatibilidade, mas o fluxo novo deve usar
+// FindDestinatarioByCampanhaContatoValor.
+func (r *CampanhaRepo) FindDestinatarioByCampanhaObraContato(campanhaID, obraID, contatoTipo string) (*models.Record, error) {
+	records, err := r.dao.FindRecordsByExpr(
+		"campanha_destinatarios",
+		dbx.NewExp(
+			"campanha_id = {:campanhaId} AND obra_id = {:obraId} AND contato_tipo = {:contatoTipo}",
+			dbx.Params{
+				"campanhaId":  campanhaID,
+				"obraId":      obraID,
+				"contatoTipo": contatoTipo,
+			},
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	return records[0], nil
+}
+
+// FindDestinatarioByCampanhaContatoValor verifica se já existe destinatário
+// para a mesma campanha/obra/tipo e mesmo contato específico.
+//
+// Regras:
+// - se telefone vier preenchido, deduplica pelo telefone e email vazio
+// - se email vier preenchido, deduplica pelo email e telefone vazio
+// - se ambos vierem vazios, procura um registro "sem contato"
+func (r *CampanhaRepo) FindDestinatarioByCampanhaContatoValor(
+	campanhaID, obraID, contatoTipo, telefone, email string,
+) (*models.Record, error) {
+	params := dbx.Params{
+		"campanhaId":  campanhaID,
+		"obraId":      obraID,
+		"contatoTipo": contatoTipo,
+	}
+
+	expr := `
+		campanha_id = {:campanhaId}
+		AND obra_id = {:obraId}
+		AND contato_tipo = {:contatoTipo}
+	`
+
+	switch {
+	case telefone != "" && email == "":
+		expr += ` AND telefone_e164 = {:telefone} AND (email = '' OR email IS NULL)`
+		params["telefone"] = telefone
+
+	case email != "" && telefone == "":
+		expr += ` AND email = {:email} AND (telefone_e164 = '' OR telefone_e164 IS NULL)`
+		params["email"] = email
+
+	case telefone == "" && email == "":
+		expr += ` AND (telefone_e164 = '' OR telefone_e164 IS NULL) AND (email = '' OR email IS NULL)`
+
+	default:
+		expr += ` AND telefone_e164 = {:telefone} AND email = {:email}`
+		params["telefone"] = telefone
+		params["email"] = email
+	}
+
+	records, err := r.dao.FindRecordsByExpr(
+		"campanha_destinatarios",
+		dbx.NewExp(expr, params),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	return records[0], nil
+}
+
+// CreateDestinatario cria um destinatário
+func (r *CampanhaRepo) CreateDestinatario(data map[string]any) (*models.Record, error) {
 	col, err := r.dao.FindCollectionByNameOrId("campanha_destinatarios")
 	if err != nil {
 		return nil, err
 	}
 
 	rec := models.NewRecord(col)
-	rec.Set("campanha_id", campanhaID)
-	rec.Set("lead_id", leadID)
-	rec.Set("nome_contato", nomeContato)
-	rec.Set("status", DestStatusPendente)
-	rec.Set("tentativas", 0)
+
+	for k, v := range data {
+		rec.Set(k, v)
+	}
+
+	if rec.GetString("status") == "" {
+		rec.Set("status", DestStatusPendente)
+	}
+
+	if rec.Get("tentativas") == nil {
+		rec.Set("tentativas", 0)
+	}
+
+	if rec.GetString("team_id") == "" && rec.GetString("campanha_id") != "" {
+		campanha, err := r.FindByID(rec.GetString("campanha_id"))
+		if err == nil && campanha != nil {
+			rec.Set("team_id", campanha.GetString("team_id"))
+		}
+	}
 
 	if err := r.dao.SaveRecord(rec); err != nil {
 		return nil, err
 	}
+
 	return rec, nil
 }
 
-// UpdateDestinatarioStatus atualiza o status de um destinatário
-func (r *CampanhaRepo) UpdateDestinatarioStatus(rec *models.Record, status string, erro string) error {
-	rec.Set("status", status)
-	if erro != "" {
-		rec.Set("erro", erro)
+// ExistsContatoEnviado verifica se já houve envio anterior para a mesma obra/tipo no time
+func (r *CampanhaRepo) ExistsContatoEnviado(teamID, obraID, contatoTipo string) (bool, error) {
+	recs, err := r.dao.FindRecordsByFilter(
+		"campanha_destinatarios",
+		"team_id = {:team_id} && obra_id = {:obra_id} && contato_tipo = {:contato_tipo} && status = {:status}",
+		"-enviado_em,-updated",
+		1,
+		0,
+		dbx.Params{
+			"team_id":      teamID,
+			"obra_id":      obraID,
+			"contato_tipo": contatoTipo,
+			"status":       DestStatusEnviado,
+		},
+	)
+	if err != nil {
+		return false, err
 	}
-	if status == DestStatusFalhou {
-		rec.Set("tentativas", rec.GetInt("tentativas")+1)
-	}
-	if status == DestStatusEnviado {
-		rec.Set("enviado_em", time.Now().UTC().Format(time.RFC3339))
-	}
-	return r.dao.SaveRecord(rec)
+
+	return len(recs) > 0, nil
 }
 
-// SaveDestinatario salva as alterações de um destinatário (ex: após enriquecimento)
+// UpdateDestinatarioStatus atualiza o status de um destinatário
+func (r *CampanhaRepo) UpdateDestinatarioStatus(dest *models.Record, status, errMsg string) error {
+	if dest == nil {
+		return nil
+	}
+
+	dest.Set("status", status)
+	dest.Set("erro", strings.TrimSpace(errMsg))
+
+	if status == DestStatusEnviado {
+		dest.Set("enviado_em", time.Now().UTC())
+	}
+
+	if status == DestStatusEnviado || status == DestStatusFalhou {
+		dest.Set("tentativas", dest.GetInt("tentativas")+1)
+	}
+
+	return r.dao.SaveRecord(dest)
+}
+
+// SaveDestinatario salva as alterações de um destinatário
 func (r *CampanhaRepo) SaveDestinatario(rec *models.Record) error {
 	return r.dao.SaveRecord(rec)
 }
@@ -193,8 +333,7 @@ func (r *CampanhaRepo) CountDestinatariosByStatus(campanhaID string) (map[string
 	}
 
 	for _, d := range destinatarios {
-		status := d.GetString("status")
-		switch status {
+		switch d.GetString("status") {
 		case DestStatusPendente:
 			stats["pendente"]++
 		case DestStatusEmFila:
@@ -211,39 +350,56 @@ func (r *CampanhaRepo) CountDestinatariosByStatus(campanhaID string) (map[string
 	return stats, nil
 }
 
-// CountEnviadosHojeByTeam conta quantas mensagens foram enviadas hoje para um team
+// CountEnviadosHojeByTeam conta quantas mensagens foram enviadas hoje para um team.
+// Aqui usa JOIN com campanhas para não depender 100% do team_id denormalizado
+// em campanha_destinatarios.
 func (r *CampanhaRepo) CountEnviadosHojeByTeam(teamID string) (int, error) {
-	today := time.Now().UTC().Format("2006-01-02") + " 00:00:00.000Z"
-	records, err := r.dao.FindRecordsByFilter(
-		"campanha_destinatarios",
-		"team_id = {:teamId} && status = {:status} && enviado_em >= {:today}",
-		"", 0, 0,
-		dbx.Params{"teamId": teamID, "status": DestStatusEnviado, "today": today},
-	)
+	today := time.Now().UTC().Format("2006-01-02T00:00:00Z")
+
+	var total int
+	query := `
+		SELECT COUNT(cd.id)
+		FROM campanha_destinatarios cd
+		INNER JOIN campanhas c ON c.id = cd.campanha_id
+		WHERE c.team_id = {:teamId}
+		  AND cd.status = {:status}
+		  AND cd.enviado_em >= {:today}
+	`
+
+	err := r.dao.DB().
+		NewQuery(query).
+		Bind(dbx.Params{
+			"teamId": teamID,
+			"status": DestStatusEnviado,
+			"today":  today,
+		}).
+		Row(&total)
 	if err != nil {
 		return 0, err
 	}
-	return len(records), nil
+
+	return total, nil
 }
 
 // CountRespostas conta as respostas (campanha_respostas) para uma campanha
 func (r *CampanhaRepo) CountRespostas(campanhaID string) (int, error) {
-	// Verifica se a collection existe (pode não ter sido criada ainda)
 	_, err := r.dao.FindCollectionByNameOrId("campanha_respostas")
 	if err != nil {
-		return 0, nil // Retorna 0 se a tabela ainda não existir
+		return 0, nil
 	}
 
 	respostas, err := r.dao.FindRecordsByFilter(
 		"campanha_respostas",
 		"campanha_id = {:campanhaId} && tipo = 'RESPOSTA'",
 		"",
-		0, 0,
+		0,
+		0,
 		dbx.Params{"campanhaId": campanhaID},
 	)
 	if err != nil {
 		return 0, err
 	}
+
 	return len(respostas), nil
 }
 
@@ -258,7 +414,15 @@ func (r *CampanhaRepo) GetDashboardStats(teamID string) (map[string]any, error) 
 
 	// 1. Total enviadas
 	var totalEnviadas int
-	err := r.dao.DB().NewQuery("SELECT COUNT(*) FROM campanha_destinatarios WHERE team_id={:teamId} AND status='ENVIADO'").
+	queryEnviadas := `
+		SELECT COUNT(cd.id)
+		FROM campanha_destinatarios cd
+		INNER JOIN campanhas c ON c.id = cd.campanha_id
+		WHERE c.team_id = {:teamId}
+		  AND cd.status = 'ENVIADO'
+	`
+	err := r.dao.DB().
+		NewQuery(queryEnviadas).
 		Bind(dbx.Params{"teamId": teamID}).
 		Row(&totalEnviadas)
 	if err == nil {
@@ -269,7 +433,15 @@ func (r *CampanhaRepo) GetDashboardStats(teamID string) (map[string]any, error) 
 	_, err = r.dao.FindCollectionByNameOrId("campanha_respostas")
 	if err == nil {
 		var totalRespostas int
-		err = r.dao.DB().NewQuery("SELECT COUNT(*) FROM campanha_respostas WHERE team_id={:teamId} AND tipo='RESPOSTA'").
+		queryRespostas := `
+			SELECT COUNT(cr.id)
+			FROM campanha_respostas cr
+			INNER JOIN campanhas c ON c.id = cr.campanha_id
+			WHERE c.team_id = {:teamId}
+			  AND cr.tipo = 'RESPOSTA'
+		`
+		err = r.dao.DB().
+			NewQuery(queryRespostas).
 			Bind(dbx.Params{"teamId": teamID}).
 			Row(&totalRespostas)
 		if err == nil {
@@ -282,22 +454,28 @@ func (r *CampanhaRepo) GetDashboardStats(teamID string) (map[string]any, error) 
 		Nome     string `db:"nome"`
 		Enviados int    `db:"enviados"`
 	}
-	var campanhasStats []CampanhaStat
 
-	query := `
-		SELECT 
-			c.nome, 
+	var campanhasStats []CampanhaStat
+	queryCampanhas := `
+		SELECT
+			c.nome,
 			COUNT(cd.id) as enviados
 		FROM campanhas c
-		LEFT JOIN campanha_destinatarios cd ON c.id = cd.campanha_id AND cd.status = 'ENVIADO'
+		LEFT JOIN campanha_destinatarios cd
+			ON c.id = cd.campanha_id
+		   AND cd.status = 'ENVIADO'
 		WHERE c.team_id = {:teamId}
 		GROUP BY c.id, c.nome, c.created
 		ORDER BY c.created DESC
 		LIMIT 5
 	`
-	err = r.dao.DB().NewQuery(query).Bind(dbx.Params{"teamId": teamID}).All(&campanhasStats)
+
+	err = r.dao.DB().
+		NewQuery(queryCampanhas).
+		Bind(dbx.Params{"teamId": teamID}).
+		All(&campanhasStats)
 	if err == nil {
-		campanhasList := []map[string]any{}
+		campanhasList := make([]map[string]any, 0, len(campanhasStats))
 		for _, cs := range campanhasStats {
 			campanhasList = append(campanhasList, map[string]any{
 				"nome":     cs.Nome,

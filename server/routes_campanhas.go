@@ -3,6 +3,8 @@ package server
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/flarco/g"
 	"github.com/labstack/echo/v5"
 
@@ -10,10 +12,8 @@ import (
 	"github.com/suaobra/suaobra-app/server/config"
 	"github.com/suaobra/suaobra-app/server/repositories"
 	"github.com/suaobra/suaobra-app/server/services"
-	"time"
 )
 
-// helper: monta o CampanhaService por request
 func newCampanhaService(req Request) *services.CampanhaService {
 	campRepo := repositories.NewCampanhaRepo(req.Dao())
 	waSvc := newWhatsAppServiceFromRequest(req)
@@ -27,7 +27,6 @@ func newCampanhaService(req Request) *services.CampanhaService {
 	return services.NewCampanhaService(campRepo, waSvc, emailSvc, conversaRepo)
 }
 
-// helper interno: monta WhatsAppService
 func newWhatsAppServiceFromRequest(req Request) *services.WhatsAppService {
 	cfg := config.NewWhatsMeowConfig()
 	wuzClient := wuzapi.NewClient(cfg)
@@ -39,7 +38,52 @@ func newWhatsAppServiceFromRequest(req Request) *services.WhatsAppService {
 	return services.NewWhatsAppService(conRepo, waRepo, wuzClient, tokenSvc)
 }
 
-// POST /campanhas/:id/iniciar - Inicia uma campanha
+// POST /campanhas/:id/destinatarios/obras-plus
+func AdicionarDestinatariosObrasPlus(c echo.Context) error {
+	req := NewRequest(c)
+	campanhaID := c.PathParam("id")
+
+	user, err := getUser(c, req.UserID())
+	if err != nil || user.ID == "" {
+		return ErrJSON(401, g.Error("unauthorized"))
+	}
+
+	var body struct {
+		Destinatarios            []services.CampanhaDestinatarioInput `json:"destinatarios"`
+		OcultarJaContactados     bool                                 `json:"ocultar_ja_contactados"`
+		OcultarJaContactadosAlt  bool                                 `json:"ocultarJaContactados"`
+	}
+
+	if err := c.Bind(&body); err != nil {
+		return ErrJSON(400, err, "Erro ao ler body")
+	}
+
+	if len(body.Destinatarios) == 0 {
+		return ErrJSON(400, errors.New("Informe os destinatários"))
+	}
+
+	ocultarJaContactados := body.OcultarJaContactados || body.OcultarJaContactadosAlt
+
+	svc := newCampanhaService(req)
+
+	criados, ignorados, err := svc.AdicionarDestinatariosObrasPlus(
+		user.Team.ID,
+		campanhaID,
+		body.Destinatarios,
+		ocultarJaContactados,
+	)
+	if err != nil {
+		return ErrJSON(400, err)
+	}
+
+	return c.JSON(200, g.M(
+		"success", true,
+		"criados", criados,
+		"ignorados", ignorados,
+	))
+}
+
+// POST /campanhas/:id/iniciar
 func IniciarCampanha(c echo.Context) error {
 	req := NewRequest(c)
 	campanhaID := c.PathParam("id")
@@ -49,44 +93,102 @@ func IniciarCampanha(c echo.Context) error {
 		return ErrJSON(401, g.Error("unauthorized"))
 	}
 
+	repo := repositories.NewCampanhaRepo(req.Dao())
 	svc := newCampanhaService(req)
 
-	if err := svc.IniciarCampanha(user.Team.ID, campanhaID); err != nil {
-		return ErrJSON(400, err)
+	campanha, err := repo.FindByID(campanhaID)
+	if err != nil {
+		return ErrJSON(404, g.Error(err, "campanha não encontrada"))
 	}
 
-	return c.JSON(200, g.M("success", true, "message", "Campanha iniciada. O envio está sendo processado."))
+	if campanha.GetString("team_id") != user.Team.ID {
+		return ErrJSON(403, g.Error("não autorizado"))
+	}
+
+	statusAtual := campanha.GetString("status")
+	if statusAtual == repositories.CampanhaStatusEmAndamento {
+		return ErrJSON(400, g.Error("campanha já está em andamento"))
+	}
+
+	if statusAtual == repositories.CampanhaStatusCancelada {
+		return ErrJSON(400, g.Error("campanha cancelada não pode ser iniciada"))
+	}
+
+	if err := repo.UpdateStatus(campanha, repositories.CampanhaStatusEmAndamento); err != nil {
+		return ErrJSON(400, g.Error(err, "erro ao iniciar campanha"))
+	}
+
+	go svc.ProcessarCampanhaAsync(campanhaID)
+
+	return c.JSON(200, g.M(
+		"success", true,
+		"message", "Campanha iniciada. O envio está sendo processado.",
+	))
 }
 
-// PATCH /campanha-destinatarios/marcar-enviado - Marca destinatários como ENVIADO
+// PATCH /campanha-destinatarios/marcar-enviado
+// Agora trabalha com destinatario_ids.
+// Mantive fallback de lead_ids só para não quebrar legado de uma vez.
 func MarcarDestinatariosEnviados(c echo.Context) error {
 	req := NewRequest(c)
+
 	var body struct {
-		CampanhaID string   `json:"campanha_id"`
-		LeadIDs    []string `json:"lead_ids"`
+		CampanhaID      string   `json:"campanha_id"`
+		DestinatarioIDs []string `json:"destinatario_ids"`
+		LeadIDs         []string `json:"lead_ids"` // legado
 	}
+
 	if err := c.Bind(&body); err != nil {
 		return ErrJSON(400, err, "Erro ao ler body")
 	}
-	if body.CampanhaID == "" || len(body.LeadIDs) == 0 {
-		return ErrJSON(400, errors.New("Informe campanha_id e lead_ids"))
+
+	if body.CampanhaID == "" {
+		return ErrJSON(400, errors.New("Informe campanha_id"))
 	}
 
 	da := req.Dao()
+	repo := repositories.NewCampanhaRepo(da)
+
+	// fluxo novo
+	if len(body.DestinatarioIDs) > 0 {
+		for _, destID := range body.DestinatarioIDs {
+			dest, err := repo.FindDestinatarioByID(destID)
+			if err != nil || dest == nil {
+				continue
+			}
+
+			if dest.GetString("campanha_id") != body.CampanhaID {
+				continue
+			}
+
+			dest.Set("status", repositories.DestStatusEnviado)
+			dest.Set("enviado_em", time.Now().UTC())
+			_ = da.SaveRecord(dest)
+		}
+
+		return c.JSON(200, g.M("success", true))
+	}
+
+	// fallback legado
+	if len(body.LeadIDs) == 0 {
+		return ErrJSON(400, errors.New("Informe destinatario_ids"))
+	}
+
 	for _, leadID := range body.LeadIDs {
-		filter := fmt.Sprintf(`{"campanha_id": "%s", "lead_id": "%s"}`, body.CampanhaID, leadID)
+		filter := fmt.Sprintf(`campanha_id = "%s" && lead_id = "%s"`, body.CampanhaID, leadID)
 		dest, err := da.FindFirstRecordByFilter("campanha_destinatarios", filter)
 		if err != nil || dest == nil {
 			continue
 		}
-		dest.Set("status", "ENVIADO")
+		dest.Set("status", repositories.DestStatusEnviado)
 		dest.Set("enviado_em", time.Now().UTC())
-		da.SaveRecord(dest)
+		_ = da.SaveRecord(dest)
 	}
+
 	return c.JSON(200, g.M("success", true))
 }
 
-// GET /campanhas/:id/status - Retorna status detalhado de uma campanha
+// GET /campanhas/:id/status
 func StatusCampanha(c echo.Context) error {
 	req := NewRequest(c)
 	campanhaID := c.PathParam("id")
@@ -109,7 +211,7 @@ func StatusCampanha(c echo.Context) error {
 	))
 }
 
-// POST /campanhas/:id/pausar - Pausa uma campanha em andamento
+// POST /campanhas/:id/pausar
 func PausarCampanha(c echo.Context) error {
 	req := NewRequest(c)
 	campanhaID := c.PathParam("id")
@@ -128,7 +230,7 @@ func PausarCampanha(c echo.Context) error {
 	return c.JSON(200, g.M("success", true))
 }
 
-// POST /campanhas/:id/cancelar - Cancela uma campanha
+// POST /campanhas/:id/cancelar
 func CancelarCampanha(c echo.Context) error {
 	req := NewRequest(c)
 	campanhaID := c.PathParam("id")
@@ -147,7 +249,7 @@ func CancelarCampanha(c echo.Context) error {
 	return c.JSON(200, g.M("success", true))
 }
 
-// POST /campanhas/:id/enriquecer - Preenche nome_contato, telefone_e164 e email dos destinatários
+// POST /campanhas/:id/enriquecer
 func EnriquecerDestinatarios(c echo.Context) error {
 	req := NewRequest(c)
 	campanhaID := c.PathParam("id")
@@ -171,13 +273,15 @@ func EnriquecerDestinatarios(c echo.Context) error {
 	))
 }
 
-// POST /campanhas/gerar-mensagem-ia - Gera uma mensagem de campanha com IA
+// POST /campanhas/gerar-mensagem-ia
 func GerarMensagemCampanhaIA(c echo.Context) error {
 	req := NewRequest(c)
+
 	var body struct {
 		Objetivo    string  `json:"objetivo"`
 		Temperatura float64 `json:"temperatura"`
 	}
+
 	if err := c.Bind(&body); err != nil {
 		return ErrJSON(400, err, "Erro ao ler body")
 	}
@@ -200,10 +304,11 @@ func GerarMensagemCampanhaIA(c echo.Context) error {
 	return c.JSON(200, g.M("mensagem", mensagem))
 }
 
-// GET /campanhas/dashboard - Retorna estatísticas agregadas
+// GET /campanhas/dashboard
 func CampanhasDashboard(c echo.Context) error {
 	req := NewRequest(c)
 	g.Info("CampanhasDashboard", "user_id", req.UserID(), "auth_error", req.Error)
+
 	user, err := getUser(c, req.UserID())
 	if err != nil || user.ID == "" {
 		g.Error(err, "CampanhasDashboard: unauthorized", "user_id", req.UserID())
