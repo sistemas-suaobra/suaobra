@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/flarco/g"
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
 )
@@ -11,7 +12,6 @@ import (
 // AGENTE IA ROUTES
 // ═══════════════════════════════════════════════════════════════════════════
 
-// RegisterAgenteIARoutes registra todas as rotas de agente IA
 func RegisterAgenteIARoutes(e *echo.Echo) {
 	e.GET("/agente-ia/intencoes", ListarIntencoes)
 	e.POST("/agente-ia/intencoes", CriarIntencao)
@@ -23,25 +23,53 @@ func RegisterAgenteIARoutes(e *echo.Echo) {
 	e.PATCH("/agente-ia/conversas/:id/status", AtualizarStatusConversa)
 }
 
-// GET /agente-ia/intencoes
-// Lista todas as intenções (sem autenticação por enquanto)
-func ListarIntencoes(c echo.Context) error {
+func getAuthTeamID(c echo.Context) (*pocketbase.PocketBase, string, error) {
 	app := c.Get("app").(*pocketbase.PocketBase)
-	
-	// Busca todas as intenções
+
+	req := NewRequest(c)
+	user, err := getUser(c, req.UserID())
+	if err != nil || user.ID == "" || user.Team.ID == "" {
+		return app, "", g.Error("unauthorized")
+	}
+
+	return app, user.Team.ID, nil
+}
+
+func findTeamScopedRecord(app *pocketbase.PocketBase, collectionName, id, teamID string) (*models.Record, error) {
+	return app.Dao().FindFirstRecordByFilter(
+		collectionName,
+		"id = {:id} && team_id = {:teamId}",
+		dbx.Params{
+			"id":     id,
+			"teamId": teamID,
+		},
+	)
+}
+
+// GET /agente-ia/intencoes
+// Lista apenas as intenções da team do usuário autenticado
+func ListarIntencoes(c echo.Context) error {
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
+
 	intencoes, err := app.Dao().FindRecordsByFilter(
 		"agente_ia_intencoes",
-		"1=1",
-		"-prioridade",
+		"team_id = {:teamId}",
+		"-prioridade,-created",
 		0,
 		0,
+		dbx.Params{
+			"teamId": teamID,
+		},
 	)
 	if err != nil {
 		g.Error(err, "erro ao listar intenções")
 		return c.JSON(500, g.M("error", "erro ao listar intenções"))
 	}
 
-	result := []map[string]any{}
+	result := make([]map[string]any, 0, len(intencoes))
 	for _, record := range intencoes {
 		result = append(result, record.PublicExport())
 	}
@@ -50,9 +78,12 @@ func ListarIntencoes(c echo.Context) error {
 }
 
 // POST /agente-ia/intencoes
-// Cria uma nova intenção (sem autenticação por enquanto)
+// Cria uma nova intenção para a team do usuário autenticado
 func CriarIntencao(c echo.Context) error {
-	app := c.Get("app").(*pocketbase.PocketBase)
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
 
 	var payload struct {
 		Nome          string   `json:"nome"`
@@ -61,7 +92,6 @@ func CriarIntencao(c echo.Context) error {
 		Resposta      string   `json:"resposta"`
 		Ativa         bool     `json:"ativa"`
 		Prioridade    int      `json:"prioridade"`
-		TeamID        string   `json:"team_id"`
 	}
 
 	if err := c.Bind(&payload); err != nil {
@@ -72,19 +102,13 @@ func CriarIntencao(c echo.Context) error {
 		return c.JSON(400, g.M("error", "nome, palavras_chave e resposta são obrigatórios"))
 	}
 
-	// Team ID padrão se não fornecido
-	if payload.TeamID == "" {
-		payload.TeamID = "team_zlvE6stSf3IB2wO" // TODO: pegar do contexto
-	}
-
-	// Cria record
 	collection, err := app.Dao().FindCollectionByNameOrId("agente_ia_intencoes")
 	if err != nil {
 		return c.JSON(500, g.M("error", "collection não encontrada"))
 	}
 
 	record := models.NewRecord(collection)
-	record.Set("team_id", payload.TeamID)
+	record.Set("team_id", teamID)
 	record.Set("nome", payload.Nome)
 	record.Set("descricao", payload.Descricao)
 	record.Set("palavras_chave", payload.PalavrasChave)
@@ -93,7 +117,7 @@ func CriarIntencao(c echo.Context) error {
 
 	prioridade := payload.Prioridade
 	if prioridade <= 0 {
-		prioridade = 50 // default medium priority
+		prioridade = 50
 	}
 	record.Set("prioridade", prioridade)
 
@@ -106,17 +130,20 @@ func CriarIntencao(c echo.Context) error {
 }
 
 // PATCH /agente-ia/intencoes/:id
-// Atualiza uma intenção existente (sem autenticação por enquanto)
+// Atualiza uma intenção da própria team
 func AtualizarIntencao(c echo.Context) error {
-	app := c.Get("app").(*pocketbase.PocketBase)
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
 
 	id := c.PathParam("id")
 	if id == "" {
 		return c.JSON(400, g.M("error", "id é obrigatório"))
 	}
 
-	record, err := app.Dao().FindRecordById("agente_ia_intencoes", id)
-	if err != nil {
+	record, err := findTeamScopedRecord(app, "agente_ia_intencoes", id, teamID)
+	if err != nil || record == nil {
 		return c.JSON(404, g.M("error", "intenção não encontrada"))
 	}
 
@@ -133,7 +160,6 @@ func AtualizarIntencao(c echo.Context) error {
 		return c.JSON(400, g.M("error", "invalid request body"))
 	}
 
-	// Atualiza apenas campos fornecidos
 	if payload.Nome != nil {
 		record.Set("nome", *payload.Nome)
 	}
@@ -162,17 +188,20 @@ func AtualizarIntencao(c echo.Context) error {
 }
 
 // DELETE /agente-ia/intencoes/:id
-// Deleta uma intenção (sem autenticação por enquanto)
+// Deleta uma intenção da própria team
 func DeletarIntencao(c echo.Context) error {
-	app := c.Get("app").(*pocketbase.PocketBase)
-	
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
+
 	id := c.PathParam("id")
 	if id == "" {
 		return c.JSON(400, g.M("error", "id é obrigatório"))
 	}
 
-	record, err := app.Dao().FindRecordById("agente_ia_intencoes", id)
-	if err != nil {
+	record, err := findTeamScopedRecord(app, "agente_ia_intencoes", id, teamID)
+	if err != nil || record == nil {
 		return c.JSON(404, g.M("error", "intenção não encontrada"))
 	}
 
@@ -185,20 +214,20 @@ func DeletarIntencao(c echo.Context) error {
 }
 
 // GET /agente-ia/conversas
-// Lista conversas de IA da team
+// Lista conversas apenas da team do usuário autenticado
 func ListarConversas(c echo.Context) error {
-	app := c.Get("app").(*pocketbase.PocketBase)
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
 
 	status := c.QueryParam("status")
-	teamID := c.QueryParam("team_id")
 
-	filter := "1=1"
-	params := map[string]any{}
-
-	if teamID != "" {
-		filter += " && team_id = {:teamId}"
-		params["teamId"] = teamID
+	filter := "team_id = {:teamId}"
+	params := dbx.Params{
+		"teamId": teamID,
 	}
+
 	if status != "" {
 		filter += " && status = {:status}"
 		params["status"] = status
@@ -217,7 +246,7 @@ func ListarConversas(c echo.Context) error {
 		return c.JSON(500, g.M("error", "erro ao listar conversas"))
 	}
 
-	result := []map[string]any{}
+	result := make([]map[string]any, 0, len(conversas))
 	for _, record := range conversas {
 		result = append(result, record.PublicExport())
 	}
@@ -226,17 +255,20 @@ func ListarConversas(c echo.Context) error {
 }
 
 // GET /agente-ia/conversas/:id
-// Obtém uma conversa específica com todo o histórico
+// Obtém uma conversa específica da própria team
 func ObterConversa(c echo.Context) error {
-	app := c.Get("app").(*pocketbase.PocketBase)
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
 
 	id := c.PathParam("id")
 	if id == "" {
 		return c.JSON(400, g.M("error", "id é obrigatório"))
 	}
 
-	record, err := app.Dao().FindRecordById("conversas_ia", id)
-	if err != nil {
+	record, err := findTeamScopedRecord(app, "conversas_ia", id, teamID)
+	if err != nil || record == nil {
 		return c.JSON(404, g.M("error", "conversa não encontrada"))
 	}
 
@@ -244,9 +276,12 @@ func ObterConversa(c echo.Context) error {
 }
 
 // PATCH /agente-ia/conversas/:id/status
-// Atualiza o status de uma conversa (ATIVA, PAUSADA, FINALIZADA)
+// Atualiza o status de uma conversa da própria team
 func AtualizarStatusConversa(c echo.Context) error {
-	app := c.Get("app").(*pocketbase.PocketBase)
+	app, teamID, err := getAuthTeamID(c)
+	if err != nil {
+		return c.JSON(401, g.M("error", "unauthorized"))
+	}
 
 	id := c.PathParam("id")
 	if id == "" {
@@ -260,13 +295,17 @@ func AtualizarStatusConversa(c echo.Context) error {
 		return c.JSON(400, g.M("error", "invalid request body"))
 	}
 
-	validStatus := map[string]bool{"ATIVA": true, "PAUSADA": true, "FINALIZADA": true}
+	validStatus := map[string]bool{
+		"ATIVA":      true,
+		"PAUSADA":    true,
+		"FINALIZADA": true,
+	}
 	if !validStatus[payload.Status] {
 		return c.JSON(400, g.M("error", "status inválido (use ATIVA, PAUSADA ou FINALIZADA)"))
 	}
 
-	record, err := app.Dao().FindRecordById("conversas_ia", id)
-	if err != nil {
+	record, err := findTeamScopedRecord(app, "conversas_ia", id, teamID)
+	if err != nil || record == nil {
 		return c.JSON(404, g.M("error", "conversa não encontrada"))
 	}
 
