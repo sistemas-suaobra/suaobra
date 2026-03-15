@@ -37,7 +37,7 @@ export default function Menu(props: Props) {
     <>
       <br />
 
-      <div className="flex flex-wrap justify-content-center menu-wrapper">
+      <div className="flex flex-wrap justify-content-center align-items-center relative menu-wrapper">
         <SelectButton
           className="menu-buttons"
           value={value}
@@ -50,6 +50,10 @@ export default function Menu(props: Props) {
           }}
           options={items}
         />
+        <div className="absolute hidden lg:flex align-items-center" style={{ top: "50%", right: "2rem", transform: "translateY(-50%)" }}>
+          <span className="mr-2 text-700" style={{ fontSize: "1.2rem" }}>Powered by</span>
+          <img src="/google_gemini_google.png" alt="Powered by Gemini" style={{ height: "28px" }} />
+        </div>
       </div>
 
       <style>{`
