@@ -144,13 +144,61 @@ func (s *WhatsAppService) wuzBaseURL() string {
 	return s.wuz.BaseURL()
 }
 
-// SendTestMessage envia uma mensagem de teste via WhatsApp.
 func (s *WhatsAppService) SendTestMessage(teamID, phone, body string) (map[string]any, error) {
-	token, _, err := s.getTokenAndRecordByTeam(teamID)
+	startedAt := time.Now()
+	phone = strings.TrimSpace(phone)
+	body = strings.TrimSpace(body)
+
+	g.Info(
+		"WhatsAppService.SendTestMessage: start team=%s phone=%s body_len=%d body=%s",
+		teamID,
+		maskWAPhone(phone),
+		len(body),
+		truncateWALog(body, 800),
+	)
+
+	token, wa, err := s.getTokenAndRecordByTeam(teamID)
 	if err != nil {
+		g.Error(err, "WhatsAppService.SendTestMessage: erro ao obter token/record team=%s", teamID)
 		return nil, err
 	}
-	return s.wuz.SendTextMessage(token, phone, body)
+
+	instanciaID := ""
+	deviceJID := ""
+	if wa != nil {
+		instanciaID = strings.TrimSpace(wa.GetString("instancia_id"))
+		deviceJID = strings.TrimSpace(wa.GetString("device_jid"))
+	}
+
+	g.Info(
+		"WhatsAppService.SendTestMessage: resolved team=%s instancia_id=%s device_jid=%s token=%s",
+		teamID,
+		instanciaID,
+		deviceJID,
+		maskWAToken(token),
+	)
+
+	resp, err := s.wuz.SendTextMessage(token, phone, body)
+	if err != nil {
+		g.Error(
+			err,
+			"WhatsAppService.SendTestMessage: falha no WUZAPI team=%s phone=%s instancia_id=%s",
+			teamID,
+			maskWAPhone(phone),
+			instanciaID,
+		)
+		return nil, err
+	}
+
+	g.Info(
+		"WhatsAppService.SendTestMessage: success team=%s phone=%s duration=%s response=%s",
+		teamID,
+		maskWAPhone(phone),
+		time.Since(startedAt),
+		truncateWALog(g.Marshal(resp), 1500),
+	)
+
+	return resp, nil
 }
 
 // CheckAndUpdateStatus consulta o wuzapi para saber se o user está connected,
@@ -236,4 +284,34 @@ func (s *WhatsAppService) GetByTeam(teamID string) (exists bool, con *models.Rec
 	}
 
 	return true, con, wa, nil
+}
+
+func truncateWALog(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
+}
+
+func maskWAPhone(phone string) string {
+	var digits strings.Builder
+	for _, c := range phone {
+		if c >= '0' && c <= '9' {
+			digits.WriteRune(c)
+		}
+	}
+	v := digits.String()
+	if len(v) <= 4 {
+		return v
+	}
+	return strings.Repeat("*", len(v)-4) + v[len(v)-4:]
+}
+
+func maskWAToken(token string) string {
+	token = strings.TrimSpace(token)
+	if len(token) <= 6 {
+		return token
+	}
+	return token[:3] + strings.Repeat("*", len(token)-6) + token[len(token)-3:]
 }

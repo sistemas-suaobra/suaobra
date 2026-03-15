@@ -20,7 +20,7 @@ func (r *IntencaoRepo) FindAtivasByTeamID(teamID string) ([]*models.Record, erro
 	records, err := r.dao.FindRecordsByFilter(
 		"agente_ia_intencoes",
 		"team_id = {:teamId} && ativa = true",
-		"-prioridade", // ordem decrescente de prioridade
+		"-prioridade",
 		0,
 		0,
 		dbx.Params{"teamId": teamID},
@@ -51,18 +51,26 @@ func NewConversaRepo(dao *daos.Dao) *ConversaRepo {
 
 // FindByTelefone busca conversa ativa por telefone
 func (r *ConversaRepo) FindByTelefone(teamID, telefone string) (*models.Record, error) {
-	record, err := r.dao.FindFirstRecordByFilter(
+	records, err := r.dao.FindRecordsByFilter(
 		"conversas_ia",
-		"team_id = {:teamId} && telefone = {:telefone} && status = 'ATIVA'",
+		"team_id = {:teamId} && telefone = {:telefone}",
+		"-updated",
+		1,
+		0,
 		dbx.Params{
 			"teamId":   teamID,
 			"telefone": telefone,
 		},
 	)
 	if err != nil {
-		return nil, err // pode retornar ErrRecordNotFound, é esperado
+		return nil, g.Error(err, "erro ao buscar conversa por telefone")
 	}
-	return record, nil
+
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	return records[0], nil
 }
 
 // FindByCampanhaAndTelefone busca conversa por campanha e telefone
@@ -100,7 +108,7 @@ func (r *ConversaRepo) Create(data map[string]interface{}) (*models.Record, erro
 	return record, nil
 }
 
-// Update atualiza uma conversa
+// Update atualiza uma conversa existente
 func (r *ConversaRepo) Update(record *models.Record, data map[string]interface{}) error {
 	for k, v := range data {
 		record.Set(k, v)

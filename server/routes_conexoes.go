@@ -9,6 +9,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
+	"github.com/spf13/cast"
 
 	"github.com/suaobra/suaobra-app/server/clients/wuzapi"
 	"github.com/suaobra/suaobra-app/server/config"
@@ -69,8 +70,8 @@ func CriarConexaoWhatsapp(c echo.Context) error {
 
 	return c.JSON(status, g.M(
 		"alreadyExists", already,
-		"conexao", con.PublicExport(),
-		"whatsapp", wa.PublicExport(),
+		"conexao",       con.PublicExport(),
+		"whatsapp",      wa.PublicExport(),
 	))
 }
 
@@ -111,8 +112,8 @@ func ObterQRCodeWhatsapp(c echo.Context) error {
 
 	return c.JSON(200, g.M(
 		"success", true,
-		"code", code,
-		"data", g.M("QRCode", qr),
+		"code",    code,
+		"data",    g.M("QRCode", qr),
 	))
 }
 
@@ -210,8 +211,8 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 
 	if !exists {
 		return c.JSON(200, g.M(
-			"exists", false,
-			"conexao", nil,
+			"exists",   false,
+			"conexao",  nil,
 			"whatsapp", nil,
 		))
 	}
@@ -219,15 +220,15 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 	// pode existir conexão mas ainda não ter registro em conexoes_whatsapp
 	if wa == nil || wa.Id == "" {
 		return c.JSON(200, g.M(
-			"exists", true,
-			"conexao", con.PublicExport(),
+			"exists",   true,
+			"conexao",  con.PublicExport(),
 			"whatsapp", nil,
 		))
 	}
 
 	return c.JSON(200, g.M(
-		"exists", true,
-		"conexao", con.PublicExport(),
+		"exists",   true,
+		"conexao",  con.PublicExport(),
 		"whatsapp", wa.PublicExport(),
 	))
 }
@@ -257,9 +258,9 @@ func SyncWebhookURLs(app *pocketbase.PocketBase) {
 			continue
 		}
 
-		currentWebhook := wa.GetString("webhook")
+		currentWebhook := strings.TrimSpace(wa.GetString("webhook"))
 		if currentWebhook == webhookURL {
-			continue // já está correto
+			continue
 		}
 
 		if err := wuzClient.UpdateAdminUser(instanciaID, map[string]any{
@@ -323,7 +324,6 @@ func FixWebhookWhatsapp(c echo.Context) error {
 		return ErrJSON(502, err)
 	}
 
-	// Atualiza também o campo webhook no registro local
 	wa.Set("webhook", webhookURL)
 	if saveErr := req.Dao().SaveRecord(wa); saveErr != nil {
 		g.Warn("fix-webhook: falha ao salvar webhook no registro local: %v", saveErr)
@@ -345,18 +345,17 @@ func WebhookWhatsmeow(c echo.Context) error {
 		return c.JSON(400, g.M("error", "invalid body"))
 	}
 
-	// WUZAPI v2 usa "type" para o tipo de evento e "userID" para identificar a instância
-	eventType := strings.ToLower(strings.TrimSpace(body["type"].(string)))
-	userID, _ := body["userID"].(string)
+	g.Info("webhook/whatsmeow: raw_body=%s", truncateWebhookLog(g.Marshal(body), 8000))
+
+	eventType := strings.ToLower(strings.TrimSpace(cast.ToString(body["type"])))
+	userID := strings.TrimSpace(cast.ToString(body["userID"]))
 
 	// Fallback para formato antigo (testes manuais)
 	if eventType == "" {
-		if evt, ok := body["event"].(string); ok {
-			eventType = strings.ToLower(strings.TrimSpace(evt))
-		}
+		eventType = strings.ToLower(strings.TrimSpace(cast.ToString(body["event"])))
 	}
 	if userID == "" {
-		userID, _ = body["token"].(string)
+		userID = strings.TrimSpace(cast.ToString(body["token"]))
 		if userID == "" {
 			userID = strings.TrimSpace(c.Request().Header.Get("token"))
 		}
@@ -378,12 +377,9 @@ func WebhookWhatsmeow(c echo.Context) error {
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Extrai JID do payload
 		jid := ""
 		if evt, ok := body["event"].(map[string]any); ok {
-			if v, ok := evt["JID"].(string); ok {
-				jid = v
-			}
+			jid = strings.TrimSpace(cast.ToString(evt["JID"]))
 		}
 
 		wa.Set("device_jid", jid)
@@ -396,7 +392,6 @@ func WebhookWhatsmeow(c echo.Context) error {
 		}
 
 	case "message":
-		// Mensagem recebida - processa com IA conversacional
 		if userID == "" {
 			g.Warn("webhook/whatsmeow: Message sem userID")
 			return c.JSON(200, g.M("ok", true))
@@ -409,33 +404,41 @@ func WebhookWhatsmeow(c echo.Context) error {
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		g.Info("webhook/whatsmeow: ✅ conexoes_whatsapp encontrado wa_id=%s conexoes=%s", wa.Id, wa.GetString("conexoes"))
+		conexaoID := resolveWAConexaoID(wa)
+		g.Info(
+			"webhook/whatsmeow: conexoes_whatsapp encontrado wa_id=%s conexoes_raw=%s conexao_id=%s",
+			wa.Id,
+			truncateWebhookLog(g.Marshal(wa.Get("conexoes")), 300),
+			conexaoID,
+		)
 
-		// Busca conexão para pegar team_id
-		conRepo := repositories.NewConexaoRepo(app.Dao())
-		con, err := conRepo.FindByID(wa.GetString("conexoes"))
-		if err != nil || con == nil {
-			g.Warn("webhook/whatsmeow: conexão não encontrada para wa=%s conexoes=%s", wa.Id, wa.GetString("conexoes"))
+		if conexaoID == "" {
+			g.Warn("webhook/whatsmeow: conexão relation vazia para wa=%s", wa.Id)
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		teamID := con.GetString("team_id")
+		conRepo := repositories.NewConexaoRepo(app.Dao())
+		con, err := conRepo.FindByID(conexaoID)
+		if err != nil || con == nil {
+			g.Warn("webhook/whatsmeow: conexão não encontrada para wa=%s conexao_id=%s err=%v", wa.Id, conexaoID, err)
+			return c.JSON(200, g.M("ok", true))
+		}
+
+		teamID := strings.TrimSpace(con.GetString("team_id"))
 		if teamID == "" {
 			g.Warn("webhook/whatsmeow: team_id vazio para conexao=%s", con.Id)
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Extrai dados da mensagem - formato WUZAPI v2
-		// body["event"] contém Info e Message
 		evt, ok := body["event"].(map[string]any)
 		if !ok {
-			// Fallback para formato de teste manual
 			if data, ok := body["data"].(map[string]any); ok {
 				evt = map[string]any{
 					"Info": map[string]any{
 						"Sender":   data["from"],
 						"IsFromMe": data["fromMe"],
 						"PushName": data["pushName"],
+						"Chat":     data["chat"],
 					},
 					"Message": map[string]any{
 						"conversation": data["body"],
@@ -447,158 +450,130 @@ func WebhookWhatsmeow(c echo.Context) error {
 			}
 		}
 
-		// Extrai Info
 		info, _ := evt["Info"].(map[string]any)
 		if info == nil {
 			g.Warn("webhook/whatsmeow: Info ausente no evento")
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Verifica se é mensagem enviada por nós (ignora)
-		isFromMe, _ := info["IsFromMe"].(bool)
+		isFromMe := cast.ToBool(info["IsFromMe"])
 		if isFromMe {
 			g.Debug("webhook/whatsmeow: ignorando mensagem enviada por nós")
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Extrai telefone do remetente (Sender pode ser "5511999999999@s.whatsapp.net")
-		sender, _ := info["Sender"].(string)
+		sender := strings.TrimSpace(cast.ToString(info["Sender"]))
 		if sender == "" {
-			sender, _ = info["Chat"].(string)
+			sender = strings.TrimSpace(cast.ToString(info["Chat"]))
 		}
 		if sender == "" {
 			g.Warn("webhook/whatsmeow: Sender/Chat vazio no evento")
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Remove qualquer sufixo @... (ex: @s.whatsapp.net, @lid, etc)
-		telefone := sender
-
-		// corta @...
-		if idx := strings.Index(telefone, "@"); idx > 0 {
-			telefone = telefone[:idx]
+		telefone := normalizeWASender(sender)
+		if telefone == "" {
+			g.Warn("webhook/whatsmeow: telefone vazio após normalização sender=%q", sender)
+			return c.JSON(200, g.M("ok", true))
 		}
 
-		// corta :5 etc
-		if idx := strings.Index(telefone, ":"); idx > 0 {
-			telefone = telefone[:idx]
-		}
-
-		// só dígitos
-		var b strings.Builder
-		b.Grow(len(telefone))
-		for _, r := range telefone {
-			if r >= '0' && r <= '9' {
-				b.WriteRune(r)
-			}
-		}
-		telefone = b.String()
-
-		// Extrai nome do contato (se disponível)
-		nomeContato, _ := info["PushName"].(string)
+		nomeContato := strings.TrimSpace(cast.ToString(info["PushName"]))
 		if nomeContato == "" {
 			nomeContato = telefone
 		}
 
-		// Extrai texto da mensagem - pode estar em Message.conversation ou Message.extendedTextMessage.text
-		mensagem := ""
-		if msg, ok := evt["Message"].(map[string]any); ok {
-			if conv, ok := msg["conversation"].(string); ok && conv != "" {
-				mensagem = conv
-			} else if extMsg, ok := msg["extendedTextMessage"].(map[string]any); ok {
-				if text, ok := extMsg["text"].(string); ok {
-					mensagem = text
-				}
-			}
-		}
-
+		mensagem := extractWAMessageText(evt)
 		if mensagem == "" {
 			g.Debug("webhook/whatsmeow: mensagem vazia, ignorando (pode ser mídia)")
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		g.Info("webhook/whatsmeow: Mensagem recebida de %s (%s): %s", nomeContato, telefone, mensagem)
-
-		// Verifica se o telefone pertence a um lead que já foi contatado por uma campanha com IA ativa
-		// Tenta buscar com o telefone exato ou com variações (com/sem código do país)
-		var dest *models.Record
-		var destErr error
-
-		// Tenta primeiro com o telefone exato
-		dest, destErr = app.Dao().FindFirstRecordByFilter(
-			"campanha_destinatarios",
-			"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
-			dbx.Params{
-				"teamId":   teamID,
-				"telefone": telefone,
-			},
+		g.Info(
+			"webhook/whatsmeow: Mensagem recebida team=%s de %s (%s): %s",
+			teamID,
+			nomeContato,
+			maskWebhookPhone(telefone),
+			truncateWebhookLog(mensagem, 1200),
 		)
 
-		// Se não encontrou e o telefone tem código do país, tenta sem
-		if (destErr != nil || dest == nil) && strings.HasPrefix(telefone, "55") && len(telefone) > 10 {
-			telefoneS := telefone[2:] // Remove "55" do início
-			dest, destErr = app.Dao().FindFirstRecordByFilter(
-				"campanha_destinatarios",
-				"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
-				dbx.Params{
-					"teamId":   teamID,
-					"telefone": telefoneS,
-				},
-			)
-		}
+		var dest *models.Record
+		var destErr error
+		candidatos := buildTelefoneCandidates(telefone)
 
-		// Se não encontrou e o telefone não tem código do país, tenta com 55
-		if (destErr != nil || dest == nil) && !strings.HasPrefix(telefone, "55") && len(telefone) >= 10 {
-			telefone55 := "55" + telefone
+		g.Info("webhook/whatsmeow: candidatos telefone=%v", candidatos)
+
+		for _, candidato := range candidatos {
 			dest, destErr = app.Dao().FindFirstRecordByFilter(
 				"campanha_destinatarios",
 				"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
 				dbx.Params{
 					"teamId":   teamID,
-					"telefone": telefone55,
+					"telefone": candidato,
 				},
 			)
+			if destErr == nil && dest != nil {
+				g.Info(
+					"webhook/whatsmeow: destinatário encontrado dest_id=%s campanha_id=%s telefone_match=%s",
+					dest.Id,
+					dest.GetString("campanha_id"),
+					candidato,
+				)
+				break
+			}
 		}
 
 		if destErr != nil || dest == nil {
-			g.Debug("webhook/whatsmeow: telefone %s não é um lead contatado para team %s, ignorando", telefone, teamID)
-			g.Debug("webhook/whatsmeow: telefone %s não é um lead contatado, ignorando", telefone)
+			g.Warn(
+				"webhook/whatsmeow: telefone %s não é lead contatado para team %s candidatos=%v err=%v",
+				maskWebhookPhone(telefone),
+				teamID,
+				candidatos,
+				destErr,
+			)
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Verifica se a campanha tem IA ativa (manter_ia = true)
-		campanhaID := dest.GetString("campanha_id")
+		campanhaID := strings.TrimSpace(dest.GetString("campanha_id"))
 		if campanhaID != "" {
 			campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
 			if campErr == nil && campanha != nil {
 				manterIA := campanha.GetBool("manter_ia")
+				g.Info("webhook/whatsmeow: campanha=%s manter_ia=%v", campanhaID, manterIA)
 				if !manterIA {
-					g.Debug("webhook/whatsmeow: campanha %s não tem IA ativa, ignorando", campanhaID)
+					g.Warn("webhook/whatsmeow: campanha %s não tem IA ativa, ignorando", campanhaID)
 					return c.JSON(200, g.M("ok", true))
 				}
+			} else {
+				g.Warn("webhook/whatsmeow: erro ao buscar campanha=%s err=%v", campanhaID, campErr)
 			}
 		}
 
-		g.Info("webhook/whatsmeow: Lead %s encontrado em campanha com IA ativa, processando...", telefone)
+		g.Info("webhook/whatsmeow: Lead %s encontrado em campanha com IA ativa, processando...", maskWebhookPhone(telefone))
 
-		// Processa mensagem com IA (em goroutine para não bloquear webhook)
-		go func() {
-			// Cria services necessários
-			intencaoRepo := repositories.NewIntencaoRepo(app.Dao())
-			conversaRepo := repositories.NewConversaRepo(app.Dao())
+		go func(teamID, telefone, mensagem, nomeContato string) {
+			dao := app.Dao()
+
+			intencaoRepo := repositories.NewIntencaoRepo(dao)
+			conversaRepo := repositories.NewConversaRepo(dao)
 			geminiSvc := services.NewGeminiService()
 
 			cfg := config.NewWhatsMeowConfig()
 			wuzClient := wuzapi.NewClient(cfg)
 			tokenSvc := services.NewTokenService()
+
+			conRepo := repositories.NewConexaoRepo(dao)
+			waRepo := repositories.NewWhatsAppRepo(dao)
 			whatsappSvc := services.NewWhatsAppService(conRepo, waRepo, wuzClient, tokenSvc)
 
-			iaSvc := services.NewIAConversacionalService(app.Dao(), intencaoRepo, conversaRepo, geminiSvc, whatsappSvc)
+			iaSvc := services.NewIAConversacionalService(dao, intencaoRepo, conversaRepo, whatsappSvc, geminiSvc)
 
+			g.Info("webhook/whatsmeow: goroutine IA start team=%s telefone=%s", teamID, maskWebhookPhone(telefone))
 			if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato); err != nil {
-				g.Error(err, "Erro ao processar mensagem de %s", telefone)
+				g.Error(err, "webhook/whatsmeow: erro ao processar mensagem telefone=%s", maskWebhookPhone(telefone))
+				return
 			}
-		}()
+			g.Info("webhook/whatsmeow: goroutine IA end telefone=%s", maskWebhookPhone(telefone))
+		}(teamID, telefone, mensagem, nomeContato)
 	}
 
 	return c.JSON(200, g.M("ok", true))
@@ -619,17 +594,17 @@ func SalvarConexaoEmail(c echo.Context) error {
 	}
 
 	type ReqBody struct {
-		Nome          string `json:"nome"`
+		Nome           string `json:"nome"`
 		RemetenteEmail string `json:"remetente_email"`
-		ReplyTo       string `json:"reply_to"`
-		SMTPHost      string `json:"smtp_host"`
-		SMTPPort      int    `json:"smtp_port"`
-		SMTPUsuario   string `json:"smtp_usuario"`
-		SMTPSenha     string `json:"smtp_senha"`
-		Criptografia  string `json:"criptografia"`
-		TaxaPorMin    int    `json:"taxa_por_min"`
-		TamanhoLote   int    `json:"tamanho_lote"`
-		LimiteDiario  int    `json:"limite_diario"`
+		ReplyTo        string `json:"reply_to"`
+		SMTPHost       string `json:"smtp_host"`
+		SMTPPort       int    `json:"smtp_port"`
+		SMTPUsuario    string `json:"smtp_usuario"`
+		SMTPSenha      string `json:"smtp_senha"`
+		Criptografia   string `json:"criptografia"`
+		TaxaPorMin     int    `json:"taxa_por_min"`
+		TamanhoLote    int    `json:"tamanho_lote"`
+		LimiteDiario   int    `json:"limite_diario"`
 	}
 
 	var body ReqBody
@@ -647,7 +622,6 @@ func SalvarConexaoEmail(c echo.Context) error {
 		"criptografia":    body.Criptografia,
 	}
 
-	// Só atualiza senha se foi enviada
 	if body.SMTPSenha != "" {
 		fields["smtp_senha"] = body.SMTPSenha
 	}
@@ -663,7 +637,7 @@ func SalvarConexaoEmail(c echo.Context) error {
 	return c.JSON(200, g.M(
 		"success", true,
 		"conexao", con,
-		"email", email,
+		"email",   email,
 	))
 }
 
@@ -682,18 +656,17 @@ func ObterConexaoEmail(c echo.Context) error {
 	exists, con, email, err := svc.GetConfig(user.Team.ID)
 	if err != nil {
 		g.Warn("get email config error: %v", err)
-		// Se a collection não existe, retorna exists=false ao invés de erro
 		return c.JSON(200, g.M(
-			"exists", false,
+			"exists",  false,
 			"conexao", nil,
-			"email", nil,
+			"email",   nil,
 		))
 	}
 
 	return c.JSON(200, g.M(
-		"exists", exists,
+		"exists",  exists,
 		"conexao", con,
-		"email", email,
+		"email",   email,
 	))
 }
 
@@ -732,4 +705,139 @@ func EnviarEmailTeste(c echo.Context) error {
 
 	g.Info("test email sent successfully teamID=%s to=%s", user.Team.ID, body.To)
 	return c.JSON(200, g.M("success", true))
+}
+
+func resolveWAConexaoID(wa *models.Record) string {
+	if wa == nil {
+		return ""
+	}
+
+	ids := wa.GetStringSlice("conexoes")
+	if len(ids) > 0 {
+		return strings.TrimSpace(ids[0])
+	}
+
+	raw := wa.Get("conexoes")
+	switch v := raw.(type) {
+	case []any:
+		for _, item := range v {
+			id := strings.TrimSpace(cast.ToString(item))
+			if id != "" {
+				return id
+			}
+		}
+	case []string:
+		for _, item := range v {
+			id := strings.TrimSpace(item)
+			if id != "" {
+				return id
+			}
+		}
+	}
+
+	return strings.TrimSpace(wa.GetString("conexoes"))
+}
+
+func normalizeWASender(sender string) string {
+	sender = strings.TrimSpace(sender)
+	if sender == "" {
+		return ""
+	}
+
+	if idx := strings.Index(sender, "@"); idx > 0 {
+		sender = sender[:idx]
+	}
+	if idx := strings.Index(sender, ":"); idx > 0 {
+		sender = sender[:idx]
+	}
+
+	var b strings.Builder
+	b.Grow(len(sender))
+	for _, r := range sender {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func extractWAMessageText(evt map[string]any) string {
+	msg, ok := evt["Message"].(map[string]any)
+	if !ok || msg == nil {
+		return ""
+	}
+
+	if conv := strings.TrimSpace(cast.ToString(msg["conversation"])); conv != "" {
+		return conv
+	}
+
+	if extMsg, ok := msg["extendedTextMessage"].(map[string]any); ok {
+		if text := strings.TrimSpace(cast.ToString(extMsg["text"])); text != "" {
+			return text
+		}
+	}
+
+	if imgMsg, ok := msg["imageMessage"].(map[string]any); ok {
+		if caption := strings.TrimSpace(cast.ToString(imgMsg["caption"])); caption != "" {
+			return caption
+		}
+	}
+
+	if vidMsg, ok := msg["videoMessage"].(map[string]any); ok {
+		if caption := strings.TrimSpace(cast.ToString(vidMsg["caption"])); caption != "" {
+			return caption
+		}
+	}
+
+	return ""
+}
+
+func buildTelefoneCandidates(telefone string) []string {
+	telefone = normalizeWASender(telefone)
+	if telefone == "" {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 4)
+
+	add := func(v string) {
+		v = normalizeWASender(v)
+		if v == "" {
+			return
+		}
+		if _, ok := seen[v]; ok {
+			return
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+
+	add(telefone)
+
+	if strings.HasPrefix(telefone, "55") && len(telefone) > 10 {
+		add(telefone[2:])
+	}
+
+	if !strings.HasPrefix(telefone, "55") && len(telefone) >= 10 {
+		add("55" + telefone)
+	}
+
+	return out
+}
+
+func truncateWebhookLog(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
+}
+
+func maskWebhookPhone(phone string) string {
+	phone = normalizeWASender(phone)
+	if len(phone) <= 4 {
+		return phone
+	}
+	return strings.Repeat("*", len(phone)-4) + phone[len(phone)-4:]
 }

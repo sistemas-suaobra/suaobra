@@ -350,6 +350,129 @@ func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
 	return criados, ignorados, nil
 }
 
+func appendMensagemNaConversa(
+	conversa *models.Record,
+	role string,
+	content string,
+	timestamp time.Time,
+) {
+	if conversa == nil {
+		return
+	}
+
+	mensagens := make([]map[string]interface{}, 0)
+
+	raw := conversa.Get("mensagens")
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				mensagens = append(mensagens, map[string]interface{}{
+					"role":      cast.ToString(m["role"]),
+					"content":   cast.ToString(m["content"]),
+					"timestamp": cast.ToString(m["timestamp"]),
+				})
+				continue
+			}
+
+			if m, ok := item.(map[string]any); ok {
+				mensagens = append(mensagens, map[string]interface{}{
+					"role":      cast.ToString(m["role"]),
+					"content":   cast.ToString(m["content"]),
+					"timestamp": cast.ToString(m["timestamp"]),
+				})
+			}
+		}
+
+	case []map[string]interface{}:
+		for _, item := range v {
+			mensagens = append(mensagens, map[string]interface{}{
+				"role":      cast.ToString(item["role"]),
+				"content":   cast.ToString(item["content"]),
+				"timestamp": cast.ToString(item["timestamp"]),
+			})
+		}
+	}
+
+	mensagens = append(mensagens, map[string]interface{}{
+		"role":      strings.TrimSpace(role),
+		"content":   strings.TrimSpace(content),
+		"timestamp": timestamp.UTC().Format(time.RFC3339),
+	})
+
+	conversa.Set("mensagens", mensagens)
+	conversa.Set("ultima_mensagem_em", timestamp.UTC())
+}
+
+func (s *CampanhaService) garantirConversaIA(
+	teamID, campanhaID string,
+	dest *models.Record,
+	telefone, nomeContato, mensagem string,
+) error {
+	if s.conversaRepo == nil {
+		return nil
+	}
+
+	telefone = s.formatPhone(telefone)
+	nomeContato = strings.TrimSpace(nomeContato)
+	mensagem = strings.TrimSpace(mensagem)
+
+	if teamID == "" || telefone == "" || mensagem == "" {
+		return nil
+	}
+
+	now := time.Now().UTC()
+
+	conversa, err := s.conversaRepo.FindByTelefone(teamID, telefone)
+	if err != nil {
+		return err
+	}
+
+	if conversa == nil {
+		payload := map[string]interface{}{
+			"team_id":            teamID,
+			"campanha_id":        campanhaID,
+			"telefone":           telefone,
+			"nome_contato":       nomeContato,
+			"mensagens":          []map[string]interface{}{},
+			"status":             "ATIVA",
+			"ultima_mensagem_em": now,
+		}
+
+		if dest != nil && dest.Id != "" {
+			payload["destinatario_id"] = dest.Id
+
+			if payload["nome_contato"] == "" {
+				payload["nome_contato"] = strings.TrimSpace(dest.GetString("nome_contato"))
+			}
+		}
+
+		conversa, err = s.conversaRepo.Create(payload)
+		if err != nil {
+			return err
+		}
+	} else {
+		if campanhaID != "" {
+			conversa.Set("campanha_id", campanhaID)
+		}
+
+		if dest != nil && dest.Id != "" {
+			conversa.Set("destinatario_id", dest.Id)
+		}
+
+		if conversa.GetString("nome_contato") == "" && nomeContato != "" {
+			conversa.Set("nome_contato", nomeContato)
+		}
+
+		if strings.ToUpper(strings.TrimSpace(conversa.GetString("status"))) != "ATIVA" {
+			conversa.Set("status", "ATIVA")
+		}
+	}
+
+	appendMensagemNaConversa(conversa, "assistant", mensagem, now)
+	return s.conversaRepo.Save(conversa)
+}
+
 // ProcessarCampanhaAsync processa os envios de uma campanha em background.
 func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 	campanha, err := s.repo.FindByID(campanhaID)
@@ -476,20 +599,8 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 				g.Info("WhatsApp enviado para %s", telefone)
 
 				if manterIA && s.conversaRepo != nil {
-					existente, _ := s.conversaRepo.FindByTelefone(teamID, telefone)
-					if existente == nil {
-						_, cErr := s.conversaRepo.Create(map[string]interface{}{
-							"team_id":            teamID,
-							"campanha_id":        campanhaID,
-							"telefone":           telefone,
-							"nome_contato":       nomeContato,
-							"mensagens":          []map[string]interface{}{{"role": "assistant", "content": mensagem, "timestamp": time.Now().UTC().Format(time.RFC3339)}},
-							"status":             "ATIVA",
-							"ultima_mensagem_em": time.Now().UTC(),
-						})
-						if cErr != nil {
-							g.Warn("manter_ia: erro ao criar conversa para %s: %v", telefone, cErr)
-						}
+					if err := s.garantirConversaIA(teamID, campanhaID, dest, telefone, nomeContato, mensagem); err != nil {
+						g.Warn("manter_ia: erro ao garantir conversa para %s: %v", telefone, err)
 					}
 				}
 			} else {
