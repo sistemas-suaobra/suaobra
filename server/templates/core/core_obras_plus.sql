@@ -24,6 +24,8 @@ select
   l.professional_contact_pending_at,
   l.owner_contacted_at,
   l.professional_contacted_at,
+  (select 1 from main.campanha_destinatarios where team_id = '{teamId}' and obra_id = cop.id and contato_tipo = 'OWNER' and status = 'ENVIADO' limit 1) as owner_enviado_em,
+  (select 1 from main.campanha_destinatarios where team_id = '{teamId}' and obra_id = cop.id and contato_tipo = 'PROFISSIONAL' and status = 'ENVIADO' limit 1) as professional_enviado_em,
   n.id is not null as has_note
 
 from core.core_obras_plus cop
