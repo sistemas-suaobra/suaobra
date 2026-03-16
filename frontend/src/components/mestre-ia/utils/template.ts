@@ -15,6 +15,7 @@ export function normalizeLeadProperties(properties: any): Record<string, any> {
 
 export function applyLeadVariables(template: string, vars: Record<string, any>) {
   const nome = (vars.nome ?? vars.nome_contato ?? "").toString()
+  const primeiroNome = nome.split(" ")[0]
   const cidade = (vars.cidade ?? vars.city ?? "").toString()
   const bairro = (vars.bairro ?? "").toString()
 
@@ -22,6 +23,7 @@ export function applyLeadVariables(template: string, vars: Record<string, any>) 
 
   return template
     .replace(/{{\s*nome\s*}}/gi, nome)
+    .replace(/{{\s*primeironome\s*}}/gi, primeiroNome)
     .replace(/{{\s*cidade\s*}}/gi, cidade)
     .replace(/{{\s*bairro\s*}}/gi, bairro)
 }

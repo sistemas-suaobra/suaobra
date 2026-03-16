@@ -14,7 +14,7 @@ import (
 )
 
 type IAConversacionalService struct {
-	dao         *daos.Dao
+	dao          *daos.Dao
 	intencaoRepo *repositories.IntencaoRepo
 	conversaRepo *repositories.ConversaRepo
 	whatsappSvc  *WhatsAppService
@@ -535,6 +535,8 @@ func (s *IAConversacionalService) personalizarRespostaIntencao(template string, 
 			"{{" + strings.ToUpper(key) + "}}",
 			"{{ " + strings.ToLower(key) + " }}",
 			"{{ " + strings.ToUpper(key) + " }}",
+			"{{" + key + "}}",
+			"{{ " + key + " }}",
 		}
 
 		for _, v := range variants {
@@ -542,7 +544,11 @@ func (s *IAConversacionalService) personalizarRespostaIntencao(template string, 
 		}
 	}
 
-	replace("NOME", vars["nome"])
+	nome := strings.TrimSpace(vars["nome"])
+	primeiroNome := strings.Split(nome, " ")[0]
+
+	replace("NOME", nome)
+	replace("primeiroNome", primeiroNome)
 	replace("CIDADE", vars["cidade"])
 	replace("BAIRRO", vars["bairro"])
 	replace("UF", vars["uf"])

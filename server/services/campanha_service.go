@@ -1080,13 +1080,18 @@ func (s *CampanhaService) PersonalizarMensagem(template string, contato map[stri
 			"{{" + strings.ToUpper(key) + "}}",
 			"{{ " + strings.ToLower(key) + " }}",
 			"{{ " + strings.ToUpper(key) + " }}",
+			"{{" + key + "}}",
+			"{{ " + key + " }}",
 		}
 		for _, v := range variants {
 			msg = strings.ReplaceAll(msg, v, val)
 		}
 	}
 
+	primeiroNome := strings.Split(strings.TrimSpace(nome), " ")[0]
+
 	replace("NOME", nome)
+	replace("primeiroNome", primeiroNome)
 	replace("SAUDACAO", saudacao)
 	replace("CIDADE", contato["cidade"])
 	replace("BAIRRO", contato["bairro"])

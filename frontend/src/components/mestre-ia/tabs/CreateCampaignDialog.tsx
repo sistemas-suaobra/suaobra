@@ -121,7 +121,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const [iaContinuar, setIaContinuar] = React.useState(true)
   const [emailSubject, setEmailSubject] = React.useState("")
   const [messageText, setMessageText] = React.useState(
-    "Olá, {{nome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
+    "Olá, {{primeiroNome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
   )
   const [objetivo, setObjetivo] = React.useState("")
   const [generating, setGenerating] = React.useState(false)
@@ -172,6 +172,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
   const VARIABLE_BUTTONS: { label: string; token: string }[] = [
     { label: "Nome", token: "{{nome}}" },
+    { label: "1º Nome", token: "{{primeiroNome}}" },
     { label: "Cidade", token: "{{cidade}}" },
     { label: "Bairro", token: "{{bairro}}" },
   ]
@@ -251,7 +252,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     setIaContinuar(true)
     setEmailSubject("")
     setMessageText(
-      "Olá, {{nome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
+      "Olá, {{primeiroNome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
     )
     setObjetivo("")
     setOcultarJaContactados(true)

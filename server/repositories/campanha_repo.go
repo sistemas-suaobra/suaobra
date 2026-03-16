@@ -271,6 +271,33 @@ func (r *CampanhaRepo) CreateDestinatario(data map[string]any) (*models.Record, 
 
 // ExistsContatoEnviado verifica se já houve envio anterior para a mesma obra/tipo no time
 func (r *CampanhaRepo) ExistsContatoEnviado(teamID, obraID, contatoTipo string) (bool, error) {
+	// Primeiro verifica se tem a marcação na tabela lead que é o padrão principal do sistema
+	isOwner := contatoTipo == "OWNER"
+
+	contactedAtCol := "professional_contacted_at"
+	pendingAtCol := "professional_contact_pending_at"
+	if isOwner {
+		contactedAtCol = "owner_contacted_at"
+		pendingAtCol = "owner_contact_pending_at"
+	}
+
+	leadRecs, err := r.dao.FindRecordsByFilter(
+		"lead",
+		"team_id = {:team_id} && obra_id = {:obra_id} && (nullif("+contactedAtCol+", '') is not null || nullif("+pendingAtCol+", '') is not null)",
+		"-created",
+		1,
+		0,
+		dbx.Params{
+			"team_id": teamID,
+			"obra_id": obraID,
+		},
+	)
+
+	if err == nil && len(leadRecs) > 0 {
+		return true, nil
+	}
+
+	// Fallback para verificar na tabela de destinatários (compatibilidade)
 	recs, err := r.dao.FindRecordsByFilter(
 		"campanha_destinatarios",
 		"team_id = {:team_id} && obra_id = {:obra_id} && contato_tipo = {:contato_tipo} && status = {:status}",

@@ -18,10 +18,12 @@ export function renderPreview(text: string, selectedLeads: string[], leadsOption
   const first = leadsOptions.find((l) => l.value === firstId);
 
   const nome = extractNomeFromLead(first);
+  const primeiroNome = nome.split(" ")[0];
   const saudacao = saudacaoFromNow();
 
   const preview = (text || "")
     .replaceAll("{{nome}}", nome)
+    .replaceAll("{{primeiroNome}}", primeiroNome)
     .replaceAll("{{saudacao}}", saudacao);
 
   return <span style={{ whiteSpace: "pre-wrap" }}>{preview || "—"}</span>;

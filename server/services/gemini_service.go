@@ -33,7 +33,7 @@ func NewGeminiService() *GeminiService {
 		model:   model,
 		headers: map[string]string{
 			echo.HeaderContentType: "application/json",
-			"x-goog-api-key":        apiKey,
+			"x-goog-api-key":       apiKey,
 		},
 	}
 }
@@ -117,9 +117,9 @@ func (s *GeminiService) GenerateConversationalResponse(
 		),
 		"contents", contents,
 		"generationConfig", g.M(
-			"temperature",      temperatura,
-			"topK",            35,
-			"topP",            0.89,
+			"temperature", temperatura,
+			"topK", 35,
+			"topP", 0.89,
 			"maxOutputTokens", 220,
 		),
 	)
@@ -217,7 +217,7 @@ Regras:
 - Sem "que ótimo", sem "prazer", sem enrolação.
 - 1 a 2 frases curtas, máximo 220 caracteres.
 - No máximo 1 emoji (opcional).
-- Use variáveis: {{nome}} {{cidade}} {{bairro}} (se fizer sentido).
+- Use variáveis: {{nome}} {{primeiroNome}} {{cidade}} {{bairro}} (se fizer sentido).
 - Termine com 1 pergunta curta de qualificação (prazo/orçamento/quantidade).
 - Retorne APENAS o texto da mensagem (sem título, sem aspas).`,
 		strings.TrimSpace(objetivo),
