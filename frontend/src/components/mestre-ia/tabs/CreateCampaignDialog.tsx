@@ -873,7 +873,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
           <div style={{ marginTop: 12 }}>
             <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
-              Pré-visualização
+              Pré-visualização.
             </div>
 
             <div
