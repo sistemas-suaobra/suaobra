@@ -3,8 +3,10 @@ package services
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
+	"time"
 
 	"github.com/flarco/g"
 	"github.com/pocketbase/pocketbase/models"
@@ -130,17 +132,70 @@ func (s *EmailService) SendTestEmail(teamID, toEmail, subject, body string) erro
 	case "STARTTLS":
 		return s.sendViaStartTLS(addr, smtpUser, smtpPass, fromEmail, []string{toEmail}, []byte(message))
 	default: // NONE
-		auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
-		return smtp.SendMail(addr, auth, fromEmail, []string{toEmail}, []byte(message))
+		return s.sendViaPlain(addr, smtpUser, smtpPass, fromEmail, []string{toEmail}, []byte(message))
 	}
+}
+
+func (s *EmailService) sendViaPlain(addr, user, pass, from string, to []string, message []byte) error {
+	host := strings.Split(addr, ":")[0]
+
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return g.Error("erro ao conectar (timeout): %v", err)
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return g.Error("erro ao inicializar cliente smtp: %v", err)
+	}
+	defer client.Close()
+
+	auth := smtp.PlainAuth("", user, pass, host)
+	if err = client.Auth(auth); err != nil {
+		return g.Error("erro na autenticação: %v", err)
+	}
+
+	if err = client.Mail(from); err != nil {
+		return g.Error("erro no MAIL FROM: %v", err)
+	}
+
+	for _, addr := range to {
+		if err = client.Rcpt(addr); err != nil {
+			return g.Error("erro no RCPT TO: %v", err)
+		}
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return g.Error("erro ao iniciar DATA: %v", err)
+	}
+
+	_, err = w.Write(message)
+	if err != nil {
+		return g.Error("erro ao escrever mensagem: %v", err)
+	}
+
+	err = w.Close()
+	if err != nil {
+		return g.Error("erro ao fechar DATA: %v", err)
+	}
+
+	return client.Quit()
 }
 
 func (s *EmailService) sendViaStartTLS(addr, user, pass, from string, to []string, message []byte) error {
 	host := strings.Split(addr, ":")[0]
 
-	client, err := smtp.Dial(addr)
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
-		return g.Error("erro ao conectar: %v", err)
+		return g.Error("erro ao conectar (timeout): %v", err)
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return g.Error("erro ao inicializar cliente smtp: %v", err)
 	}
 	defer client.Close()
 

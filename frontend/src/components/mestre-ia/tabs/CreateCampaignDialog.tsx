@@ -358,7 +358,11 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   }, [recipientOptionsLocal])
 
   React.useEffect(() => {
-    setSelectedRecipients((prev) => prev.filter((value) => recipientOptionMap.has(value)))
+    setSelectedRecipients((prev) => {
+      const next = prev.filter((value) => recipientOptionMap.has(value))
+      if (next.length > 50) return next.slice(0, 50)
+      return next
+    })
   }, [recipientOptionMap])
 
   const recipientStats = React.useMemo(() => {
@@ -725,7 +729,15 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           <MultiSelect
             value={selectedRecipients}
             options={filteredRecipientOptions}
-            onChange={(e) => setSelectedRecipients((e.value || []) as string[])}
+            onChange={(e) => {
+              const val = (e.value || []) as string[]
+              if (val.length > 50) {
+                notify("warn", "Limite excedido", "Você pode selecionar no máximo 50 leads por disparo.")
+                setSelectedRecipients(val.slice(0, 50))
+              } else {
+                setSelectedRecipients(val)
+              }
+            }}
             placeholder={getPlaceholderByFilter(recipientFilter)}
             className="w-full"
             filter

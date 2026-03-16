@@ -121,13 +121,11 @@ export function useCampaignLeadOptions(params: {
           })
 
           const ownerContacted =
-            !!(r as any)?.owner_contacted_at ||
             !!(r as any)?.owner_enviado_em ||
             isTruthyContactStatus((r as any)?.owner_contacted) ||
             isTruthyContactStatus((r as any)?.owner_status)
 
           const professionalContacted =
-            !!(r as any)?.professional_contacted_at ||
             !!(r as any)?.professional_enviado_em ||
             isTruthyContactStatus((r as any)?.professional_contacted) ||
             isTruthyContactStatus((r as any)?.professional_status)

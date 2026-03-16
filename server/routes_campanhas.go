@@ -49,9 +49,9 @@ func AdicionarDestinatariosObrasPlus(c echo.Context) error {
 	}
 
 	var body struct {
-		Destinatarios            []services.CampanhaDestinatarioInput `json:"destinatarios"`
-		OcultarJaContactados     bool                                 `json:"ocultar_ja_contactados"`
-		OcultarJaContactadosAlt  bool                                 `json:"ocultarJaContactados"`
+		Destinatarios           []services.CampanhaDestinatarioInput `json:"destinatarios"`
+		OcultarJaContactados    bool                                 `json:"ocultar_ja_contactados"`
+		OcultarJaContactadosAlt bool                                 `json:"ocultarJaContactados"`
 	}
 
 	if err := c.Bind(&body); err != nil {
@@ -60,6 +60,10 @@ func AdicionarDestinatariosObrasPlus(c echo.Context) error {
 
 	if len(body.Destinatarios) == 0 {
 		return ErrJSON(400, errors.New("Informe os destinatários"))
+	}
+
+	if len(body.Destinatarios) > 50 {
+		return ErrJSON(400, errors.New("O limite de disparos por campanha é de 50 leads"))
 	}
 
 	ocultarJaContactados := body.OcultarJaContactados || body.OcultarJaContactadosAlt
