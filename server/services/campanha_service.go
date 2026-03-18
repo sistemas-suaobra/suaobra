@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	maxEnviosPorHora = 5
-	maxEnviosPorDia  = 100
-	delayEntreEnvios = 10 * time.Second
+	// Intervalo de 2 minutos entre envios de WhatsApp (por campanha).
+	delayEntreEnviosWhatsApp = 2 * time.Minute
 
 	ContatoTipoOwner        = "OWNER"
 	ContatoTipoProfessional = "PROFISSIONAL"
@@ -474,6 +473,10 @@ func (s *CampanhaService) garantirConversaIA(
 }
 
 // ProcessarCampanhaAsync processa os envios de uma campanha em background.
+// O loop busca destinatários PENDENTE continuamente (um a um) até que não
+// sobre nenhum, garantindo que todos sejam processados mesmo em caso de erro.
+// O intervalo de 2 minutos entre WhatsApp é POR CAMPANHA – cada campanha
+// roda a sua própria goroutine, então os timers são independentes.
 func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
@@ -491,50 +494,43 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 
 	usaWhatsApp, usaEmail := s.getCampaignChannels(campanha)
 
-	g.Info("Processando campanha %s para team %s (WHATSAPP=%v EMAIL=%v)", campanhaID, teamID, usaWhatsApp, usaEmail)
-
-	destinatarios, err := s.repo.FindDestinatariosPendentes(campanhaID)
-	if err != nil {
-		g.Error(err, "erro ao buscar destinatários")
-		s.repo.UpdateStatus(campanha, repositories.CampanhaStatusConcluida)
-		return
-	}
-
-	g.Info("Encontrados %d destinatários pendentes", len(destinatarios))
-
-	enviadosHoje, _ := s.repo.CountEnviadosHojeByTeam(teamID)
-	enviosNestaHora := 0
-	inicioHora := time.Now()
+	g.Info("Processando campanha %s para team %s (WHATSAPP=%v EMAIL=%v delay_wa=%v)",
+		campanhaID, teamID, usaWhatsApp, usaEmail, delayEntreEnviosWhatsApp)
 
 	enviados := 0
 	falhas := 0
 
-	for _, dest := range destinatarios {
+	// Loop contínuo: busca PENDENTE → processa → espera → repete até acabar.
+	for {
+		// 1. Verificar se campanha foi pausada ou cancelada
 		campanha, _ = s.repo.FindByID(campanhaID)
+		if campanha == nil {
+			g.Warn("Campanha %s não encontrada, encerrando", campanhaID)
+			break
+		}
 		status := campanha.GetString("status")
 		if status == repositories.CampanhaStatusPausada || status == repositories.CampanhaStatusCancelada {
-			g.Info("Campanha %s foi %s, interrompendo", campanhaID, status)
+			g.Info("Campanha %s foi %s, interrompendo (enviados=%d falhas=%d)", campanhaID, status, enviados, falhas)
 			break
 		}
 
-		if enviadosHoje+enviados >= maxEnviosPorDia {
-			g.Info("Limite diário de %d mensagens atingido para team %s", maxEnviosPorDia, teamID)
+		// 2. Buscar próximo destinatário PENDENTE
+		pendentes, err := s.repo.FindDestinatariosPendentes(campanhaID)
+		if err != nil {
+			g.Error(err, "erro ao buscar destinatários pendentes da campanha %s", campanhaID)
+			break
+		}
+		if len(pendentes) == 0 {
+			g.Info("Campanha %s: nenhum destinatário PENDENTE restante", campanhaID)
 			break
 		}
 
-		if enviosNestaHora >= maxEnviosPorHora {
-			elapsed := time.Since(inicioHora)
-			remaining := time.Hour - elapsed
-			if remaining > 0 {
-				g.Info("Rate limit: %d/hora atingido, aguardando %v", maxEnviosPorHora, remaining)
-				if s.waitWithCancelCheck(campanhaID, remaining) {
-					break
-				}
-			}
-			inicioHora = time.Now()
-			enviosNestaHora = 0
-		}
+		dest := pendentes[0] // processa um de cada vez
 
+		g.Info("Campanha %s: processando destinatário %s (%d pendentes restantes)",
+			campanhaID, dest.Id, len(pendentes))
+
+		// 3. Resolver canais e dados do destinatário
 		targetWhatsApp, targetEmail := s.getTargetChannelsForDest(dest, usaWhatsApp, usaEmail)
 
 		nomeContato := strings.TrimSpace(dest.GetString("nome_contato"))
@@ -574,14 +570,17 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			nomeContato = "Cliente"
 		}
 
-		if (!targetWhatsApp || telefone != "") && (!targetEmail || email != "") {
-			// ok
-		} else {
-			s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusIgnorado, "Sem contato para os canais selecionados")
+		// 4. Sem contato disponível → IGNORADO (pula sem delay)
+		if !((!targetWhatsApp || telefone != "") && (!targetEmail || email != "")) {
+			g.Warn("Destinatário %s ignorado: sem contato para os canais selecionados", dest.Id)
+			if err := s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusIgnorado, "Sem contato para os canais selecionados"); err != nil {
+				g.Error(err, "Erro ao atualizar status para IGNORADO do destinatário %s", dest.Id)
+			}
 			falhas++
-			continue
+			continue // não aplica delay – segue pro próximo
 		}
 
+		// 5. Personalizar mensagem
 		mensagem := s.PersonalizarMensagem(mensagemTemplate, map[string]string{
 			"nome":   nomeContato,
 			"cidade": cidade,
@@ -589,13 +588,16 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			"uf":     uf,
 		})
 
+		// 6. Enviar
 		var sendErr error
 		enviouAlgum := false
+		enviouWhatsApp := false
 
 		if targetWhatsApp && telefone != "" {
 			sendErr = s.enviarWhatsApp(teamID, telefone, mensagem)
 			if sendErr == nil {
 				enviouAlgum = true
+				enviouWhatsApp = true
 				g.Info("WhatsApp enviado para %s", telefone)
 
 				if manterIA && s.conversaRepo != nil {
@@ -604,7 +606,7 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 					}
 				}
 			} else {
-				g.Error(sendErr, "Falha WhatsApp para %s", telefone)
+				g.Error(sendErr, "Falha WhatsApp para %s (destinatário %s)", telefone, dest.Id)
 			}
 		}
 
@@ -621,24 +623,31 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			}
 		}
 
+		// 7. Atualizar status do destinatário
 		if !enviouAlgum {
 			errMsg := "Sem contato para os canais selecionados"
 			if sendErr != nil {
 				errMsg = sendErr.Error()
 			}
-			s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusFalhou, errMsg)
+			g.Warn("Destinatário %s marcado como FALHOU: %s", dest.Id, errMsg)
+			if err := s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusFalhou, errMsg); err != nil {
+				g.Error(err, "Erro ao atualizar status para FALHOU do destinatário %s", dest.Id)
+			}
 			falhas++
+			// Não aplica delay de 2 min em caso de falha – segue para o próximo
 			continue
 		}
 
-		s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusEnviado, "")
+		if err := s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusEnviado, ""); err != nil {
+			g.Error(err, "Erro ao atualizar status para ENVIADO do destinatário %s", dest.Id)
+		}
 		enviados++
-		enviosNestaHora++
 
 		g.Info(
-			"Enviado %d/%d obra=%s tipo=%s cidade=%s bairro=%s uf=%s telefone=%s email=%s",
+			"Campanha %s: enviado %d (falhas=%d) obra=%s tipo=%s cidade=%s bairro=%s uf=%s telefone=%s email=%s",
+			campanhaID,
 			enviados,
-			len(destinatarios),
+			falhas,
 			dest.GetString("obra_id"),
 			dest.GetString("contato_tipo"),
 			cidade,
@@ -648,11 +657,20 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			email,
 		)
 
-		time.Sleep(delayEntreEnvios)
+		// 8. Aguardar 2 minutos entre envios de WhatsApp (por campanha).
+		//    Se o envio foi apenas email, continua sem delay.
+		if enviouWhatsApp {
+			g.Info("Campanha %s: aguardando %v antes do próximo envio WhatsApp...", campanhaID, delayEntreEnviosWhatsApp)
+			if s.waitWithCancelCheck(campanhaID, delayEntreEnviosWhatsApp) {
+				g.Info("Campanha %s foi pausada/cancelada durante espera", campanhaID)
+				break
+			}
+		}
 	}
 
+	// Finalizar campanha se ainda está EM_ANDAMENTO
 	campanha, _ = s.repo.FindByID(campanhaID)
-	if campanha.GetString("status") == repositories.CampanhaStatusEmAndamento {
+	if campanha != nil && campanha.GetString("status") == repositories.CampanhaStatusEmAndamento {
 		s.repo.UpdateStatus(campanha, repositories.CampanhaStatusConcluida)
 	}
 	g.Info("Campanha %s finalizada: %d enviados, %d falhas", campanhaID, enviados, falhas)
