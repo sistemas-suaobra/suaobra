@@ -70,12 +70,13 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 		return nil
 	}
 
-	conversa, err := s.conversaRepo.FindByTelefone(teamID, telefone)
-	if err != nil {
-		g.Error(err, "IA: erro ao buscar conversa team=%s telefone=%s", teamID, maskIAPhone(telefone))
-		return g.Error(err, "erro ao buscar conversa")
-	}
+	// Gerar candidatos de telefone para busca mais robusta
+	candidatosTelefone := s.buildPhoneCandidates(telefone)
+	g.Info("IA: candidatos telefone=%v", candidatosTelefone)
 
+	conversa := s.conversaRepo.FindByTelefoneCandidates(teamID, candidatosTelefone)
+
+	var err error
 	if conversa == nil {
 		g.Info("IA: nenhuma conversa encontrada, criando nova team=%s telefone=%s", teamID, maskIAPhone(telefone))
 		conversa, err = s.criarNovaConversa(teamID, telefone, nomeContato, mensagem)
@@ -224,31 +225,39 @@ func (s *IAConversacionalService) criarNovaConversa(
 		"ultima_mensagem_em": now,
 	}
 
-	destinatarios, err := s.dao.FindRecordsByFilter(
-		"campanha_destinatarios",
-		"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
-		"-enviado_em,-updated",
-		1,
-		0,
-		dbx.Params{
-			"teamId":   teamID,
-			"telefone": telefone,
-		},
-	)
-	if err == nil && len(destinatarios) > 0 {
-		dest := destinatarios[0]
+	// Buscar destinatário usando múltiplos candidatos de telefone
+	candidatos := s.buildPhoneCandidates(telefone)
+	var destMatch *models.Record
+	for _, candidato := range candidatos {
+		recs, findErr := s.dao.FindRecordsByFilter(
+			"campanha_destinatarios",
+			"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
+			"-enviado_em,-updated",
+			1,
+			0,
+			dbx.Params{
+				"teamId":   teamID,
+				"telefone": candidato,
+			},
+		)
+		if findErr == nil && len(recs) > 0 {
+			destMatch = recs[0]
+			break
+		}
+	}
 
-		data["campanha_id"] = dest.GetString("campanha_id")
-		data["destinatario_id"] = dest.Id
+	if destMatch != nil {
+		data["campanha_id"] = destMatch.GetString("campanha_id")
+		data["destinatario_id"] = destMatch.Id
 
 		if cast.ToString(data["nome_contato"]) == "" {
-			data["nome_contato"] = strings.TrimSpace(dest.GetString("nome_contato"))
+			data["nome_contato"] = strings.TrimSpace(destMatch.GetString("nome_contato"))
 		}
 
 		g.Info(
 			"IA: nova conversa associada à campanha %s e destinatário %s",
-			dest.GetString("campanha_id"),
-			dest.Id,
+			destMatch.GetString("campanha_id"),
+			destMatch.Id,
 		)
 	}
 
@@ -571,6 +580,58 @@ func (s *IAConversacionalService) normalizarTelefoneE164(phone string) string {
 	}
 
 	return result
+}
+
+// buildPhoneCandidates gera variações de número de telefone para matching
+// robusto: com/sem código de país 55 e com/sem o 9º dígito brasileiro.
+func (s *IAConversacionalService) buildPhoneCandidates(phone string) []string {
+	phone = s.normalizarTelefoneE164(phone)
+	if phone == "" {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 6)
+
+	add := func(v string) {
+		v = s.normalizarTelefoneE164(v)
+		if v == "" {
+			return
+		}
+		if _, ok := seen[v]; ok {
+			return
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+
+	add(phone)
+
+	// Com/sem código de país 55
+	if strings.HasPrefix(phone, "55") && len(phone) > 10 {
+		add(phone[2:])
+	}
+	if !strings.HasPrefix(phone, "55") && len(phone) >= 10 {
+		add("55" + phone)
+	}
+
+	// Variantes do 9º dígito brasileiro
+	withCC := phone
+	if !strings.HasPrefix(withCC, "55") && len(withCC) >= 10 {
+		withCC = "55" + withCC
+	}
+	if strings.HasPrefix(withCC, "55") && len(withCC) >= 12 {
+		ddd := withCC[2:4]
+		local := withCC[4:]
+
+		if len(local) == 9 && local[0] == '9' {
+			add("55" + ddd + local[1:])
+		} else if len(local) == 8 {
+			add("55" + ddd + "9" + local)
+		}
+	}
+
+	return out
 }
 
 func truncateIAContent(s string, max int) string {

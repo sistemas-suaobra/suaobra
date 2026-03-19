@@ -181,6 +181,32 @@ func (c *Client) GetAdminUser(userID string) (AdminUserInfo, error) {
 	return parsed.Data[0], nil
 }
 
+// ListAllAdminUsers retorna todos os users do wuzapi (admin auth).
+func (c *Client) ListAllAdminUsers() ([]AdminUserInfo, error) {
+	url := c.cfg.BaseURL + "admin/users"
+	r, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	r.Header.Set("Accept", "application/json")
+	r.Header.Set("Authorization", c.cfg.APIKey)
+
+	res, err := c.http.Do(r)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	var parsed AdminUserResp
+	if err := json.NewDecoder(res.Body).Decode(&parsed); err != nil {
+		return nil, g.Error("wuzapi /admin/users non-json (status=%d)", res.StatusCode)
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, g.Error("wuzapi /admin/users failed status=%d", res.StatusCode)
+	}
+	return parsed.Data, nil
+}
+
 // UpdateAdminUser faz PUT no user — permite corrigir events/webhook após criação.
 func (c *Client) UpdateAdminUser(userID string, fields map[string]any) error {
 	b, _ := json.Marshal(fields)

@@ -8,6 +8,7 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 
 	"github.com/suaobra/suaobra-app/server/clients/wuzapi"
+	"github.com/suaobra/suaobra-app/server/config"
 	"github.com/suaobra/suaobra-app/server/repositories"
 )
 
@@ -116,11 +117,45 @@ func (s *WhatsAppService) getTokenAndRecordByTeam(teamID string) (token string, 
 }
 
 func (s *WhatsAppService) ConnectByTeam(teamID string) (map[string]any, error) {
-	token, _, err := s.getTokenAndRecordByTeam(teamID)
+	token, wa, err := s.getTokenAndRecordByTeam(teamID)
 	if err != nil {
 		return nil, err
 	}
-	return s.ConnectSession(token)
+
+	raw, err := s.ConnectSession(token)
+	if err != nil {
+		return raw, err
+	}
+
+	// Wuzapi pode limpar o campo Events ao conectar/reconectar.
+	// Garantir que Events=All e webhook estejam configurados após cada conexão.
+	instanciaID := ""
+	if wa != nil {
+		instanciaID = strings.TrimSpace(wa.GetString("instancia_id"))
+	}
+	if instanciaID != "" {
+		go func(iid string) {
+			// Pequeno delay para dar tempo ao wuzapi processar a conexão
+			time.Sleep(3 * time.Second)
+
+			cfg := config.NewWhatsMeowConfig()
+			webhookURL := cfg.WebhookURL()
+			if webhookURL == "" {
+				return
+			}
+
+			if updateErr := s.wuz.UpdateAdminUser(iid, map[string]any{
+				"webhook": webhookURL,
+				"events":  "All",
+			}); updateErr != nil {
+				g.Warn("ConnectByTeam: falha ao garantir Events=All instancia=%s: %v", iid, updateErr)
+			} else {
+				g.Info("ConnectByTeam: Events=All garantido após conexão instancia=%s", iid)
+			}
+		}(instanciaID)
+	}
+
+	return raw, nil
 }
 
 func (s *WhatsAppService) GetQRByTeam(teamID string) (code int, qr string, err error) {

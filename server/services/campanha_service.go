@@ -478,6 +478,15 @@ func (s *CampanhaService) garantirConversaIA(
 // O intervalo de 2 minutos entre WhatsApp é POR CAMPANHA – cada campanha
 // roda a sua própria goroutine, então os timers são independentes.
 func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
+	// Garantir que a campanha seja finalizada mesmo em caso de panic
+	defer func() {
+		if r := recover(); r != nil {
+			g.Error(g.Error("panic na goroutine da campanha %s: %v", campanhaID, r))
+		}
+		// Sempre tenta finalizar a campanha ao sair da goroutine
+		s.finalizarCampanhaSeNecessario(campanhaID)
+	}()
+
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
 		g.Error(err, "erro ao buscar campanha %s", campanhaID)
@@ -659,8 +668,16 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 
 		// 8. Aguardar 2 minutos entre envios de WhatsApp (por campanha).
 		//    Se o envio foi apenas email, continua sem delay.
+		//    Verifica se ainda há pendentes ANTES de esperar para não aguardar
+		//    2 minutos desnecessários após o último envio.
 		if enviouWhatsApp {
-			g.Info("Campanha %s: aguardando %v antes do próximo envio WhatsApp...", campanhaID, delayEntreEnviosWhatsApp)
+			proximosPendentes, _ := s.repo.FindDestinatariosPendentes(campanhaID)
+			if len(proximosPendentes) == 0 {
+				g.Info("Campanha %s: último envio concluído, sem mais pendentes", campanhaID)
+				break
+			}
+			g.Info("Campanha %s: aguardando %v antes do próximo envio WhatsApp (%d pendentes)...",
+				campanhaID, delayEntreEnviosWhatsApp, len(proximosPendentes))
 			if s.waitWithCancelCheck(campanhaID, delayEntreEnviosWhatsApp) {
 				g.Info("Campanha %s foi pausada/cancelada durante espera", campanhaID)
 				break
@@ -668,12 +685,8 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 		}
 	}
 
-	// Finalizar campanha se ainda está EM_ANDAMENTO
-	campanha, _ = s.repo.FindByID(campanhaID)
-	if campanha != nil && campanha.GetString("status") == repositories.CampanhaStatusEmAndamento {
-		s.repo.UpdateStatus(campanha, repositories.CampanhaStatusConcluida)
-	}
-	g.Info("Campanha %s finalizada: %d enviados, %d falhas", campanhaID, enviados, falhas)
+	g.Info("Campanha %s: loop encerrado — enviados=%d falhas=%d", campanhaID, enviados, falhas)
+	// A finalização real é feita no defer (finalizarCampanhaSeNecessario)
 }
 
 // restante do arquivo continua igual...
@@ -1203,6 +1216,41 @@ func (s *CampanhaService) enviarWhatsApp(teamID, telefone, mensagem string) erro
 	phone := s.formatPhone(telefone)
 	_, err := s.waSvc.SendTestMessage(teamID, phone, mensagem)
 	return err
+}
+
+// finalizarCampanhaSeNecessario verifica se a campanha ainda está EM_ANDAMENTO
+// e, se não houver mais destinatários PENDENTE, atualiza o status para CONCLUIDA.
+// Chamada sempre no defer de ProcessarCampanhaAsync para garantir que a campanha
+// não fique presa como EM_ANDAMENTO mesmo em caso de panic ou erro inesperado.
+func (s *CampanhaService) finalizarCampanhaSeNecessario(campanhaID string) {
+	campanha, err := s.repo.FindByID(campanhaID)
+	if err != nil {
+		g.Error(err, "finalizarCampanha: erro ao buscar campanha %s", campanhaID)
+		return
+	}
+	if campanha == nil {
+		g.Warn("finalizarCampanha: campanha %s não encontrada", campanhaID)
+		return
+	}
+
+	status := campanha.GetString("status")
+	if status != repositories.CampanhaStatusEmAndamento {
+		g.Info("finalizarCampanha: campanha %s já está como %s, nenhuma ação necessária", campanhaID, status)
+		return
+	}
+
+	// Verificar se realmente não há mais pendentes
+	pendentes, _ := s.repo.FindDestinatariosPendentes(campanhaID)
+	if len(pendentes) > 0 {
+		g.Warn("finalizarCampanha: campanha %s ainda tem %d pendentes — mantendo EM_ANDAMENTO", campanhaID, len(pendentes))
+		return
+	}
+
+	if err := s.repo.UpdateStatus(campanha, repositories.CampanhaStatusConcluida); err != nil {
+		g.Error(err, "finalizarCampanha: ERRO ao atualizar campanha %s para CONCLUIDA", campanhaID)
+		return
+	}
+	g.Info("finalizarCampanha: campanha %s atualizada para CONCLUIDA com sucesso ✓", campanhaID)
 }
 
 func (s *CampanhaService) waitWithCancelCheck(campanhaID string, duration time.Duration) bool {

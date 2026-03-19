@@ -73,6 +73,19 @@ func (r *ConversaRepo) FindByTelefone(teamID, telefone string) (*models.Record, 
 	return records[0], nil
 }
 
+// FindByTelefoneCandidates tenta encontrar conversa ativa usando múltiplos
+// candidatos de telefone (com/sem 55, com/sem 9º dígito, etc.).
+// Retorna a primeira conversa encontrada, ou nil.
+func (r *ConversaRepo) FindByTelefoneCandidates(teamID string, candidates []string) *models.Record {
+	for _, telefone := range candidates {
+		record, err := r.FindByTelefone(teamID, telefone)
+		if err == nil && record != nil {
+			return record
+		}
+	}
+	return nil
+}
+
 // FindByCampanhaAndTelefone busca conversa por campanha e telefone
 func (r *ConversaRepo) FindByCampanhaAndTelefone(campanhaID, telefone string) (*models.Record, error) {
 	record, err := r.dao.FindFirstRecordByFilter(

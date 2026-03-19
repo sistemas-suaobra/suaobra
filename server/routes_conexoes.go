@@ -233,8 +233,10 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 	))
 }
 
-// SyncWebhookURLs atualiza a URL de webhook em todos os usuários wuzapi ativos.
+// SyncWebhookURLs atualiza a URL de webhook em todos os usuários wuzapi.
 // Chamado no startup para garantir que o wuzapi aponte para o servidor correto.
+// IMPORTANTE: Sempre empurra para o wuzapi, NUNCA confia apenas no DB local,
+// pois o wuzapi pode limpar o campo Events durante reconexões.
 func SyncWebhookURLs(app *pocketbase.PocketBase) {
 	cfg := config.NewWhatsMeowConfig()
 	webhookURL := cfg.WebhookURL()
@@ -246,22 +248,24 @@ func SyncWebhookURLs(app *pocketbase.PocketBase) {
 	wuzClient := wuzapi.NewClient(cfg)
 	waRepo := repositories.NewWhatsAppRepo(app.Dao())
 
+	// ── 1. Sincronizar as instâncias que estão no nosso DB ──
 	records, err := waRepo.FindAll()
-	if err != nil || len(records) == 0 {
-		g.Info("SyncWebhookURLs: nenhuma conexão WhatsApp para sincronizar")
-		return
+	if err != nil {
+		g.Warn("SyncWebhookURLs: erro ao buscar conexões locais: %v", err)
 	}
+
+	knownInstanciaIDs := map[string]bool{}
 
 	for _, wa := range records {
 		instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
 		if instanciaID == "" {
 			continue
 		}
+		knownInstanciaIDs[instanciaID] = true
 
-		currentWebhook := strings.TrimSpace(wa.GetString("webhook"))
-		if currentWebhook == webhookURL {
-			continue
-		}
+		// SEMPRE empurrar para o wuzapi — o DB local pode estar desatualizado
+		// (wuzapi limpa Events ao reconectar, mas nosso DB continua mostrando "All")
+		g.Info("SyncWebhookURLs: forçando sync instancia=%s webhook=%q events=All", instanciaID, webhookURL)
 
 		if err := wuzClient.UpdateAdminUser(instanciaID, map[string]any{
 			"webhook": webhookURL,
@@ -272,12 +276,46 @@ func SyncWebhookURLs(app *pocketbase.PocketBase) {
 		}
 
 		wa.Set("webhook", webhookURL)
+		wa.Set("events", "All")
 		if saveErr := app.Dao().SaveRecord(wa); saveErr != nil {
-			g.Warn("SyncWebhookURLs: falha ao salvar webhook local instancia=%s: %v", instanciaID, saveErr)
+			g.Warn("SyncWebhookURLs: falha ao salvar local instancia=%s: %v", instanciaID, saveErr)
 		} else {
-			g.Info("SyncWebhookURLs: webhook atualizado para %s instancia=%s", webhookURL, instanciaID)
+			g.Info("SyncWebhookURLs: sync OK instancia=%s", instanciaID)
 		}
 	}
+
+	// ── 2. Verificar TODAS as instâncias no wuzapi (inclusive órfãs) ──
+	// Instâncias órfãs são aquelas que existem no wuzapi mas não no nosso DB,
+	// o que pode acontecer por criações duplicadas ou erros.
+	allUsers, listErr := wuzClient.ListAllAdminUsers()
+	if listErr != nil {
+		g.Warn("SyncWebhookURLs: falha ao listar todos os users wuzapi: %v", listErr)
+		return
+	}
+
+	for _, user := range allUsers {
+		if knownInstanciaIDs[user.ID] {
+			continue // já sincronizado acima
+		}
+
+		// Instância órfã — só atualizar se o webhook aponta para um dos nossos domínios
+		if user.Webhook == "" || user.Webhook == webhookURL ||
+			strings.Contains(user.Webhook, "suaobra") ||
+			strings.Contains(user.Webhook, "ngrok") {
+
+			g.Info("SyncWebhookURLs: sync instância órfã id=%s name=%s connected=%v events=%q webhook=%q",
+				user.ID, user.Name, user.Connected, user.Events, user.Webhook)
+
+			if err := wuzClient.UpdateAdminUser(user.ID, map[string]any{
+				"webhook": webhookURL,
+				"events":  "All",
+			}); err != nil {
+				g.Warn("SyncWebhookURLs: falha ao sync órfã id=%s: %v", user.ID, err)
+			}
+		}
+	}
+
+	g.Info("SyncWebhookURLs: sync completo — %d instâncias locais, %d total no wuzapi", len(records), len(allUsers))
 }
 
 // POST /conexoes/whatsapp/fix-webhook
@@ -325,12 +363,48 @@ func FixWebhookWhatsapp(c echo.Context) error {
 	}
 
 	wa.Set("webhook", webhookURL)
+	wa.Set("events", "All")
 	if saveErr := req.Dao().SaveRecord(wa); saveErr != nil {
 		g.Warn("fix-webhook: falha ao salvar webhook no registro local: %v", saveErr)
 	}
 
 	g.Info("fix-webhook: webhook atualizado para %s instancia=%s", webhookURL, instanciaID)
 	return c.JSON(200, g.M("ok", true, "webhook_url", webhookURL))
+}
+
+// resolveWARecord tenta encontrar o registro conexoes_whatsapp usando vários métodos:
+// 1. Por instancia_id (userID do wuzapi no body)
+// 2. Por token/numero_e164 (fallback — algumas versões do wuzapi enviam o token)
+// 3. Pelo token no header (fallback — wuzapi pode enviar no header "token")
+func resolveWARecord(waRepo *repositories.WhatsAppRepo, userID string, tokenHeader string) (*models.Record, string) {
+	// Tentar por instancia_id primeiro
+	if userID != "" {
+		wa, err := waRepo.FindByInstanciaID(userID)
+		if err == nil && wa != nil && wa.Id != "" {
+			g.Debug("webhook/whatsmeow: resolve por instancia_id=%q → wa=%s", userID, wa.Id)
+			return wa, strings.TrimSpace(wa.GetString("instancia_id"))
+		}
+
+		// Fallback: userID pode ser o token (numero_e164)
+		wa, err = waRepo.FindByToken(userID)
+		if err == nil && wa != nil && wa.Id != "" {
+			instID := strings.TrimSpace(wa.GetString("instancia_id"))
+			g.Info("webhook/whatsmeow: resolve por token(body)=%q → wa=%s instancia=%s", maskWebhookPhone(userID), wa.Id, instID)
+			return wa, instID
+		}
+	}
+
+	// Fallback: token no header
+	if tokenHeader != "" && tokenHeader != userID {
+		wa, err := waRepo.FindByToken(tokenHeader)
+		if err == nil && wa != nil && wa.Id != "" {
+			instID := strings.TrimSpace(wa.GetString("instancia_id"))
+			g.Info("webhook/whatsmeow: resolve por token(header) → wa=%s instancia=%s", wa.Id, instID)
+			return wa, instID
+		}
+	}
+
+	return nil, ""
 }
 
 // POST /webhooks/whatsmeow
@@ -349,6 +423,7 @@ func WebhookWhatsmeow(c echo.Context) error {
 
 	eventType := strings.ToLower(strings.TrimSpace(cast.ToString(body["type"])))
 	userID := strings.TrimSpace(cast.ToString(body["userID"]))
+	tokenHeader := strings.TrimSpace(c.Request().Header.Get("token"))
 
 	// Fallback para formato antigo (testes manuais)
 	if eventType == "" {
@@ -357,23 +432,18 @@ func WebhookWhatsmeow(c echo.Context) error {
 	if userID == "" {
 		userID = strings.TrimSpace(cast.ToString(body["token"]))
 		if userID == "" {
-			userID = strings.TrimSpace(c.Request().Header.Get("token"))
+			userID = tokenHeader
 		}
 	}
 
-	g.Info("webhook/whatsmeow: type=%q userID=%q", eventType, userID)
+	g.Info("webhook/whatsmeow: type=%q userID=%q tokenHeader=%q", eventType, userID, maskWebhookPhone(tokenHeader))
 
 	switch eventType {
 	case "connected":
-		if userID == "" {
-			g.Warn("webhook/whatsmeow: Connected sem userID")
-			return c.JSON(200, g.M("ok", true))
-		}
-
 		waRepo := repositories.NewWhatsAppRepo(app.Dao())
-		wa, err := waRepo.FindByInstanciaID(userID)
-		if err != nil || wa == nil || wa.Id == "" {
-			g.Warn("webhook/whatsmeow: nenhum conexoes_whatsapp para userID=%q err=%v", userID, err)
+		wa, instanciaID := resolveWARecord(waRepo, userID, tokenHeader)
+		if wa == nil || wa.Id == "" {
+			g.Warn("webhook/whatsmeow: Connected — nenhum registro encontrado userID=%q tokenHeader=%q", userID, maskWebhookPhone(tokenHeader))
 			return c.JSON(200, g.M("ok", true))
 		}
 
@@ -391,16 +461,31 @@ func WebhookWhatsmeow(c echo.Context) error {
 			g.Info("webhook/whatsmeow: Connected OK — device_jid=%q waId=%s", jid, wa.Id)
 		}
 
-	case "message":
-		if userID == "" {
-			g.Warn("webhook/whatsmeow: Message sem userID")
-			return c.JSON(200, g.M("ok", true))
+		// Wuzapi limpa Events ao reconectar — re-sincronizar webhook + events
+		if instanciaID != "" {
+			go func(iid string) {
+				cfg := config.NewWhatsMeowConfig()
+				webhookURL := cfg.WebhookURL()
+				if webhookURL == "" {
+					return
+				}
+				wuzClient := wuzapi.NewClient(cfg)
+				if err := wuzClient.UpdateAdminUser(iid, map[string]any{
+					"webhook": webhookURL,
+					"events":  "All",
+				}); err != nil {
+					g.Warn("webhook/whatsmeow: falha ao re-sync events após Connected instancia=%s: %v", iid, err)
+				} else {
+					g.Info("webhook/whatsmeow: events re-sync OK após Connected instancia=%s webhook=%s", iid, webhookURL)
+				}
+			}(instanciaID)
 		}
 
+	case "message":
 		waRepo := repositories.NewWhatsAppRepo(app.Dao())
-		wa, err := waRepo.FindByInstanciaID(userID)
-		if err != nil || wa == nil || wa.Id == "" {
-			g.Warn("webhook/whatsmeow: nenhum conexoes_whatsapp para userID=%q", userID)
+		wa, _ := resolveWARecord(waRepo, userID, tokenHeader)
+		if wa == nil || wa.Id == "" {
+			g.Warn("webhook/whatsmeow: Message — nenhum registro encontrado userID=%q tokenHeader=%q", userID, maskWebhookPhone(tokenHeader))
 			return c.JSON(200, g.M("ok", true))
 		}
 
@@ -456,24 +541,53 @@ func WebhookWhatsmeow(c echo.Context) error {
 			return c.JSON(200, g.M("ok", true))
 		}
 
+		// Suporte para MessageSource aninhado (algumas versões de wuzapi)
+		if msgSrc, ok := info["MessageSource"].(map[string]any); ok {
+			if info["Sender"] == nil {
+				info["Sender"] = msgSrc["Sender"]
+			}
+			if info["Chat"] == nil {
+				info["Chat"] = msgSrc["Chat"]
+			}
+			if info["IsFromMe"] == nil {
+				info["IsFromMe"] = msgSrc["IsFromMe"]
+			}
+			if info["IsGroup"] == nil {
+				info["IsGroup"] = msgSrc["IsGroup"]
+			}
+		}
+
 		isFromMe := cast.ToBool(info["IsFromMe"])
 		if isFromMe {
 			g.Debug("webhook/whatsmeow: ignorando mensagem enviada por nós")
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		sender := strings.TrimSpace(cast.ToString(info["Sender"]))
-		if sender == "" {
-			sender = strings.TrimSpace(cast.ToString(info["Chat"]))
-		}
-		if sender == "" {
-			g.Warn("webhook/whatsmeow: Sender/Chat vazio no evento")
+		// Ignorar mensagens de grupo
+		if cast.ToBool(info["IsGroup"]) {
+			g.Debug("webhook/whatsmeow: ignorando mensagem de grupo")
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		telefone := normalizeWASender(sender)
+		// Ignorar mensagens de canais/newsletters (@newsletter)
+		chatStr := strings.TrimSpace(cast.ToString(info["Chat"]))
+		if chatStr == "" {
+			if chatMap, ok := info["Chat"].(map[string]any); ok {
+				chatStr = strings.TrimSpace(cast.ToString(chatMap["Server"]))
+			}
+		}
+		if strings.Contains(chatStr, "@newsletter") || strings.Contains(chatStr, "newsletter") {
+			g.Debug("webhook/whatsmeow: ignorando mensagem de newsletter/canal")
+			return c.JSON(200, g.M("ok", true))
+		}
+
+		// Extrair telefone — suporta JID como string E como objeto
+		telefone := extractJIDPhone(info["Sender"])
 		if telefone == "" {
-			g.Warn("webhook/whatsmeow: telefone vazio após normalização sender=%q", sender)
+			telefone = extractJIDPhone(info["Chat"])
+		}
+		if telefone == "" {
+			g.Warn("webhook/whatsmeow: telefone vazio após extração de JID Sender=%v Chat=%v", info["Sender"], info["Chat"])
 			return c.JSON(200, g.M("ok", true))
 		}
 
@@ -496,14 +610,13 @@ func WebhookWhatsmeow(c echo.Context) error {
 			truncateWebhookLog(mensagem, 1200),
 		)
 
-		var dest *models.Record
-		var destErr error
 		candidatos := buildTelefoneCandidates(telefone)
-
 		g.Info("webhook/whatsmeow: candidatos telefone=%v", candidatos)
 
+		// ── 1. Tentar encontrar destinatário na campanha ──
+		var dest *models.Record
 		for _, candidato := range candidatos {
-			dest, destErr = app.Dao().FindFirstRecordByFilter(
+			dest, _ = app.Dao().FindFirstRecordByFilter(
 				"campanha_destinatarios",
 				"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
 				dbx.Params{
@@ -511,7 +624,7 @@ func WebhookWhatsmeow(c echo.Context) error {
 					"telefone": candidato,
 				},
 			)
-			if destErr == nil && dest != nil {
+			if dest != nil {
 				g.Info(
 					"webhook/whatsmeow: destinatário encontrado dest_id=%s campanha_id=%s telefone_match=%s",
 					dest.Id,
@@ -522,30 +635,52 @@ func WebhookWhatsmeow(c echo.Context) error {
 			}
 		}
 
-		if destErr != nil || dest == nil {
+		// ── 2. Verificar se a campanha tem IA ativa ──
+		iaAtiva := false
+		if dest != nil {
+			campanhaID := strings.TrimSpace(dest.GetString("campanha_id"))
+			if campanhaID != "" {
+				campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
+				if campErr == nil && campanha != nil {
+					manterIA := campanha.GetBool("manter_ia")
+					g.Info("webhook/whatsmeow: campanha=%s manter_ia=%v", campanhaID, manterIA)
+					iaAtiva = manterIA
+				} else {
+					g.Warn("webhook/whatsmeow: erro ao buscar campanha=%s err=%v", campanhaID, campErr)
+				}
+			}
+		}
+
+		// ── 3. Fallback: verificar se já existe conversa ativa em conversas_ia ──
+		if !iaAtiva {
+			conversaRepo := repositories.NewConversaRepo(app.Dao())
+			conversa := conversaRepo.FindByTelefoneCandidates(teamID, candidatos)
+
+			if conversa != nil && strings.ToUpper(strings.TrimSpace(conversa.GetString("status"))) == "ATIVA" {
+				campanhaID := strings.TrimSpace(conversa.GetString("campanha_id"))
+				if campanhaID != "" {
+					campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
+					if campErr == nil && campanha != nil && campanha.GetBool("manter_ia") {
+						iaAtiva = true
+						g.Info(
+							"webhook/whatsmeow: conversa ativa encontrada via fallback conversa_id=%s campanha=%s telefone=%s",
+							conversa.Id,
+							campanhaID,
+							maskWebhookPhone(telefone),
+						)
+					}
+				}
+			}
+		}
+
+		if !iaAtiva {
 			g.Warn(
-				"webhook/whatsmeow: telefone %s não é lead contatado para team %s candidatos=%v err=%v",
+				"webhook/whatsmeow: nenhuma campanha com IA ativa encontrada para telefone=%s team=%s candidatos=%v",
 				maskWebhookPhone(telefone),
 				teamID,
 				candidatos,
-				destErr,
 			)
 			return c.JSON(200, g.M("ok", true))
-		}
-
-		campanhaID := strings.TrimSpace(dest.GetString("campanha_id"))
-		if campanhaID != "" {
-			campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
-			if campErr == nil && campanha != nil {
-				manterIA := campanha.GetBool("manter_ia")
-				g.Info("webhook/whatsmeow: campanha=%s manter_ia=%v", campanhaID, manterIA)
-				if !manterIA {
-					g.Warn("webhook/whatsmeow: campanha %s não tem IA ativa, ignorando", campanhaID)
-					return c.JSON(200, g.M("ok", true))
-				}
-			} else {
-				g.Warn("webhook/whatsmeow: erro ao buscar campanha=%s err=%v", campanhaID, campErr)
-			}
 		}
 
 		g.Info("webhook/whatsmeow: Lead %s encontrado em campanha com IA ativa, processando...", maskWebhookPhone(telefone))
@@ -792,6 +927,37 @@ func extractWAMessageText(evt map[string]any) string {
 	return ""
 }
 
+// extractJIDPhone extrai o número de telefone de um JID WhatsApp,
+// suportando tanto string ("5511999998888@s.whatsapp.net") quanto
+// objeto/map ({"User": "5511999998888", "Server": "s.whatsapp.net"}).
+func extractJIDPhone(raw any) string {
+	if raw == nil {
+		return ""
+	}
+
+	// Se for um JID objeto (map), extrair o campo "User"
+	if m, ok := raw.(map[string]any); ok {
+		user := strings.TrimSpace(cast.ToString(m["User"]))
+		if user != "" {
+			return normalizeWASender(user)
+		}
+		// Fallback: tentar campo "user" (minúsculo)
+		user = strings.TrimSpace(cast.ToString(m["user"]))
+		if user != "" {
+			return normalizeWASender(user)
+		}
+		return ""
+	}
+
+	// Se for string, normalizar diretamente
+	s := strings.TrimSpace(cast.ToString(raw))
+	if s == "" || strings.HasPrefix(s, "map[") {
+		// Proteção contra cast.ToString de um map não capturado acima
+		return ""
+	}
+	return normalizeWASender(s)
+}
+
 func buildTelefoneCandidates(telefone string) []string {
 	telefone = normalizeWASender(telefone)
 	if telefone == "" {
@@ -799,7 +965,7 @@ func buildTelefoneCandidates(telefone string) []string {
 	}
 
 	seen := map[string]struct{}{}
-	out := make([]string, 0, 4)
+	out := make([]string, 0, 6)
 
 	add := func(v string) {
 		v = normalizeWASender(v)
@@ -815,12 +981,35 @@ func buildTelefoneCandidates(telefone string) []string {
 
 	add(telefone)
 
+	// Com/sem código de país 55
 	if strings.HasPrefix(telefone, "55") && len(telefone) > 10 {
 		add(telefone[2:])
 	}
-
 	if !strings.HasPrefix(telefone, "55") && len(telefone) >= 10 {
 		add("55" + telefone)
+	}
+
+	// Variantes do 9º dígito brasileiro:
+	// Celulares no Brasil podem ter 8 ou 9 dígitos depois do DDD.
+	// Exemplo: 5511999998888 (com 9) ↔ 551199998888 (sem 9)
+	withCC := telefone
+	if !strings.HasPrefix(withCC, "55") && len(withCC) >= 10 {
+		withCC = "55" + withCC
+	}
+
+	if strings.HasPrefix(withCC, "55") && len(withCC) >= 12 {
+		ddd := withCC[2:4]
+		local := withCC[4:]
+
+		if len(local) == 9 && local[0] == '9' {
+			// Tem 9º dígito → tentar sem
+			add("55" + ddd + local[1:])
+			add(ddd + local[1:])
+		} else if len(local) == 8 {
+			// Não tem 9º dígito → tentar com
+			add("55" + ddd + "9" + local)
+			add(ddd + "9" + local)
+		}
 	}
 
 	return out
