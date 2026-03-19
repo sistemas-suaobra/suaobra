@@ -70,8 +70,8 @@ func CriarConexaoWhatsapp(c echo.Context) error {
 
 	return c.JSON(status, g.M(
 		"alreadyExists", already,
-		"conexao",       con.PublicExport(),
-		"whatsapp",      wa.PublicExport(),
+		"conexao", con.PublicExport(),
+		"whatsapp", wa.PublicExport(),
 	))
 }
 
@@ -112,8 +112,8 @@ func ObterQRCodeWhatsapp(c echo.Context) error {
 
 	return c.JSON(200, g.M(
 		"success", true,
-		"code",    code,
-		"data",    g.M("QRCode", qr),
+		"code", code,
+		"data", g.M("QRCode", qr),
 	))
 }
 
@@ -211,8 +211,8 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 
 	if !exists {
 		return c.JSON(200, g.M(
-			"exists",   false,
-			"conexao",  nil,
+			"exists", false,
+			"conexao", nil,
 			"whatsapp", nil,
 		))
 	}
@@ -220,15 +220,15 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 	// pode existir conexão mas ainda não ter registro em conexoes_whatsapp
 	if wa == nil || wa.Id == "" {
 		return c.JSON(200, g.M(
-			"exists",   true,
-			"conexao",  con.PublicExport(),
+			"exists", true,
+			"conexao", con.PublicExport(),
 			"whatsapp", nil,
 		))
 	}
 
 	return c.JSON(200, g.M(
-		"exists",   true,
-		"conexao",  con.PublicExport(),
+		"exists", true,
+		"conexao", con.PublicExport(),
 		"whatsapp", wa.PublicExport(),
 	))
 }
@@ -581,13 +581,35 @@ func WebhookWhatsmeow(c echo.Context) error {
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Extrair telefone — suporta JID como string E como objeto
-		telefone := extractJIDPhone(info["Sender"])
+		// Extrair telefone — PREFERIR SenderAlt/ChatAlt sobre Sender/Chat
+		// O WhatsApp agora usa LID (Linked Identity) no campo Sender (ex: "216192111399060@lid")
+		// que NÃO é um número de telefone. O número real fica em SenderAlt (ex: "5511952135795@s.whatsapp.net").
+		telefone := extractJIDPhone(info["SenderAlt"])
+		if telefone == "" {
+			telefone = extractJIDPhone(info["Sender"])
+		}
+		if telefone == "" {
+			telefone = extractJIDPhone(info["ChatAlt"])
+		}
 		if telefone == "" {
 			telefone = extractJIDPhone(info["Chat"])
 		}
+
+		// Se o telefone extraído parece ser um LID (não começa com código de país válido),
+		// tentar alternativas antes de usá-lo
+		if isLikelyLID(telefone) {
+			alt := extractJIDPhone(info["SenderAlt"])
+			if alt == "" {
+				alt = extractJIDPhone(info["ChatAlt"])
+			}
+			if alt != "" && !isLikelyLID(alt) {
+				g.Info("webhook/whatsmeow: substituindo LID=%s por número real=%s", telefone, maskWebhookPhone(alt))
+				telefone = alt
+			}
+		}
+
 		if telefone == "" {
-			g.Warn("webhook/whatsmeow: telefone vazio após extração de JID Sender=%v Chat=%v", info["Sender"], info["Chat"])
+			g.Warn("webhook/whatsmeow: telefone vazio após extração de JID Sender=%v SenderAlt=%v Chat=%v", info["Sender"], info["SenderAlt"], info["Chat"])
 			return c.JSON(200, g.M("ok", true))
 		}
 
@@ -772,7 +794,7 @@ func SalvarConexaoEmail(c echo.Context) error {
 	return c.JSON(200, g.M(
 		"success", true,
 		"conexao", con,
-		"email",   email,
+		"email", email,
 	))
 }
 
@@ -792,16 +814,16 @@ func ObterConexaoEmail(c echo.Context) error {
 	if err != nil {
 		g.Warn("get email config error: %v", err)
 		return c.JSON(200, g.M(
-			"exists",  false,
+			"exists", false,
 			"conexao", nil,
-			"email",   nil,
+			"email", nil,
 		))
 	}
 
 	return c.JSON(200, g.M(
-		"exists",  exists,
+		"exists", exists,
 		"conexao", con,
-		"email",   email,
+		"email", email,
 	))
 }
 
@@ -956,6 +978,23 @@ func extractJIDPhone(raw any) string {
 		return ""
 	}
 	return normalizeWASender(s)
+}
+
+// isLikelyLID verifica se o número parece ser um LID (Linked Identity) do WhatsApp
+// ao invés de um número de telefone real. LIDs são IDs internos que não correspondem
+// a números de telefone. Heurística: se NÃO começa com código de país conhecido
+// e tem formato atípico, provavelmente é um LID.
+func isLikelyLID(phone string) bool {
+	if phone == "" {
+		return false
+	}
+	// Telefones brasileiros com código de país começam com 55 e têm 12-13 dígitos
+	// Telefones internacionais geralmente começam com 1-9 seguido de padrões reconhecíveis
+	// LIDs são números longos que não seguem formatos de telefone (ex: 216192111399060)
+	if len(phone) > 13 && !strings.HasPrefix(phone, "55") {
+		return true
+	}
+	return false
 }
 
 func buildTelefoneCandidates(telefone string) []string {

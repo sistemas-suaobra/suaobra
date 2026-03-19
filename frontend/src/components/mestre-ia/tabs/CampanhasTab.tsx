@@ -347,24 +347,63 @@ export default function CampanhasTab() {
   };
 
   const deleteCampaign = async (id: string) => {
+    const campanha = campaigns.find((c) => c.id === id);
+    if (!campanha) return;
+
+    const statusPermitidos: CampaignStatus[] = ["CONCLUIDA", "RASCUNHO"];
+    if (!statusPermitidos.includes(campanha.status)) {
+      notify(
+        "warn",
+        "Não permitido",
+        "Só é possível excluir campanhas com status Concluída ou Rascunho."
+      );
+      return;
+    }
+
+    if (!window.confirm("Tem certeza que deseja excluir esta campanha e todos os seus dados?")) {
+      return;
+    }
+
     try {
       const pb = PB();
       pb.authStore.save(user.get().token, user.get());
 
-      const destinatarios = await pb.collection("campanha_destinatarios").getFullList({
-        filter: `campanha_id = "${id}"`,
-      });
-
-      for (const d of destinatarios) {
-        await pb.collection("campanha_destinatarios").delete(d.id);
+      // 1. Deletar conversas de IA vinculadas à campanha
+      try {
+        const conversas = await pb.collection("conversas_ia").getFullList({
+          filter: `campanha_id = "${id}"`,
+        });
+        for (const conv of conversas) {
+          await pb.collection("conversas_ia").delete(conv.id);
+        }
+      } catch {
+        // conversas_ia pode não existir ou não ter registros — ok
       }
 
+      // 2. Deletar destinatários da campanha
+      try {
+        const destinatarios = await pb.collection("campanha_destinatarios").getFullList({
+          filter: `campanha_id = "${id}"`,
+        });
+        for (const d of destinatarios) {
+          await pb.collection("campanha_destinatarios").delete(d.id);
+        }
+      } catch {
+        // se não encontrar destinatários, continua
+      }
+
+      // 3. Deletar a campanha
       await pb.collection("campanhas").delete(id);
 
       setCampaigns((prev) => prev.filter((c) => c.id !== id));
-      notify("success", "Campanha removida", "Campanha e destinatários excluídos.");
-    } catch (error) {
-      notify("error", "Erro", "Erro ao excluir campanha");
+      notify("success", "Campanha removida", "Campanha e todos os dados associados foram excluídos.");
+    } catch (error: any) {
+      console.error("Erro ao excluir campanha:", error);
+      notify(
+        "error",
+        "Erro ao excluir",
+        error?.message || "Não foi possível excluir a campanha. Verifique se não há dados vinculados."
+      );
     }
   };
 
@@ -404,6 +443,9 @@ export default function CampanhasTab() {
     return <span className="text-secondary">{short || "—"}</span>;
   };
 
+  const canDelete = (status: CampaignStatus) =>
+    status === "CONCLUIDA" || status === "RASCUNHO";
+
   const actionsCell = (row: Campaign, _opts: ColumnBodyOptions) => (
     <div className="flex align-items-center gap-2 justify-content-end flex-wrap">
       <Button
@@ -417,8 +459,9 @@ export default function CampanhasTab() {
         icon="pi pi-trash"
         className="p-button-text p-button-rounded p-button-sm"
         severity="danger"
-        tooltip="Excluir"
+        tooltip={canDelete(row.status) ? "Excluir" : "Só campanhas concluídas ou rascunhos podem ser excluídas"}
         tooltipOptions={{ position: "top" }}
+        disabled={!canDelete(row.status)}
         onClick={() => deleteCampaign(row.id)}
       />
     </div>
@@ -541,10 +584,11 @@ export default function CampanhasTab() {
                         onClick={() => startCampaign(row.id)}
                       />
                       <Button
-                        label="Excluir"
+                        label={canDelete(row.status) ? "Excluir" : "Excluir (indisponível)"}
                         icon="pi pi-trash"
                         className="p-button-sm p-button-outlined w-full"
                         severity="danger"
+                        disabled={!canDelete(row.status)}
                         onClick={() => deleteCampaign(row.id)}
                       />
                     </div>
