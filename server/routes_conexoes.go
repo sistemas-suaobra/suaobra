@@ -581,32 +581,8 @@ func WebhookWhatsmeow(c echo.Context) error {
 			return c.JSON(200, g.M("ok", true))
 		}
 
-		// Extrair telefone — PREFERIR SenderAlt/ChatAlt sobre Sender/Chat
-		// O WhatsApp agora usa LID (Linked Identity) no campo Sender (ex: "216192111399060@lid")
-		// que NÃO é um número de telefone. O número real fica em SenderAlt (ex: "5511952135795@s.whatsapp.net").
-		telefone := extractJIDPhone(info["SenderAlt"])
-		if telefone == "" {
-			telefone = extractJIDPhone(info["Sender"])
-		}
-		if telefone == "" {
-			telefone = extractJIDPhone(info["ChatAlt"])
-		}
-		if telefone == "" {
-			telefone = extractJIDPhone(info["Chat"])
-		}
-
-		// Se o telefone extraído parece ser um LID (não começa com código de país válido),
-		// tentar alternativas antes de usá-lo
-		if isLikelyLID(telefone) {
-			alt := extractJIDPhone(info["SenderAlt"])
-			if alt == "" {
-				alt = extractJIDPhone(info["ChatAlt"])
-			}
-			if alt != "" && !isLikelyLID(alt) {
-				g.Info("webhook/whatsmeow: substituindo LID=%s por número real=%s", telefone, maskWebhookPhone(alt))
-				telefone = alt
-			}
-		}
+		// Extrair telefone real do evento (prioriza JIDs @s.whatsapp.net e evita LID).
+		telefone := extractBestPhoneFromInfo(info)
 
 		if telefone == "" {
 			g.Warn("webhook/whatsmeow: telefone vazio após extração de JID Sender=%v SenderAlt=%v Chat=%v", info["Sender"], info["SenderAlt"], info["Chat"])
@@ -1011,6 +987,9 @@ func buildTelefoneCandidates(telefone string) []string {
 	if telefone == "" {
 		return nil
 	}
+	if isLikelyLID(telefone) {
+		return []string{telefone}
+	}
 
 	seen := map[string]struct{}{}
 	out := make([]string, 0, 6)
@@ -1061,6 +1040,104 @@ func buildTelefoneCandidates(telefone string) []string {
 	}
 
 	return out
+}
+
+func extractBestPhoneFromInfo(info map[string]any) string {
+	if len(info) == 0 {
+		return ""
+	}
+
+	orderedKeys := []string{
+		"SenderAlt", "ChatAlt", "ParticipantAlt",
+		"Sender", "Chat", "Participant",
+		"From", "To", "Author",
+	}
+
+	// 1) Prioridade para campos conhecidos com @s.whatsapp.net
+	for _, k := range orderedKeys {
+		if raw, ok := info[k]; ok {
+			if phone := extractPhoneFromAny(raw, true); phone != "" {
+				return phone
+			}
+		}
+	}
+
+	// 2) Campos conhecidos sem exigir @s.whatsapp.net
+	for _, k := range orderedKeys {
+		if raw, ok := info[k]; ok {
+			if phone := extractPhoneFromAny(raw, false); phone != "" {
+				return phone
+			}
+		}
+	}
+
+	// 3) Fallback recursivo: vasculha todo payload do info
+	if phone := extractPhoneFromAny(info, true); phone != "" {
+		return phone
+	}
+	return extractPhoneFromAny(info, false)
+}
+
+func extractPhoneFromAny(v any, requireServerJID bool) string {
+	switch t := v.(type) {
+	case string:
+		raw := strings.TrimSpace(t)
+		if raw == "" {
+			return ""
+		}
+		if requireServerJID && !strings.Contains(raw, "@s.whatsapp.net") {
+			return ""
+		}
+		phone := extractJIDPhone(raw)
+		if phone == "" {
+			return ""
+		}
+		if requireServerJID && isLikelyLID(phone) {
+			return ""
+		}
+		return phone
+
+	case map[string]any:
+		// Caso de JID objeto: {"User":"5511...", "Server":"s.whatsapp.net"}
+		user := strings.TrimSpace(cast.ToString(t["User"]))
+		server := strings.TrimSpace(cast.ToString(t["Server"]))
+		if user != "" {
+			if !requireServerJID || strings.Contains(server, "s.whatsapp.net") {
+				phone := normalizeWASender(user)
+				if phone != "" && (!requireServerJID || !isLikelyLID(phone)) {
+					return phone
+				}
+			}
+		}
+		// fallback lowercase keys
+		user = strings.TrimSpace(cast.ToString(t["user"]))
+		server = strings.TrimSpace(cast.ToString(t["server"]))
+		if user != "" {
+			if !requireServerJID || strings.Contains(server, "s.whatsapp.net") {
+				phone := normalizeWASender(user)
+				if phone != "" && (!requireServerJID || !isLikelyLID(phone)) {
+					return phone
+				}
+			}
+		}
+		for _, child := range t {
+			if phone := extractPhoneFromAny(child, requireServerJID); phone != "" {
+				return phone
+			}
+		}
+		return ""
+
+	case []any:
+		for _, child := range t {
+			if phone := extractPhoneFromAny(child, requireServerJID); phone != "" {
+				return phone
+			}
+		}
+		return ""
+
+	default:
+		return extractPhoneFromAny(cast.ToString(v), requireServerJID)
+	}
 }
 
 func registrarRespostaWhatsAppSemIA(
