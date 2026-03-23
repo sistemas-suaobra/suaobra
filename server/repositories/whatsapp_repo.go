@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -17,6 +18,11 @@ func NewWhatsAppRepo(dao *daos.Dao) *WhatsAppRepo {
 }
 
 func (r *WhatsAppRepo) FindByConexao(conexaoID string) (*models.Record, error) {
+	conexaoID = strings.TrimSpace(conexaoID)
+	if conexaoID == "" {
+		return nil, nil
+	}
+
 	wa, _ := r.dao.FindFirstRecordByFilter(
 		"conexoes_whatsapp",
 		`conexoes ?= {:conexao}`,
@@ -32,9 +38,32 @@ func (r *WhatsAppRepo) FindByConexao(conexaoID string) (*models.Record, error) {
 		dbx.Params{"conexao": conexaoID},
 	)
 	if err != nil {
+		// fallback resiliente: alguns ambientes podem falhar no parser de filter
+		// para relation multi. Nesses casos, varremos localmente.
+		return r.findByConexaoFallback(conexaoID)
+	}
+	if wa != nil && wa.Id != "" {
+		return wa, nil
+	}
+
+	return r.findByConexaoFallback(conexaoID)
+}
+
+func (r *WhatsAppRepo) findByConexaoFallback(conexaoID string) (*models.Record, error) {
+	records, err := r.FindAll()
+	if err != nil {
 		return nil, err
 	}
-	return wa, nil
+
+	for _, rec := range records {
+		for _, id := range rec.GetStringSlice("conexoes") {
+			if strings.TrimSpace(id) == conexaoID {
+				return rec, nil
+			}
+		}
+	}
+
+	return nil, nil
 }
 
 func (r *WhatsAppRepo) FindAll() ([]*models.Record, error) {

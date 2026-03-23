@@ -317,7 +317,8 @@ func (s *IAConversacionalService) buscarIntencaoMatch(
 		}
 	}
 
-	if melhorScore >= 0.5 {
+	// Threshold mais tolerante para listas maiores de palavras-chave.
+	if melhorScore >= 0.25 {
 		return melhorIntencao, melhorResposta
 	}
 

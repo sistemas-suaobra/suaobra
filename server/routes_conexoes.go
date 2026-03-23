@@ -673,20 +673,20 @@ func WebhookWhatsmeow(c echo.Context) error {
 			}
 		}
 
+		conversaRepo := repositories.NewConversaRepo(app.Dao())
+		conversaAtual := conversaRepo.FindByTelefoneCandidates(teamID, candidatos)
+
 		// ── 3. Fallback: verificar se já existe conversa ativa em conversas_ia ──
 		if !iaAtiva {
-			conversaRepo := repositories.NewConversaRepo(app.Dao())
-			conversa := conversaRepo.FindByTelefoneCandidates(teamID, candidatos)
-
-			if conversa != nil && strings.ToUpper(strings.TrimSpace(conversa.GetString("status"))) == "ATIVA" {
-				campanhaID := strings.TrimSpace(conversa.GetString("campanha_id"))
+			if conversaAtual != nil && strings.ToUpper(strings.TrimSpace(conversaAtual.GetString("status"))) == "ATIVA" {
+				campanhaID := strings.TrimSpace(conversaAtual.GetString("campanha_id"))
 				if campanhaID != "" {
 					campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
 					if campErr == nil && campanha != nil && campanha.GetBool("manter_ia") {
 						iaAtiva = true
 						g.Info(
 							"webhook/whatsmeow: conversa ativa encontrada via fallback conversa_id=%s campanha=%s telefone=%s",
-							conversa.Id,
+							conversaAtual.Id,
 							campanhaID,
 							maskWebhookPhone(telefone),
 						)
@@ -696,6 +696,15 @@ func WebhookWhatsmeow(c echo.Context) error {
 		}
 
 		if !iaAtiva {
+			// Mesmo sem IA ativa, registrar resposta para refletir no dashboard.
+			if err := registrarRespostaWhatsAppSemIA(conversaRepo, conversaAtual, teamID, telefone, nomeContato, mensagem, dest); err != nil {
+				g.Warn(
+					"webhook/whatsmeow: falha ao registrar resposta sem IA telefone=%s err=%v",
+					maskWebhookPhone(telefone),
+					err,
+				)
+			}
+
 			g.Warn(
 				"webhook/whatsmeow: nenhuma campanha com IA ativa encontrada para telefone=%s team=%s candidatos=%v",
 				maskWebhookPhone(telefone),
@@ -1052,6 +1061,117 @@ func buildTelefoneCandidates(telefone string) []string {
 	}
 
 	return out
+}
+
+func registrarRespostaWhatsAppSemIA(
+	conversaRepo *repositories.ConversaRepo,
+	conversa *models.Record,
+	teamID, telefone, nomeContato, mensagem string,
+	dest *models.Record,
+) error {
+	if conversaRepo == nil {
+		return nil
+	}
+
+	teamID = strings.TrimSpace(teamID)
+	telefone = normalizeWASender(telefone)
+	nomeContato = strings.TrimSpace(nomeContato)
+	mensagem = strings.TrimSpace(mensagem)
+	if teamID == "" || telefone == "" || mensagem == "" {
+		return nil
+	}
+
+	campanhaID := ""
+	destinatarioID := ""
+	if dest != nil {
+		campanhaID = strings.TrimSpace(dest.GetString("campanha_id"))
+		destinatarioID = strings.TrimSpace(dest.Id)
+	}
+	if campanhaID == "" && conversa != nil {
+		campanhaID = strings.TrimSpace(conversa.GetString("campanha_id"))
+	}
+	if destinatarioID == "" && conversa != nil {
+		destinatarioID = strings.TrimSpace(conversa.GetString("destinatario_id"))
+	}
+
+	// Sem campanha vinculada não entra no relatório de campanhas.
+	if campanhaID == "" {
+		return nil
+	}
+
+	now := time.Now().UTC()
+
+	if conversa == nil {
+		payload := map[string]any{
+			"team_id":            teamID,
+			"campanha_id":        campanhaID,
+			"telefone":           telefone,
+			"nome_contato":       nomeContato,
+			"mensagens":          []map[string]any{},
+			"status":             "ATIVA",
+			"ultima_mensagem_em": now,
+		}
+		if destinatarioID != "" {
+			payload["destinatario_id"] = destinatarioID
+		}
+		var err error
+		conversa, err = conversaRepo.Create(payload)
+		if err != nil {
+			return err
+		}
+	}
+
+	if strings.TrimSpace(conversa.GetString("campanha_id")) == "" {
+		conversa.Set("campanha_id", campanhaID)
+	}
+	if strings.TrimSpace(conversa.GetString("destinatario_id")) == "" && destinatarioID != "" {
+		conversa.Set("destinatario_id", destinatarioID)
+	}
+	if strings.TrimSpace(conversa.GetString("nome_contato")) == "" && nomeContato != "" {
+		conversa.Set("nome_contato", nomeContato)
+	}
+
+	mensagens := make([]map[string]any, 0)
+	raw := conversa.Get("mensagens")
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				mensagens = append(mensagens, map[string]any{
+					"role":      cast.ToString(m["role"]),
+					"content":   cast.ToString(m["content"]),
+					"timestamp": cast.ToString(m["timestamp"]),
+				})
+				continue
+			}
+			if m, ok := item.(map[string]any); ok {
+				mensagens = append(mensagens, map[string]any{
+					"role":      cast.ToString(m["role"]),
+					"content":   cast.ToString(m["content"]),
+					"timestamp": cast.ToString(m["timestamp"]),
+				})
+			}
+		}
+	case []map[string]interface{}:
+		for _, item := range v {
+			mensagens = append(mensagens, map[string]any{
+				"role":      cast.ToString(item["role"]),
+				"content":   cast.ToString(item["content"]),
+				"timestamp": cast.ToString(item["timestamp"]),
+			})
+		}
+	}
+
+	mensagens = append(mensagens, map[string]any{
+		"role":      "user",
+		"content":   mensagem,
+		"timestamp": now.Format(time.RFC3339),
+	})
+
+	conversa.Set("mensagens", mensagens)
+	conversa.Set("ultima_mensagem_em", now)
+
+	return conversaRepo.Save(conversa)
 }
 
 func truncateWebhookLog(s string, max int) string {

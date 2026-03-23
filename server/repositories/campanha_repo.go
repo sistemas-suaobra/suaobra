@@ -381,26 +381,28 @@ func (r *CampanhaRepo) CountEnviadosHojeByTeam(teamID string) (int, error) {
 	return total, nil
 }
 
-// CountRespostas conta as respostas (campanha_respostas) para uma campanha
+// CountRespostas conta todas as mensagens recebidas (role=user) vinculadas à campanha.
+// A fonte da verdade é conversas_ia.mensagens (JSON), não campanha_respostas.
 func (r *CampanhaRepo) CountRespostas(campanhaID string) (int, error) {
-	_, err := r.dao.FindCollectionByNameOrId("campanha_respostas")
-	if err != nil {
-		return 0, nil
-	}
+	var totalRespostas int
+	query := `
+		SELECT COUNT(1)
+		FROM conversas_ia ci
+		JOIN json_each(ci.mensagens) je
+		WHERE ci.campanha_id = {:campanhaId}
+		  AND LOWER(COALESCE(json_extract(je.value, '$.role'), '')) = 'user'
+		  AND TRIM(COALESCE(json_extract(je.value, '$.content'), '')) <> ''
+	`
 
-	respostas, err := r.dao.FindRecordsByFilter(
-		"campanha_respostas",
-		"campanha_id = {:campanhaId} && tipo = 'RESPOSTA'",
-		"",
-		0,
-		0,
-		dbx.Params{"campanhaId": campanhaID},
-	)
+	err := r.dao.DB().
+		NewQuery(query).
+		Bind(dbx.Params{"campanhaId": campanhaID}).
+		Row(&totalRespostas)
 	if err != nil {
 		return 0, err
 	}
 
-	return len(respostas), nil
+	return totalRespostas, nil
 }
 
 // GetDashboardStats retorna estatísticas agregadas para o dashboard
@@ -429,24 +431,23 @@ func (r *CampanhaRepo) GetDashboardStats(teamID string) (map[string]any, error) 
 		stats["enviadas"] = totalEnviadas
 	}
 
-	// 2. Total respostas
-	_, err = r.dao.FindCollectionByNameOrId("campanha_respostas")
+	// 2. Total respostas (mensagens recebidas no WhatsApp)
+	var totalRespostas int
+	queryRespostas := `
+		SELECT COUNT(1)
+		FROM conversas_ia ci
+		INNER JOIN campanhas c ON c.id = ci.campanha_id
+		JOIN json_each(ci.mensagens) je
+		WHERE c.team_id = {:teamId}
+		  AND LOWER(COALESCE(json_extract(je.value, '$.role'), '')) = 'user'
+		  AND TRIM(COALESCE(json_extract(je.value, '$.content'), '')) <> ''
+	`
+	err = r.dao.DB().
+		NewQuery(queryRespostas).
+		Bind(dbx.Params{"teamId": teamID}).
+		Row(&totalRespostas)
 	if err == nil {
-		var totalRespostas int
-		queryRespostas := `
-			SELECT COUNT(cr.id)
-			FROM campanha_respostas cr
-			INNER JOIN campanhas c ON c.id = cr.campanha_id
-			WHERE c.team_id = {:teamId}
-			  AND cr.tipo = 'RESPOSTA'
-		`
-		err = r.dao.DB().
-			NewQuery(queryRespostas).
-			Bind(dbx.Params{"teamId": teamID}).
-			Row(&totalRespostas)
-		if err == nil {
-			stats["respostas"] = totalRespostas
-		}
+		stats["respostas"] = totalRespostas
 	}
 
 	// 3. Campanhas recentes (para gráfico)

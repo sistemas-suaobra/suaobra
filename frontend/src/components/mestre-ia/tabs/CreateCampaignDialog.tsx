@@ -464,6 +464,15 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     })
   }, [messageText, selectedRecipients, recipientOptionMap])
 
+  const previewContactName = React.useMemo(() => {
+    const firstRecipientValue = selectedRecipients[0]
+    const selectedRecipient = firstRecipientValue
+      ? recipientOptionMap.get(firstRecipientValue)
+      : null
+
+    return safeStr(selectedRecipient?.nomeContato) || "Cliente"
+  }, [selectedRecipients, recipientOptionMap])
+
   const recipientItemTemplate = (option: RecipientOption) => {
     const channels = getRecipientChannelsLabel(option.hasPhone, option.hasEmail)
     const location = formatLocation(option.bairro, option.cidade, option.uf)
@@ -885,23 +894,151 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
           <div style={{ marginTop: 12 }}>
             <div style={{ marginBottom: 6, fontWeight: 600, fontSize: 13 }}>
-              Pré-visualização.
+              Pré-visualização no WhatsApp.
             </div>
 
             <div
-              className="p-3 border-round-xl bg-white"
+              className="wa-preview-phone"
               style={{
-                border: "1px solid rgba(0,0,0,0.08)",
-                minHeight: 80,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
+                maxWidth: 360,
               }}
             >
-              {previewText}
+              <div className="wa-preview-notch" />
+
+              <div className="wa-preview-screen">
+                <div className="wa-preview-topbar">
+                  <div className="wa-preview-avatar">{previewContactName.charAt(0)}</div>
+                  <div className="wa-preview-contact-meta">
+                    <div className="wa-preview-contact-name">{previewContactName}</div>
+                    <div className="wa-preview-contact-status">online</div>
+                  </div>
+                </div>
+
+                <div className="wa-preview-chat-bg">
+                  <div className="wa-preview-bubble-wrap">
+                    <div className="wa-preview-bubble">{previewText}</div>
+                    <div className="wa-preview-bubble-time">14:47</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      <style>{`
+        .wa-preview-phone {
+          background: #111b21;
+          border: 1px solid rgba(0, 0, 0, 0.25);
+          border-radius: 28px;
+          padding: 10px;
+          box-shadow: 0 18px 38px rgba(0, 0, 0, 0.25);
+          position: relative;
+          margin: 0 auto;
+        }
+
+        .wa-preview-notch {
+          width: 44%;
+          height: 18px;
+          border-radius: 0 0 12px 12px;
+          background: #000;
+          position: absolute;
+          top: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 3;
+        }
+
+        .wa-preview-screen {
+          border-radius: 22px;
+          overflow: hidden;
+          background: #0b141a;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          min-height: 310px;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .wa-preview-topbar {
+          background: #202c33;
+          color: #e9edef;
+          min-height: 54px;
+          padding: 8px 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .wa-preview-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 999px;
+          background: #6b7c85;
+          color: #fff;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-transform: uppercase;
+          flex-shrink: 0;
+        }
+
+        .wa-preview-contact-meta {
+          min-width: 0;
+        }
+
+        .wa-preview-contact-name {
+          font-size: 13px;
+          font-weight: 600;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 220px;
+        }
+
+        .wa-preview-contact-status {
+          font-size: 11px;
+          color: #aebac1;
+        }
+
+        .wa-preview-chat-bg {
+          flex: 1;
+          padding: 12px;
+          background-image: url("/fundo-whatsapp.jpg");
+          background-size: cover;
+          background-position: center;
+          display: flex;
+          align-items: flex-start;
+          justify-content: flex-end;
+        }
+
+        .wa-preview-bubble-wrap {
+          max-width: 88%;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 4px;
+        }
+
+        .wa-preview-bubble {
+          background: #d9fdd3;
+          color: #111b21;
+          border-radius: 7.5px;
+          border-top-right-radius: 2px;
+          padding: 8px 10px;
+          font-size: 13px;
+          line-height: 1.45;
+          white-space: pre-wrap;
+          word-break: break-word;
+          box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+        }
+
+        .wa-preview-bubble-time {
+          font-size: 10px;
+          color: rgba(17, 27, 33, 0.72);
+          padding-right: 2px;
+        }
+      `}</style>
     </Dialog>
   )
 }

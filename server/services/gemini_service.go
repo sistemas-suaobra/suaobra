@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/flarco/g"
@@ -10,6 +11,8 @@ import (
 	"github.com/spf13/cast"
 	"github.com/suaobra/suaobra-app/server/config"
 )
+
+var keywordSplitRegex = regexp.MustCompile(`[,\n;|]+`)
 
 // GeminiService integra com a API do Google Gemini para geração de respostas conversacionais
 type GeminiService struct {
@@ -247,11 +250,15 @@ func MatchIntencao(mensagem string, palavrasChave []string) (bool, float64) {
 		return false, 0
 	}
 
-	mensagemLower := strings.ToLower(strings.TrimSpace(mensagem))
+	mensagemLower := normalizarTextoMatch(mensagem)
+	if mensagemLower == "" {
+		return false, 0
+	}
+
 	matches := 0
 
 	for _, palavra := range palavrasChave {
-		palavraLower := strings.ToLower(strings.TrimSpace(palavra))
+		palavraLower := normalizarTextoMatch(palavra)
 		if palavraLower == "" {
 			continue
 		}
@@ -265,6 +272,16 @@ func MatchIntencao(mensagem string, palavrasChave []string) (bool, float64) {
 	}
 
 	score := float64(matches) / float64(len(palavrasChave))
+
+	// Bonus quando há match de pelo menos uma palavra-chave.
+	// Evita perder intenção por ter lista grande de keywords.
+	if score < 0.5 {
+		score += 0.25
+	}
+	if score > 1 {
+		score = 1
+	}
+
 	return true, score
 }
 
@@ -281,15 +298,77 @@ func ExtrairPalavrasChave(jsonData interface{}) []string {
 	case []string:
 		palavras = v
 	case string:
+		raw := strings.TrimSpace(v)
+		if raw == "" {
+			return palavras
+		}
+
 		var arr []interface{}
-		if err := g.JSONUnmarshal([]byte(v), &arr); err == nil {
+		if err := g.JSONUnmarshal([]byte(raw), &arr); err == nil {
 			for _, item := range arr {
 				if str := cast.ToString(item); str != "" {
 					palavras = append(palavras, str)
 				}
 			}
+			return limparPalavrasChave(palavras)
+		}
+
+		// Fallback para texto simples: "orcamento, preço, valor"
+		parts := keywordSplitRegex.Split(raw, -1)
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				palavras = append(palavras, p)
+			}
 		}
 	}
 
-	return palavras
+	return limparPalavrasChave(palavras)
+}
+
+func limparPalavrasChave(in []string) []string {
+	if len(in) == 0 {
+		return in
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, p := range in {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		key := normalizarTextoMatch(p)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+func normalizarTextoMatch(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+
+	replacer := strings.NewReplacer(
+		"á", "a", "à", "a", "â", "a", "ã", "a", "ä", "a",
+		"é", "e", "è", "e", "ê", "e", "ë", "e",
+		"í", "i", "ì", "i", "î", "i", "ï", "i",
+		"ó", "o", "ò", "o", "ô", "o", "õ", "o", "ö", "o",
+		"ú", "u", "ù", "u", "û", "u", "ü", "u",
+		"ç", "c",
+	)
+	s = replacer.Replace(s)
+
+	// Normaliza pontuação comum para espaço.
+	for _, ch := range []string{".", ",", "!", "?", ":", ";", "(", ")", "\"", "'", "\t", "\r", "\n"} {
+		s = strings.ReplaceAll(s, ch, " ")
+	}
+	return strings.Join(strings.Fields(s), " ")
 }

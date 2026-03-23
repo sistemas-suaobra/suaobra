@@ -239,8 +239,10 @@ export function useWhatsappConnection(notify: NotifyFn) {
         url,
       });
 
-      const exists = !!data?.exists && !!data?.conexao && !!data?.whatsapp;
-      setWaConnected(exists);
+      // A conexão pode existir mesmo sem payload de `whatsapp` em algumas respostas.
+      // Nesse caso, mantemos "instância criada" para evitar desaparecer da UI.
+      const hasConexao = !!data?.exists && !!data?.conexao;
+      setWaConnected(hasConexao);
 
       const jid: string = data?.whatsapp?.device_jid ?? "";
       const conectadoEm: string = data?.whatsapp?.conectado_em ?? "";
