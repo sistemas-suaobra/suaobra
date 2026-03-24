@@ -67,21 +67,39 @@ func (s *GeminiService) GenerateConversationalResponse(
 
 	systemPrompt := `Você é um atendente/vendedor por WhatsApp.
 
-	Regras obrigatórias:
-	- Não recomece conversa. Assuma que já estamos falando.
-	- Se a conversa já tiver histórico, NÃO cumprimente (sem "Olá", "Oi", "bom dia/tarde/noite").
-	- Nunca diga: "vi que", "notei que", "pelo que vi", "você é proprietário", "sua obra".
-	- Não explique contexto do lead. Use dados (nome/cidade/bairro) só se ajudarem e de forma natural.
-	- Resposta curta: máximo 2 frases + 1 pergunta.
-	- Máximo 1 emoji (opcional).
-	- Sem listas e sem markdown.
-	`
+Regras ABSOLUTAS (violar = erro):
+1. NUNCA comece com saudação se já houver histórico. Proibido: "Olá", "Oi", "Tudo bem?", "Bom dia/tarde/noite", "Como vai?" e variações. Vá direto ao ponto.
+2. NUNCA repita uma resposta que você já deu no histórico. Leia o que já disse e avance a conversa.
+3. Máximo 2 frases + 1 pergunta. Sem listas, sem markdown, sem asteriscos.
+4. Máximo 1 emoji (opcional).
+5. Nunca diga: "vi que", "notei que", "pelo que vi", "você é proprietário", "sua obra".
+6. Não explique contexto do lead. Use dados (nome/cidade/bairro) só se necessário.
+7. Foque em qualificar o lead: entender interesse, necessidade, orçamento, prazo.
+8. Se o lead já demonstrou interesse, avance para próximo passo (agendar visita, enviar proposta, etc.).
+`
 
 	if !hasHistory {
-		// primeira mensagem: pode cumprimentar 1 vez (sem "vi que...")
-		systemPrompt += "\nEstado: primeira mensagem. Pode cumprimentar UMA vez, mas direto.\n"
+		systemPrompt += "\nEstado: PRIMEIRA mensagem da conversa. Pode cumprimentar UMA vez de forma breve e ir direto ao assunto.\n"
 	} else {
-		systemPrompt += "\nEstado: conversa em andamento. Proibido cumprimentar.\n"
+		systemPrompt += "\nEstado: CONVERSA JÁ EM ANDAMENTO. Proibido qualquer cumprimento. Vá direto ao assunto.\n"
+	}
+
+	// Injetar últimas respostas do model para o Gemini saber o que NÃO repetir
+	var respostasAnteriores []string
+	for _, h := range historico {
+		if h.Role == "model" && strings.TrimSpace(h.Content) != "" {
+			respostasAnteriores = append(respostasAnteriores, h.Content)
+		}
+	}
+	if len(respostasAnteriores) > 0 {
+		lastN := respostasAnteriores
+		if len(lastN) > 3 {
+			lastN = lastN[len(lastN)-3:]
+		}
+		systemPrompt += "\nSuas últimas respostas (NÃO repita nenhuma delas, reformule ou avance):\n"
+		for i, r := range lastN {
+			systemPrompt += fmt.Sprintf("  %d. \"%s\"\n", i+1, r)
+		}
 	}
 
 	if strings.TrimSpace(contextoNegocio) != "" {
@@ -250,20 +268,35 @@ func MatchIntencao(mensagem string, palavrasChave []string) (bool, float64) {
 		return false, 0
 	}
 
-	mensagemLower := normalizarTextoMatch(mensagem)
-	if mensagemLower == "" {
+	mensagemNorm := normalizarTextoMatch(mensagem)
+	if mensagemNorm == "" {
 		return false, 0
 	}
 
+	msgTokens := strings.Fields(mensagemNorm)
 	matches := 0
 
 	for _, palavra := range palavrasChave {
-		palavraLower := normalizarTextoMatch(palavra)
-		if palavraLower == "" {
+		kwNorm := normalizarTextoMatch(palavra)
+		if kwNorm == "" {
 			continue
 		}
-		if strings.Contains(mensagemLower, palavraLower) {
+
+		// 1) substring direta (ex: "orcamento" dentro de "quero um orcamento")
+		if strings.Contains(mensagemNorm, kwNorm) {
 			matches++
+			continue
+		}
+
+		// 2) qualquer token da mensagem está contido na keyword ou vice-versa
+		for _, tok := range msgTokens {
+			if len(tok) < 3 {
+				continue
+			}
+			if strings.Contains(kwNorm, tok) || strings.Contains(tok, kwNorm) {
+				matches++
+				break
+			}
 		}
 	}
 
@@ -273,10 +306,9 @@ func MatchIntencao(mensagem string, palavrasChave []string) (bool, float64) {
 
 	score := float64(matches) / float64(len(palavrasChave))
 
-	// Bonus quando há match de pelo menos uma palavra-chave.
-	// Evita perder intenção por ter lista grande de keywords.
-	if score < 0.5 {
-		score += 0.25
+	// Bonus agressivo: 1 match já deve ser suficiente para ativar a intenção.
+	if matches >= 1 && score < 0.5 {
+		score = 0.5 + score*0.5
 	}
 	if score > 1 {
 		score = 1

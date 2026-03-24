@@ -37,6 +37,59 @@ func NewIAConversacionalService(
 	}
 }
 
+// ultimasRespostasModel retorna as últimas N mensagens enviadas pela IA (role "model").
+func (s *IAConversacionalService) ultimasRespostasModel(conversa *models.Record, n int) []string {
+	mensagens := s.obterMensagens(conversa)
+	var respostas []string
+	for i := len(mensagens) - 1; i >= 0 && len(respostas) < n; i-- {
+		if cast.ToString(mensagens[i]["role"]) == "model" {
+			c := strings.TrimSpace(cast.ToString(mensagens[i]["content"]))
+			if c != "" {
+				respostas = append(respostas, c)
+			}
+		}
+	}
+	return respostas
+}
+
+// respostaSimilar verifica se `nova` é muito parecida com alguma resposta anterior.
+func respostaSimilar(nova string, anteriores []string) bool {
+	novaNorm := normalizarTextoMatch(nova)
+	if novaNorm == "" {
+		return false
+	}
+	for _, ant := range anteriores {
+		antNorm := normalizarTextoMatch(ant)
+		if antNorm == "" {
+			continue
+		}
+		if novaNorm == antNorm {
+			return true
+		}
+		// Se >70% das palavras são iguais, considerar similar
+		novaPalavras := strings.Fields(novaNorm)
+		antPalavras := strings.Fields(antNorm)
+		if len(novaPalavras) == 0 || len(antPalavras) == 0 {
+			continue
+		}
+		antSet := map[string]struct{}{}
+		for _, p := range antPalavras {
+			antSet[p] = struct{}{}
+		}
+		common := 0
+		for _, p := range novaPalavras {
+			if _, ok := antSet[p]; ok {
+				common++
+			}
+		}
+		ratio := float64(common) / float64(len(novaPalavras))
+		if ratio > 0.7 {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessarMensagemRecebida processa uma mensagem recebida do lead
 func (s *IAConversacionalService) ProcessarMensagemRecebida(
 	teamID string,
@@ -124,16 +177,37 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 	var respostaIA string
 	var intencaoDetectadaID string
 
+	anteriores := s.ultimasRespostasModel(conversa, 3)
+
 	intencaoMatch, resposta := s.buscarIntencaoMatch(conversa, mensagem, intencoes)
 	if intencaoMatch != nil {
-		respostaIA = resposta
 		intencaoDetectadaID = intencaoMatch.Id
 		g.Info(
 			"IA: intenção detectada id=%s nome=%s resposta=%s",
 			intencaoMatch.Id,
 			intencaoMatch.GetString("nome"),
-			truncateIAContent(respostaIA, 1000),
+			truncateIAContent(resposta, 1000),
 		)
+
+		if respostaSimilar(resposta, anteriores) && s.geminiSvc != nil {
+			g.Info("IA: resposta da intenção é repetida, delegando ao Gemini para variar")
+			contexto := s.construirContextoNegocio(conversa, intencoes)
+			contexto += "\n\nIMPORTANTE: A intenção detectada é '" + intencaoMatch.GetString("nome") +
+				"'. A resposta-base é: '" + resposta +
+				"'. Reformule de forma diferente e NÃO repita frases anteriores."
+			historico := s.extrairHistoricoGemini(conversa)
+			if len(historico) == 0 {
+				historico = append(historico, GeminiMessage{Role: "user", Content: mensagem})
+			}
+			reformulada, err := s.geminiSvc.GenerateConversationalResponse(historico, contexto, 0.9)
+			if err == nil && strings.TrimSpace(reformulada) != "" {
+				respostaIA = reformulada
+			} else {
+				respostaIA = resposta
+			}
+		} else {
+			respostaIA = resposta
+		}
 	} else if s.geminiSvc != nil {
 		g.Info("IA: nenhuma intenção detectada, usando Gemini telefone=%s", maskIAPhone(telefone))
 
@@ -159,6 +233,15 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 			respostaIA = "Desculpe, estou com dificuldades técnicas no momento. Em breve retornarei o contato."
 		} else {
 			g.Info("IA: Gemini respondeu telefone=%s resposta=%s", maskIAPhone(telefone), truncateIAContent(respostaIA, 1000))
+		}
+
+		if respostaSimilar(respostaIA, anteriores) {
+			g.Info("IA: Gemini gerou resposta repetida, tentando novamente com temperatura maior")
+			contexto += "\n\nNÃO repita nenhuma das frases anteriores. Avance a conversa."
+			retry, retryErr := s.geminiSvc.GenerateConversationalResponse(historico, contexto, 1.0)
+			if retryErr == nil && strings.TrimSpace(retry) != "" && !respostaSimilar(retry, anteriores) {
+				respostaIA = retry
+			}
 		}
 	} else {
 		g.Warn("IA: geminiSvc nil, usando fallback telefone=%s", maskIAPhone(telefone))
@@ -284,7 +367,9 @@ func (s *IAConversacionalService) adicionarMensagemAoHistorico(
 	return s.conversaRepo.Save(conversa)
 }
 
-// buscarIntencaoMatch busca a melhor intenção que combina com a mensagem
+// buscarIntencaoMatch busca a melhor intenção que combina com a mensagem.
+// Se houver qualquer match de palavra-chave, retorna a melhor intenção (sem threshold mínimo).
+// Prioridade desempata scores iguais.
 func (s *IAConversacionalService) buscarIntencaoMatch(
 	conversa *models.Record,
 	mensagem string,
@@ -317,8 +402,7 @@ func (s *IAConversacionalService) buscarIntencaoMatch(
 		}
 	}
 
-	// Threshold mais tolerante para listas maiores de palavras-chave.
-	if melhorScore >= 0.25 {
+	if melhorIntencao != nil {
 		return melhorIntencao, melhorResposta
 	}
 
@@ -442,10 +526,10 @@ func (s *IAConversacionalService) construirContextoNegocio(conversa *models.Reco
 	}
 
 	if len(partes) == 0 {
-		return "Você está realizando atendimento e qualificação de leads. Seja cordial e profissional."
+		return "Você está realizando atendimento e qualificação de leads. Seja cordial e profissional. Não comece com saudação se a conversa já tem histórico."
 	}
 
-	return strings.Join(partes, "\n\n")
+	return strings.Join(partes, "\n\n") + "\n\nLEMBRETE: Nunca repita suas respostas anteriores. Avance a conversa."
 }
 
 // enviarRespostaWhatsApp envia a resposta via WhatsApp
