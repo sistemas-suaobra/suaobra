@@ -31,9 +31,9 @@ declare global {
   }
 }
 
-       
 
-interface Props { 
+
+interface Props {
   Restricted?: boolean
 }
 
@@ -86,47 +86,47 @@ export default function ObraPlusPage(props: Props) {
   locale("pt_BR");
 
   const sizes = [
-    {label: 'Todos', code: '0-9999999'},
-    {label: 'Até 100m²', code: '0-100'},
-    {label: 'De 100m² até 250m²', code: '100-250'},
-    {label: 'De 250m² até 500m²', code: '250-500'},
-    {label: 'De 500m² até 1.000m²', code: '500-1000'},
-    {label: 'De 1.000mm² até 5.000m²', code: '1000-5000'},
-    {label: 'Acima de 5.000m²', code: '5000-9999999'},
+    { label: 'Todos', code: '0-9999999' },
+    { label: 'Até 100m²', code: '0-100' },
+    { label: 'De 100m² até 250m²', code: '100-250' },
+    { label: 'De 250m² até 500m²', code: '250-500' },
+    { label: 'De 500m² até 1.000m²', code: '500-1000' },
+    { label: 'De 1.000mm² até 5.000m²', code: '1000-5000' },
+    { label: 'Acima de 5.000m²', code: '5000-9999999' },
   ];
 
   const orders = [
-    {label: 'Mais recente', code: 'first_listing_date-desc,start_date-desc'},
-    {label: 'Mais antiga', code: 'first_listing_date-asc,start_date-asc'},
-    {label: 'Maior tamanho primeiro', code: 'size-desc'},
-    {label: 'Menor tamanho primeiro', code: 'size-asc'},
+    { label: 'Mais recente', code: 'first_listing_date-desc,start_date-desc' },
+    { label: 'Mais antiga', code: 'first_listing_date-asc,start_date-asc' },
+    { label: 'Maior tamanho primeiro', code: 'size-desc' },
+    { label: 'Menor tamanho primeiro', code: 'size-asc' },
   ];
 
   const types = [
-    {label: 'Todos', code: 'todos'},
-    {label: '1 - Projeto', code: '1 - PROJETO'},
-    {label: '2 - Execucao', code: '2 - EXECUCAO'},
-    {label: '3 - Gestao', code: '3 - GESTAO'},
-    {label: '4 - Meio Ambiente E Planejamento Regional E Urbano', code: '4 - MEIO AMBIENTE E PLANEJAMENTO REGIONAL E URBANO'},
-    {label: '5 - Atividades Especiais Em Arquitetura E Urbanismo', code: '5 - ATIVIDADES ESPECIAIS EM ARQUITETURA E URBANISMO'},
-    {label: '6 - Outras', code: 'outros'},
+    { label: 'Todos', code: 'todos' },
+    { label: '1 - Projeto', code: '1 - PROJETO' },
+    { label: '2 - Execucao', code: '2 - EXECUCAO' },
+    { label: '3 - Gestao', code: '3 - GESTAO' },
+    { label: '4 - Meio Ambiente E Planejamento Regional E Urbano', code: '4 - MEIO AMBIENTE E PLANEJAMENTO REGIONAL E URBANO' },
+    { label: '5 - Atividades Especiais Em Arquitetura E Urbanismo', code: '5 - ATIVIDADES ESPECIAIS EM ARQUITETURA E URBANISMO' },
+    { label: '6 - Outras', code: 'outros' },
   ];
 
   const statuses = [
-    {label: 'Todos', code: 'todos'},
-    {label: 'Em Andamento', code: 'em-andamento'},
-    {label: 'Com Telefone', code: 'com-telefone'},
-    {label: 'Com Telefone (Proprietário)', code: 'com-telefone-proprietario'},
-    {label: 'Com Telefone (Profissional)', code: 'com-telefone-profissional'},
-    {label: 'Com Email', code: 'com-email'},
-    {label: 'Com Observação', code: 'com-observacao'},
-    {label: 'Já Visualizadas', code: 'ja-visitada'},
-    {label: 'Não Visualizadas', code: 'nao-visitada'},
-    {label: 'Contactado', code: 'contactado'},
-    {label: 'Não Contactado', code: 'nao-contactado'},
-    {label: 'Contato Pendente', code: 'contato-pendente'},
-    {label: 'Excluída', code: 'excluida'},
-    {label: 'Leads', code: 'favorita'},
+    { label: 'Todos', code: 'todos' },
+    { label: 'Em Andamento', code: 'em-andamento' },
+    { label: 'Com Telefone', code: 'com-telefone' },
+    { label: 'Com Telefone (Proprietário)', code: 'com-telefone-proprietario' },
+    { label: 'Com Telefone (Profissional)', code: 'com-telefone-profissional' },
+    { label: 'Com Email', code: 'com-email' },
+    { label: 'Com Observação', code: 'com-observacao' },
+    { label: 'Já Visualizadas', code: 'ja-visitada' },
+    { label: 'Não Visualizadas', code: 'nao-visitada' },
+    { label: 'Contactado', code: 'contactado' },
+    { label: 'Não Contactado', code: 'nao-contactado' },
+    { label: 'Contato Pendente', code: 'contato-pendente' },
+    { label: 'Excluída', code: 'excluida' },
+    { label: 'Leads', code: 'favorita' },
     // {label: 'Excluídas', code: 'excluida'},
   ];
 
@@ -152,14 +152,14 @@ export default function ObraPlusPage(props: Props) {
   const [citiesOptions, setCitiesOptions] = React.useState<City[]>([])
   const [neighborhoodsOptions, setNeighborhoodsOptions] = React.useState<ResultNeighborhoodRecord[]>([])
 
-  const [allowContact, setAllowContact] =  React.useState(20);
-  const [allowExport, setAllowExport] =  React.useState(0);
-  const [loading, setLoading] =  React.useState(false);
-  const [pageNumber, setPageNumber] =  React.useState(1);
-  const [offset, setOffset] =  React.useState(0);
-  const [rowsPerPage, setRowsPerPage] =  React.useState(10);
-  const [batchContacts, setBatchContacts] =  React.useState<ResultRecord[]>([]);
-  const messengerBatchDialogVisible =  useHookstate(false);
+  const [allowContact, setAllowContact] = React.useState(20);
+  const [allowExport, setAllowExport] = React.useState(0);
+  const [loading, setLoading] = React.useState(false);
+  const [pageNumber, setPageNumber] = React.useState(1);
+  const [offset, setOffset] = React.useState(0);
+  const [rowsPerPage, setRowsPerPage] = React.useState(10);
+  const [batchContacts, setBatchContacts] = React.useState<ResultRecord[]>([]);
+  const messengerBatchDialogVisible = useHookstate(false);
 
   const [neighborhoodRequestId, setNeighborhoodRequestId] = React.useState(0);
   const latestRequestIdRef = React.useRef(0);
@@ -168,21 +168,21 @@ export default function ObraPlusPage(props: Props) {
 
   ///////////////////////////  EFFECTS  ///////////////////////////
   React.useEffect(() => {
-    if(locked || citiesOptions.length === 0) return
+    if (locked || citiesOptions.length === 0) return
 
     let val = localStorage.getItem('obrasPlusCity')
-    if(!citiesOptions.map(c => c.id).includes(val)) {
+    if (!citiesOptions.map(c => c.id).includes(val)) {
       val = citiesOptions[0].id
       localStorage.setItem('obrasPlusCity', val)
     }
 
-    if(val && val !== selectedCity.id) {
+    if (val && val !== selectedCity.id) {
       setSelectedCity(makeCity(val))
       obrasPlusCity.set(makeCity(val))
       return
     }
 
-    if(!selectedCity || !selectedOrder) return
+    if (!selectedCity || !selectedOrder) return
     getRecords(rowsPerPage, selectedStatuses).then(
       result => {
         setTotal(result.total)
@@ -229,10 +229,10 @@ export default function ObraPlusPage(props: Props) {
     isLoaded.set(false)
     loadUserState().then(
       (user) => {
-        if(user.team.blocked) LogOut()
-        
+        if (user.team.blocked) LogOut()
+
         let cities = user.team?.cities?.sort().map(id => makeCity(id))
-        if(cities.length) {
+        if (cities.length) {
           setCitiesOptions(cities || [])
           setAllowContact(user.team.allow_contact || 0)
           setAllowExport(user.team?.allow_export || 0)
@@ -285,7 +285,7 @@ export default function ObraPlusPage(props: Props) {
   }
 
   const getRecords = async (rowsPerPage: number, statuses: string[]) => {
-    let recs : ResultRecord[] = [];
+    let recs: ResultRecord[] = [];
     let total = 0
     let payload = {
       city: selectedCity.city || '',
@@ -304,11 +304,11 @@ export default function ObraPlusPage(props: Props) {
       endDateTo: formatDateForAPI(endDateTo),
       // legacy_id: user.get().legacy_id,
     }
-    
+
     try {
       isWaiting.set(true)
       let resp = await api().get(`${baseURL()}/query/obras-plus`, payload)
-      if(resp.error) throw new Error(resp.error)
+      if (resp.error) throw new Error(resp.error)
       let data = (await resp.response.json()) as Result
       recs = data.records
       total = data.total
@@ -323,23 +323,23 @@ export default function ObraPlusPage(props: Props) {
       )
     }
 
-    return {total, recs}
+    return { total, recs }
   }
 
   const getCityNeighborhoodRecords = async () => {
-    let barrios : string[] = [];
-    let recs : ResultNeighborhoodRecord[] = [];
+    let barrios: string[] = [];
+    let recs: ResultNeighborhoodRecord[] = [];
     let total = 0
     let payload = {
       city: selectedCity.city || '',
     }
 
-    if(!payload.city) return
-    
+    if (!payload.city) return
+
     try {
       isWaiting.set(true)
       let resp = await api().get(`${baseURL()}/query/obras-plus-neighborhood`, payload)
-      if(resp.error) throw new Error(resp.error)
+      if (resp.error) throw new Error(resp.error)
       let data = await resp.response.json()
       barrios = data.barrios as string[]
       total = barrios.length
@@ -358,8 +358,8 @@ export default function ObraPlusPage(props: Props) {
     return { recs }
   }
 
-  const getExcelExport = async (numItems : number) => {
-    let recs : ResultRecord[] = [];
+  const getExcelExport = async (numItems: number) => {
+    let recs: ResultRecord[] = [];
     let total = 0
     let payload = {
       city: selectedCity.city,
@@ -378,11 +378,11 @@ export default function ObraPlusPage(props: Props) {
       endDateTo: formatDateForAPI(endDateTo),
       // legacy_id: user.get().legacy_id,
     }
-    
+
     try {
       isWaiting.set(true)
       let resp = await api().get(`${baseURL()}/query/obras-plus-export`, payload)
-      if(resp.error) throw new Error(resp.error)
+      if (resp.error) throw new Error(resp.error)
       let blob = await resp.response.blob()
 
       var a = document.createElement('a');
@@ -402,32 +402,32 @@ export default function ObraPlusPage(props: Props) {
       )
     }
 
-    return {total, recs}
+    return { total, recs }
   }
 
 
-  const toggle = async (obra_id: string, type: 'visit'|'favorite'|'exclude') => {
+  const toggle = async (obra_id: string, type: 'visit' | 'favorite' | 'exclude') => {
     let i = records.map(r => r.obra_id).indexOf(obra_id)
     if (i === -1) return console.log(`could not find '${obra_id}' for toggle`)
-    
-    let data : ObjectString = {
+
+    let data: ObjectString = {
       team_id: user.get().team?.id,
       obra_id: records[i].obra_id,
     }
 
-    if(type === 'visit') data.toggle_col = 'visited_at'
-    if(type === 'favorite') data.toggle_col = 'favorited_at'
-    if(type === 'exclude') data.toggle_col = 'excluded_at'
+    if (type === 'visit') data.toggle_col = 'visited_at'
+    if (type === 'favorite') data.toggle_col = 'favorited_at'
+    if (type === 'exclude') data.toggle_col = 'excluded_at'
 
     api().patch(makeURL('/patch/lead-toggle'), data)
       .then((resp) => {
-        if(resp.error) return
+        if (resp.error) return
         const newRecords = [...records]
         let date_val = (new Date()).toISOString()
-        if(type === 'visit') newRecords[i].visited_at = date_val
-        if(type === 'favorite')
+        if (type === 'visit') newRecords[i].visited_at = date_val
+        if (type === 'favorite')
           newRecords[i].favorited_at = newRecords[i].favorited_at ? null : date_val
-        if(type === 'exclude')
+        if (type === 'exclude')
           newRecords[i].excluded_at = newRecords[i].excluded_at ? null : date_val
         setRecords(newRecords)
         if (newRecords[i].excluded_at) setTotal(total - 1)
@@ -435,106 +435,106 @@ export default function ObraPlusPage(props: Props) {
   }
   ///////////////////////////  JSX  ///////////////////////////
 
-  const Loader = <div className="flex justify-content-center" style={{position: "relative", paddingTop: '40px', paddingBottom: '120px'}} >
+  const Loader = <div className="flex justify-content-center" style={{ position: "relative", paddingTop: '40px', paddingBottom: '120px' }} >
     <div className="result-loader"></div>
   </div>
 
   if (locked) {
     return <div className="text-center">
-        <div>Área Restrita.</div>
-        <br/>
-        <div>
-          Entre em contato conosco para configurar um plano: <a href="mailto:contato@suaobra.com.br">contato@suaobra.com.br</a>
-        </div>
+      <div>Área Restrita.</div>
+      <br />
+      <div>
+        Entre em contato conosco para configurar um plano: <a href="mailto:contato@suaobra.com.br">contato@suaobra.com.br</a>
       </div>
+    </div>
   }
 
   return (
     <div>
       <div className="formgrid grid">
-          <div className="field md:col-3 col-12">
-            <label htmlFor="city-dropdown">Cidade</label>
-            <Dropdown
-              id='city-dropdown'
-              value={selectedCity}
-              onChange={(e) => {
-                localStorage.setItem('obrasPlusCity', e.value.id)
-                obrasPlusCity.set(e.value)
-                setOffset(0)
-                setPageNumber(1)
-                setSelectedCity(e.value)
-              }}
-              options={citiesOptions}
-              filter
-              optionLabel="city" 
-              // optionValue="id"
-              placeholder="Selecione uma Cidade"
-              emptyMessage="Nenhuma cidade encontrada"
+        <div className="field md:col-3 col-12">
+          <label htmlFor="city-dropdown">Cidade</label>
+          <Dropdown
+            id='city-dropdown'
+            value={selectedCity}
+            onChange={(e) => {
+              localStorage.setItem('obrasPlusCity', e.value.id)
+              obrasPlusCity.set(e.value)
+              setOffset(0)
+              setPageNumber(1)
+              setSelectedCity(e.value)
+            }}
+            options={citiesOptions}
+            filter
+            optionLabel="city"
+            // optionValue="id"
+            placeholder="Selecione uma Cidade"
+            emptyMessage="Nenhuma cidade encontrada"
+            className="w-full"
+          />
+        </div>
+
+        <div className="field md:col-3 col-12">
+          <label htmlFor="neighborhood-dropdown">Bairro</label>
+          <MultiSelect
+            id='neighborhood-dropdown'
+            value={selectedNeighborhood}
+            onChange={(e) => {
+              let barrios = (e.value as ResultNeighborhoodRecord[]).map(v => v.bairro)
+              localStorage.setItem('obrasPlusNeighborhood', barrios.join('|'))
+              obrasPlusNeighborhood.set(barrios)
+              setOffset(0)
+              setPageNumber(1)
+              setSelectedNeighborhood(e.value)
+            }}
+            virtualScrollerOptions={{ itemSize: 43 }}
+            options={neighborhoodsOptions}
+            filter multiple
+            optionLabel="bairro"
+            // optionValue="id"
+            placeholder="Filtrar os bairros"
+            className="w-full"
+          />
+        </div>
+
+        <div className="field md:col-6 col-12">
+          <label htmlFor="search-filter">Filtro de Pesquisa</label>
+          <div className="p-inputgroup">
+            <InputText
+              id='search-filter'
+              placeholder="Digite o que procura..."
+              aria-describedby="filter-help"
               className="w-full"
+              value={filterValue}
+              onChange={(e) => {
+                setFilterValue(e.target.value)
+                if (!e.target.value) doRefresh() // auto-refreshed when cleared
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setFilterValue(''); doRefresh() }
+                if (e.key === 'Enter') { doRefresh() }
+              }}
+            />
+            <Button
+              icon="pi pi-times"
+              className="p-button-warning"
+              tooltip="Limpar todos os filtros"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => { resetAllFilters() }}
+            />
+            <Button
+              icon="pi pi-search"
+              className="p-button-primary"
+              tooltip="Pesquisar"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => {
+                doRefresh()
+              }}
             />
           </div>
+        </div>
 
-          <div className="field md:col-3 col-12">
-            <label htmlFor="neighborhood-dropdown">Bairro</label>
-            <MultiSelect
-              id='neighborhood-dropdown'
-              value={selectedNeighborhood}
-              onChange={(e) => {
-                let barrios = (e.value as ResultNeighborhoodRecord[]).map(v => v.bairro)
-                localStorage.setItem('obrasPlusNeighborhood', barrios.join('|'))
-                obrasPlusNeighborhood.set(barrios)
-                setOffset(0)
-                setPageNumber(1)
-                setSelectedNeighborhood(e.value)
-              }}
-              virtualScrollerOptions={{ itemSize: 43 }}
-              options={neighborhoodsOptions}
-              filter multiple
-              optionLabel="bairro" 
-              // optionValue="id"
-              placeholder="Filtrar os bairros"
-              className="w-full"
-            />
-          </div>
-
-          <div className="field md:col-6 col-12">
-            <label htmlFor="search-filter">Filtro de Pesquisa</label>
-            <div className="p-inputgroup">
-                <InputText
-                  id='search-filter'
-                  placeholder="Digite o que procura..."
-                  aria-describedby="filter-help"
-                  className="w-full"
-                  value={filterValue}
-                  onChange={(e) => {
-                    setFilterValue(e.target.value)
-                    if(!e.target.value) doRefresh() // auto-refreshed when cleared
-                  }}
-                  onKeyDown={(e) => {
-                    if(e.key === 'Escape') { setFilterValue(''); doRefresh() } 
-                    if(e.key === 'Enter') { doRefresh() } 
-                  }}
-                />
-                <Button
-                  icon="pi pi-times"
-                  className="p-button-warning"
-                  tooltip="Limpar todos os filtros"
-                  tooltipOptions={{position: 'top'}}
-                  onClick={() => { resetAllFilters() }}
-                />
-                <Button
-                  icon="pi pi-search"
-                  className="p-button-primary"
-                  tooltip="Pesquisar"
-                  tooltipOptions={{position: 'top'}}
-                  onClick={() => {
-                    doRefresh()
-                  }}
-                />
-            </div>
-          </div>
-
-          {/* <div className="field md:col-3 col-6">
+        {/* <div className="field md:col-3 col-6">
             <label htmlFor="type-dropdown">Tipo</label>
             <Dropdown
               id='type-dropdown'
@@ -550,218 +550,218 @@ export default function ObraPlusPage(props: Props) {
             />
           </div> */}
 
-          <div className="field md:col-6 col-12">
-            <label htmlFor="size-order">Obra Status Filtros</label>
-            <MultiSelect
-              id='status-dropdown'
-              value={selectedStatuses} 
+        <div className="field md:col-6 col-12">
+          <label htmlFor="size-order">Obra Status Filtros</label>
+          <MultiSelect
+            id='status-dropdown'
+            value={selectedStatuses}
+            onChange={(e) => {
+              if (e.value.includes('todos') && selectedStatuses.length > 0 && !selectedStatuses.includes('todos'))
+                e.value = ['todos']  // select only todos
+              else if (e.value.includes('todos') && e.value.length > 1)
+                e.value = e.value.filter(v => v !== 'todos') // unselect todos
+              else if (e.value.includes('ja-visitada') && selectedStatuses.includes('nao-visitada'))
+                e.value = e.value.filter(v => v !== 'nao-visitada')
+              else if (e.value.includes('nao-visitada') && selectedStatuses.includes('ja-visitada'))
+                e.value = e.value.filter(v => v !== 'ja-visitada')
+              else if (e.value.length === 0)
+                e.value = ['todos']  // select todos
+              setSelectedStatuses(e.value)
+            }}
+            tooltip={
+              [
+                'EM ANDAMENTO:     Mostrar as obras já iniciadas',
+                'COM TELEFONE:     Mostrar as obras com telefone',
+                'COM EMAIL:        Mostrar as obras com email',
+                'COM OBSERVAÇÃO:   Mostrar as obras com observação',
+                'CONTACTADO:       Mostrar as obras já contactada',
+                'NÃO CONTACTADO:   Mostrar as obras não contactada',
+                'CONTATO PENDENTE: Mostrar as obras com contato pendente',
+                'JÁ VISITADAS:     Mostrar as obras já visitadas',
+                'NÃO VISITADAS:    Mostrar as obras não visitadas',
+                'LEADS:            Mostrar as obras salvas como Lead',
+                'EXCLUÍDAS:        Mostrar as obras excluídas',
+              ].join('\n')
+            }
+            virtualScrollerOptions={{ itemSize: 43 }}
+            tooltipOptions={{ position: 'top', style: { lineHeight: 1.5 } }}
+            options={statuses}
+            optionLabel="label"
+            optionValue="code"
+            display="chip"
+            placeholder="Select Status"
+            // maxSelectedLabels={3}
+            className="w-full"
+          />
+        </div>
+
+        <div className="field md:col-3 col-6">
+          <label htmlFor="size-dropdown">Tamanho M²</label>
+          <Dropdown
+            id='size-dropdown'
+            value={selectedSize}
+            onChange={(e) => {
+              setSelectedSize(e.value)
+            }}
+            options={sizes}
+            optionLabel="label"
+            optionValue="code"
+            placeholder="Selecione um tamanho"
+            className="w-full"
+          />
+        </div>
+
+        <div className="field md:col-3 col-6">
+          <label htmlFor="size-order">Ordenação</label>
+          <Dropdown
+            id='order-dropdown'
+            value={selectedOrder}
+            onChange={(e) => {
+              setSelectedOrder(e.value)
+            }}
+            options={orders}
+            optionLabel="label"
+            optionValue="code"
+            className="w-full"
+          />
+        </div>
+
+        <div className="field md:col-3 col-6">
+          <label htmlFor="start-date-from">Data de Início (De)</label>
+          <div className="p-inputgroup">
+            <Calendar
+              id='start-date-from'
+              value={startDateFrom}
               onChange={(e) => {
-                if(e.value.includes('todos') && selectedStatuses.length > 0 && !selectedStatuses.includes('todos'))
-                  e.value = ['todos']  // select only todos
-                else if(e.value.includes('todos') && e.value.length > 1)
-                  e.value = e.value.filter(v => v !== 'todos') // unselect todos
-                else if(e.value.includes('ja-visitada') && selectedStatuses.includes('nao-visitada'))
-                  e.value = e.value.filter(v => v !== 'nao-visitada')
-                else if(e.value.includes('nao-visitada') && selectedStatuses.includes('ja-visitada'))
-                  e.value = e.value.filter(v => v !== 'ja-visitada')
-                else if(e.value.length === 0) 
-                  e.value = ['todos']  // select todos
-                setSelectedStatuses(e.value)
+                setStartDateFrom(e.value as Date | null)
               }}
-              tooltip={
-                [
-                  'EM ANDAMENTO:     Mostrar as obras já iniciadas',
-                  'COM TELEFONE:     Mostrar as obras com telefone',
-                  'COM EMAIL:        Mostrar as obras com email',
-                  'COM OBSERVAÇÃO:   Mostrar as obras com observação',
-                  'CONTACTADO:       Mostrar as obras já contactada',
-                  'NÃO CONTACTADO:   Mostrar as obras não contactada',
-                  'CONTATO PENDENTE: Mostrar as obras com contato pendente',
-                  'JÁ VISITADAS:     Mostrar as obras já visitadas',
-                  'NÃO VISITADAS:    Mostrar as obras não visitadas',
-                  'LEADS:            Mostrar as obras salvas como Lead',
-                  'EXCLUÍDAS:        Mostrar as obras excluídas',
-                ].join('\n')
-              }
-              virtualScrollerOptions={{ itemSize: 43 }}
-              tooltipOptions={{position: 'top', style: { lineHeight: 1.5 }}}
-              options={statuses}
-              optionLabel="label" 
-              optionValue="code"
-              display="chip"
-              placeholder="Select Status"
-              // maxSelectedLabels={3}
+              placeholder="Selecione uma data"
+              dateFormat="dd/mm/yy"
+              showIcon
               className="w-full"
+              tooltip="Filtrar obras que iniciaram a partir desta data"
+              tooltipOptions={{ position: 'top' }}
             />
+            {startDateFrom && (
+              <Button
+                icon="pi pi-times"
+                className="p-button-text p-button-sm"
+                tooltip="Limpar"
+                onClick={() => {
+                  setStartDateFrom(null)
+                }}
+              />
+            )}
           </div>
+        </div>
 
-          <div className="field md:col-3 col-6">
-            <label htmlFor="size-dropdown">Tamanho M²</label>
-            <Dropdown
-              id='size-dropdown'
-              value={selectedSize}
+        <div className="field md:col-3 col-6">
+          <label htmlFor="start-date-to">Data de Início (Até)</label>
+          <div className="p-inputgroup">
+            <Calendar
+              id='start-date-to'
+              value={startDateTo}
               onChange={(e) => {
-                setSelectedSize(e.value)
+                setStartDateTo(e.value as Date | null)
               }}
-              options={sizes}
-              optionLabel="label" 
-              optionValue="code"
-              placeholder="Selecione um tamanho"
+              placeholder="Selecione uma data"
+              dateFormat="dd/mm/yy"
+              showIcon
               className="w-full"
+              tooltip="Filtrar obras que iniciaram até esta data"
+              tooltipOptions={{ position: 'top' }}
             />
+            {startDateTo && (
+              <Button
+                icon="pi pi-times"
+                className="p-button-text p-button-sm"
+                tooltip="Limpar"
+                onClick={() => {
+                  setStartDateTo(null)
+                }}
+              />
+            )}
           </div>
+        </div>
 
-          <div className="field md:col-3 col-6">
-            <label htmlFor="size-order">Ordenação</label>
-            <Dropdown
-              id='order-dropdown'
-              value={selectedOrder}
+        <div className="field md:col-3 col-6">
+          <label htmlFor="end-date-from">Data de Fim (De)</label>
+          <div className="p-inputgroup">
+            <Calendar
+              id='end-date-from'
+              value={endDateFrom}
               onChange={(e) => {
-                setSelectedOrder(e.value)
+                setEndDateFrom(e.value as Date | null)
               }}
-              options={orders}
-              optionLabel="label" 
-              optionValue="code"
+              placeholder="Selecione uma data"
+              dateFormat="dd/mm/yy"
+              showIcon
               className="w-full"
+              tooltip="Filtrar obras que terminam a partir desta data"
+              tooltipOptions={{ position: 'top' }}
             />
-          </div>
-
-          <div className="field md:col-3 col-6">
-            <label htmlFor="start-date-from">Data de Início (De)</label>
-            <div className="p-inputgroup">
-              <Calendar
-                id='start-date-from'
-                value={startDateFrom}
-                onChange={(e) => {
-                  setStartDateFrom(e.value as Date | null)
+            {endDateFrom && (
+              <Button
+                icon="pi pi-times"
+                className="p-button-text p-button-sm"
+                tooltip="Limpar"
+                onClick={() => {
+                  setEndDateFrom(null)
                 }}
-                placeholder="Selecione uma data"
-                dateFormat="dd/mm/yy"
-                showIcon
-                className="w-full"
-                tooltip="Filtrar obras que iniciaram a partir desta data"
-                tooltipOptions={{position: 'top'}}
               />
-              {startDateFrom && (
-                <Button
-                  icon="pi pi-times"
-                  className="p-button-text p-button-sm"
-                  tooltip="Limpar"
-                  onClick={() => {
-                    setStartDateFrom(null)
-                  }}
-                />
-              )}
-            </div>
+            )}
           </div>
+        </div>
 
-          <div className="field md:col-3 col-6">
-            <label htmlFor="start-date-to">Data de Início (Até)</label>
-            <div className="p-inputgroup">
-              <Calendar
-                id='start-date-to'
-                value={startDateTo}
-                onChange={(e) => {
-                  setStartDateTo(e.value as Date | null)
+        <div className="field md:col-3 col-6">
+          <label htmlFor="end-date-to">Data de Fim (Até)</label>
+          <div className="p-inputgroup">
+            <Calendar
+              id='end-date-to'
+              value={endDateTo}
+              onChange={(e) => {
+                setEndDateTo(e.value as Date | null)
+              }}
+              placeholder="Selecione uma data"
+              dateFormat="dd/mm/yy"
+              showIcon
+              className="w-full"
+              tooltip="Filtrar obras que terminam até esta data"
+              tooltipOptions={{ position: 'top' }}
+            />
+            {endDateTo && (
+              <Button
+                icon="pi pi-times"
+                className="p-button-text p-button-sm"
+                tooltip="Limpar"
+                onClick={() => {
+                  setEndDateTo(null)
                 }}
-                placeholder="Selecione uma data"
-                dateFormat="dd/mm/yy"
-                showIcon
-                className="w-full"
-                tooltip="Filtrar obras que iniciaram até esta data"
-                tooltipOptions={{position: 'top'}}
               />
-              {startDateTo && (
-                <Button
-                  icon="pi pi-times"
-                  className="p-button-text p-button-sm"
-                  tooltip="Limpar"
-                  onClick={() => {
-                    setStartDateTo(null)
-                  }}
-                />
-              )}
-            </div>
+            )}
           </div>
-
-          <div className="field md:col-3 col-6">
-            <label htmlFor="end-date-from">Data de Fim (De)</label>
-            <div className="p-inputgroup">
-              <Calendar
-                id='end-date-from'
-                value={endDateFrom}
-                onChange={(e) => {
-                  setEndDateFrom(e.value as Date | null)
-                }}
-                placeholder="Selecione uma data"
-                dateFormat="dd/mm/yy"
-                showIcon
-                className="w-full"
-                tooltip="Filtrar obras que terminam a partir desta data"
-                tooltipOptions={{position: 'top'}}
-              />
-              {endDateFrom && (
-                <Button
-                  icon="pi pi-times"
-                  className="p-button-text p-button-sm"
-                  tooltip="Limpar"
-                  onClick={() => {
-                    setEndDateFrom(null)
-                  }}
-                />
-              )}
-            </div>
-          </div>
-
-          <div className="field md:col-3 col-6">
-            <label htmlFor="end-date-to">Data de Fim (Até)</label>
-            <div className="p-inputgroup">
-              <Calendar
-                id='end-date-to'
-                value={endDateTo}
-                onChange={(e) => {
-                  setEndDateTo(e.value as Date | null)
-                }}
-                placeholder="Selecione uma data"
-                dateFormat="dd/mm/yy"
-                showIcon
-                className="w-full"
-                tooltip="Filtrar obras que terminam até esta data"
-                tooltipOptions={{position: 'top'}}
-              />
-              {endDateTo && (
-                <Button
-                  icon="pi pi-times"
-                  className="p-button-text p-button-sm"
-                  tooltip="Limpar"
-                  onClick={() => {
-                    setEndDateTo(null)
-                  }}
-                />
-              )}
-            </div>
-          </div>
-      </div>   
+        </div>
+      </div>
 
       <div id="top-results" className='my-3 border-bottom-1 border-solid border-gray-300' />
 
       <div>
-        { 
-          loading?
-          <>{Loader}</>
-          :
-          <>
-            <div className="grid">
-              <div className="flex md:col-6 col-12">
-                <h2>{total.toLocaleString('pt-br')} Obras Encontradas</h2> 
-              </div>
-              <div className="flex my-3 md:col-6 col-12 justify-content-end">
-                {
-                  allowContact > 0 && 
+        {
+          loading ?
+            <>{Loader}</>
+            :
+            <>
+              <div className="grid">
+                <div className="flex md:col-6 col-12">
+                  <h2>{total.toLocaleString('pt-br')} Obras Encontradas</h2>
+                </div>
+                <div className="flex my-3 md:col-6 col-12 justify-content-end">
+                  {
+                    allowContact > 0 &&
                     <Button
                       label="Disparo em Massa"
                       tooltip={`Enviar mensagens do WhatsApp em lote`}
-                      tooltipOptions={{position: 'top'}}
+                      tooltipOptions={{ position: 'top' }}
                       onClick={(e) => batchOverlayPanel.current.toggle(e)}
                       severity="info"
                       icon='pi pi-whatsapp'
@@ -791,51 +791,51 @@ export default function ObraPlusPage(props: Props) {
                         />
                       </OverlayPanel>
                     </Button>
-                }
-                {
-                  allowExport > 0 ?
-                  <Button
-                    label="Exportar Leads"
-                    tooltip={`Exportar os primeiros ${allowExport} resultados`}
-                    tooltipOptions={{position: 'top'}}
-                      icon='pi pi-file-excel'
-                    onClick={() => getExcelExport(allowExport)}
-                  />
-                  :
-                  null
-                }
+                  }
+                  {
+                    allowExport > 0 ?
+                      <Button
+                        label="Exportar Leads"
+                        tooltip={`Exportar os primeiros ${allowExport} resultados`}
+                        tooltipOptions={{ position: 'top' }}
+                        icon='pi pi-file-excel'
+                        onClick={() => getExcelExport(allowExport)}
+                      />
+                      :
+                      null
+                  }
+                </div>
               </div>
-            </div>
-            { 
-              records
-                .filter(r => !(r.excluded_at && !selectedStatuses.includes('excluida')))
-                .map((record, i) => 
-                <React.Fragment key={i}>
-                  {/* {RecordCard(record, (type: 'visit'|'favorite'|'exclude') => toggle(i, type))} */}
-                  <RecordCard record={record} toggle={(type: 'visit'|'favorite'|'exclude') => toggle(record.obra_id, type)}/>
-                </React.Fragment>
-              )
-            }
-          </>
+              {
+                records
+                  .filter(r => !(r.excluded_at && !selectedStatuses.includes('excluida')))
+                  .map((record, i) =>
+                    <React.Fragment key={i}>
+                      {/* {RecordCard(record, (type: 'visit'|'favorite'|'exclude') => toggle(i, type))} */}
+                      <RecordCard record={record} toggle={(type: 'visit' | 'favorite' | 'exclude') => toggle(record.obra_id, type)} />
+                    </React.Fragment>
+                  )
+              }
+            </>
         }
-      </div>  
-      
-      <ContactModal/>
+      </div>
+
+      <ContactModal />
       <MessengerBatchDialog records={batchContacts} visible={messengerBatchDialogVisible} />
 
       <div className="card">
-          <Paginator
-            first={offset}
-            rows={rowsPerPage}
-            totalRecords={total}
-            rowsPerPageOptions={[10, 25, 50]}
-            onPageChange={(event) => {
-                setPageNumber(event.page+1);
-                setOffset(event.first);
-                setRowsPerPage(event.rows);
-                document.getElementById('top-results').scrollIntoView()
-            }}
-          />
+        <Paginator
+          first={offset}
+          rows={rowsPerPage}
+          totalRecords={total}
+          rowsPerPageOptions={[10, 25, 50]}
+          onPageChange={(event) => {
+            setPageNumber(event.page + 1);
+            setOffset(event.first);
+            setRowsPerPage(event.rows);
+            document.getElementById('top-results').scrollIntoView()
+          }}
+        />
       </div>
 
     </div>
@@ -854,40 +854,43 @@ export const telephoneURL = (number: string) => `tel:${number}`
 export const emailURL = (email: string) => `mailto:${email}`
 
 const parseDate = (date: string, add_days = 0) => {
-  let d = new Date(Date.parse(date))
-  if(add_days !== 0) {
+  if (!date) return '';
+  let parsed = Date.parse(date);
+  if (isNaN(parsed)) return '';
+  let d = new Date(parsed)
+  if (add_days !== 0) {
     // Convert to epoch milliseconds, add days in milliseconds, then create new date
     const epochMs = d.getTime()
     const daysInMs = add_days * 24 * 60 * 60 * 1000
     d = new Date(epochMs + daysInMs)
   }
-  return `${d.getUTCDate()}/${d.getMonth()+1}/${d.getFullYear()}`
+  return `${d.getUTCDate()}/${d.getMonth() + 1}/${d.getFullYear()}`
 }
 
 const calculateObraStage = (startDateStr: string, endDateStr: string): string => {
   const startDate = new Date(Date.parse(startDateStr))
   const endDate = new Date(Date.parse(endDateStr))
   const currentDate = new Date()
-  
+
   // Se a data atual é posterior à data de término, a obra está finalizada
   if (currentDate > endDate) {
     return 'FINALIZADA'
   }
-  
+
   // Calcular tempo total da obra em milissegundos
   const totalTime = endDate.getTime() - startDate.getTime()
-  
+
   // Calcular tempo decorrido desde o início até agora
   const elapsedTime = currentDate.getTime() - startDate.getTime()
-  
+
   // Se ainda não iniciou (data atual anterior à data de início)
   if (elapsedTime < 0) {
     return 'INICIO'
   }
-  
+
   // Calcular porcentagem de progresso
   const percentage = (elapsedTime / totalTime) * 100
-  
+
   // Determinar etapa baseada na porcentagem
   if (percentage <= 33) {
     return 'INICIO'
@@ -900,14 +903,14 @@ const calculateObraStage = (startDateStr: string, endDateStr: string): string =>
 
 interface RecordCardParams {
   record: ResultRecord;
-  toggle: (type: 'visit'|'favorite'|'exclude') => void;
+  toggle: (type: 'visit' | 'favorite' | 'exclude') => void;
 }
 
 // const RecordCard = (record: ResultRecord, toggle: (type: 'visit'|'favorite'|'exclude') => void) => {
 const RecordCard = (props: RecordCardParams) => {
   ///////////////////////////  VARIABLES  ///////////////////////////
   const iconStyle = (hasInfo = true, isPending = false, isContacted = false) => {
-    return { 
+    return {
       fontSize: '1.25rem',
       color: 'white',
       background: hasInfo ? (isContacted ? 'green' : (isPending ? 'orange' : 'navy')) : 'grey',
@@ -930,7 +933,7 @@ const RecordCard = (props: RecordCardParams) => {
 
   ///////////////////////////  HOOKS  ///////////////////////////
   const op = React.useRef(null);
-  const noteRec = useHookstate({id : '', obra_id: '', note: '', user_id: ''})
+  const noteRec = useHookstate({ id: '', obra_id: '', note: '', user_id: '' })
 
   ///////////////////////////  EFFECTS  ///////////////////////////
 
@@ -940,7 +943,7 @@ const RecordCard = (props: RecordCardParams) => {
   ///////////////////////////  FUNCTIONS  ///////////////////////////
   const loadNoteRec = async () => {
     let resp = await api().collection('obra_note').getFirstListItem(`obra_id = "${record.obra_id}"`)
-    if(resp.error) return console.log(resp.error)
+    if (resp.error) return console.log(resp.error)
     let rec = await resp.record()
     noteRec.set(
       r => {
@@ -954,19 +957,19 @@ const RecordCard = (props: RecordCardParams) => {
   }
 
   const saveNoteRec = async () => {
-    let resp : Response
-    if(!noteRec.note.get()) return
+    let resp: Response
+    if (!noteRec.note.get()) return
 
     let data = jsonClone(noteRec.get())
     data.user_id = user.get().id
     data.obra_id = record.obra_id
 
-    if(noteRec.id.get())
+    if (noteRec.id.get())
       resp = await api().collection('obra_note').update(data.id, data)
     else
       resp = await api().collection('obra_note').create(data)
 
-    if(resp.error) return console.log(resp.error)
+    if (resp.error) return console.log(resp.error)
 
     let rec = await resp.record()
     noteRec.set(
@@ -980,8 +983,8 @@ const RecordCard = (props: RecordCardParams) => {
     )
   }
 
-  const getContactRecords = async (record: ResultRecord, role: 'owner'|'professional') => {
-    let recs : Contact[] = [];
+  const getContactRecords = async (record: ResultRecord, role: 'owner' | 'professional') => {
+    let recs: Contact[] = [];
     let err = undefined
     let nome = role === 'owner' ? record.owner : record.professional
     let payload = {
@@ -990,19 +993,19 @@ const RecordCard = (props: RecordCardParams) => {
       uf: record.state,
     }
     let url = `${baseURL()}/query/obras-plus-contacts?${serialize(payload)}`
-    
+
     try {
       isWaiting.set(true)
       let response = await fetch(url)
-      if(response.status >= 400) throw new Error(response.statusText)
+      if (response.status >= 400) throw new Error(response.statusText)
       let data = (await response.json())
       recs = data.records.map(
-        (rec : Contact) => {
+        (rec: Contact) => {
           // add name
           rec.name = nome
           return new Contact(rec)
         }
-      ) 
+      )
       // mark as visited
       toggle('visit')
     } catch (error) {
@@ -1014,11 +1017,11 @@ const RecordCard = (props: RecordCardParams) => {
 
       // set obra as read
       window.rudderAnalytics?.track(
-        'obras-plus-vew-contact', 
+        'obras-plus-vew-contact',
         { user: userTrackProps(), state: record.state, city: record.city, obra_id: record.obra_id, contact_name: nome, contact_role: role, error: err })
     }
     selectedContact.set(recs)
-  } 
+  }
 
   ///////////////////////////  JSX  ///////////////////////////
   return <>
@@ -1038,7 +1041,7 @@ const RecordCard = (props: RecordCardParams) => {
           borderBottomRightRadius: '0',
         }}
       >
-        
+
         {/* Column 1 */}
         <div className="field md:col-4 col-12">
           <p className="my-0"><strong>Proprietário</strong></p>
@@ -1066,7 +1069,7 @@ const RecordCard = (props: RecordCardParams) => {
             />
           </p>
 
-          <br/>
+          <br />
           <p className="my-0"><strong>Profissional</strong></p>
           <p className="mt-2"> {record.professional?.toUpperCase()}</p>
 
@@ -1100,11 +1103,11 @@ const RecordCard = (props: RecordCardParams) => {
             <a target="_blank" href={googleMapsURL}>{record.address?.toUpperCase()}</a>
           </p>
 
-          <br/>
+          <br />
           <p className="my-0"><strong>Tamanho</strong></p>
           <p className="mt-2"> {record.size.toLocaleString('pt-br')} M²</p>
 
-          <br/>
+          <br />
           <p className="my-0"><strong>Etapa</strong></p>
           <p className="mt-2"> {calculateObraStage(record.start_date, record.end_date)} </p>
         </div>
@@ -1114,14 +1117,23 @@ const RecordCard = (props: RecordCardParams) => {
           <p className="my-0"><strong>Tipo</strong></p>
           <p className="mt-2"> {record.type} </p>
 
-          <br/>
-          <br/>
-          <p className="my-0"><strong>Data de Início</strong></p>
-          <p className="mt-2"> {parseDate(record.start_date)} </p>
+          {!!parseDate(record.start_date) && (
+            <>
+              <br />
+              <br />
+              <p className="my-0"><strong>Data de Início</strong></p>
+              <p className="mt-2"> {parseDate(record.start_date)} </p>
+            </>
+          )}
 
-          <br/>
-          <p className="my-0"><strong>Previsão de Término</strong></p>
-          <p className="mt-2"> {parseDate(record.end_date)} </p>
+          {!!parseDate(record.end_date) && (
+            <>
+              <br />
+              {!parseDate(record.start_date) && <br />}
+              <p className="my-0"><strong>Previsão de Término</strong></p>
+              <p className="mt-2"> {parseDate(record.end_date)} </p>
+            </>
+          )}
         </div>
 
         <span
@@ -1158,43 +1170,44 @@ const RecordCard = (props: RecordCardParams) => {
         >
           {
             true ? // used to be enables only for admins
-            <>
-              <Button
-                icon="pi pi-book"
-                tooltip={"Observações"}
-                tooltipOptions={{ position: 'top' }}
-                className={
-                  "p-button-rounded p-button-text " + 
-                  (record.has_note || record.obra_id === noteRec.obra_id.get() ? 'p-button-info' : 'p-button-secondary')
-                }
-                onClick={(e) => op.current.toggle(e)}
-              />
-              <OverlayPanel
-                ref={op}
-                onHide={() => saveNoteRec()}
-                onShow={() => loadNoteRec()}
-              >
-                <InputTextarea
-                  className="w-full"
-                  cols={50}
-                  rows={10}
-                  placeholder='Digite Observações'
-                  value={ noteRec.note.get() }
-                  // disabled={!userS.properties.get()?.is_admin}
-                  onChange={(e) => {
-                    let value = e.target.value
-                    if(noteRec.note.get() === '') {
-                      let date = new Date().toLocaleDateString('pt-BR')
-                      value = `${date} - ${e.target.value}`
-                    }
-                    noteRec.note.set(value)}
+              <>
+                <Button
+                  icon="pi pi-book"
+                  tooltip={"Observações"}
+                  tooltipOptions={{ position: 'top' }}
+                  className={
+                    "p-button-rounded p-button-text " +
+                    (record.has_note || record.obra_id === noteRec.obra_id.get() ? 'p-button-info' : 'p-button-secondary')
                   }
+                  onClick={(e) => op.current.toggle(e)}
                 />
+                <OverlayPanel
+                  ref={op}
+                  onHide={() => saveNoteRec()}
+                  onShow={() => loadNoteRec()}
+                >
+                  <InputTextarea
+                    className="w-full"
+                    cols={50}
+                    rows={10}
+                    placeholder='Digite Observações'
+                    value={noteRec.note.get()}
+                    // disabled={!userS.properties.get()?.is_admin}
+                    onChange={(e) => {
+                      let value = e.target.value
+                      if (noteRec.note.get() === '') {
+                        let date = new Date().toLocaleDateString('pt-BR')
+                        value = `${date} - ${e.target.value}`
+                      }
+                      noteRec.note.set(value)
+                    }
+                    }
+                  />
 
-              </OverlayPanel>
-            </>
-            :
-            null
+                </OverlayPanel>
+              </>
+              :
+              null
           }
         </span>
       </div>
@@ -1203,7 +1216,7 @@ const RecordCard = (props: RecordCardParams) => {
 }
 
 const ContactModal = () => {
-  const [visible, setVisible] =  React.useState(false)
+  const [visible, setVisible] = React.useState(false)
   const paneSelection = useVariable<'Telefone' | 'Email'>('Telefone')
   const $selectedContact = useStore(selectedContact)
   const phoneRecords = $selectedContact.filter(r => r.telephone)
@@ -1212,9 +1225,9 @@ const ContactModal = () => {
 
 
   React.useEffect(() => {
-    if($selectedContact.length > 0) {
+    if ($selectedContact.length > 0) {
       setVisible(true)
-      if(phoneRecords.length === 0) paneSelection.set('Email')
+      if (phoneRecords.length === 0) paneSelection.set('Email')
     }
   }, [$selectedContact])
 
@@ -1229,41 +1242,41 @@ const ContactModal = () => {
 
   const phoneBody = (row: Contact, column: ColumnBodyOptions) => {
     let phone = row.telephone.toString()
-    
+
     // Remove DDI +55 do Brasil se presente
     if (phone.startsWith('55') && phone.length >= 12) {
       phone = phone.slice(2)
     }
-    
+
     let ddd = phone.slice(0, 2)
     let prefix = phone.slice(2, 7)
     let suffix = phone.slice(7, 11)
-    
+
     // Telefone fixo (10 dígitos)
     if (phone.length === 10) {
       prefix = phone.slice(2, 6)
       suffix = phone.slice(6, 10)
     }
-    
+
     return <div style={{}}>
-        <span>({ddd}) </span>
-        <span>{prefix} </span>
-        <span> - </span>
-        <span>{suffix} </span>
-    </div> 
+      <span>({ddd}) </span>
+      <span>{prefix} </span>
+      <span> - </span>
+      <span>{suffix} </span>
+    </div>
   }
 
   const emailBody = (row: Contact, column: ColumnBodyOptions) => {
     return <div style={{}}>
-        <a href={`mailto:${row.email}`}>{row.email}</a>
-    </div> 
+      <a href={`mailto:${row.email}`}>{row.email}</a>
+    </div>
   }
 
   return <>
     <Dialog
       header={$selectedContact.length > 0 ? $selectedContact[0].name : ''}
       visible={visible}
-      style={{ maxWidth: '700px', height:' 500px' }}
+      style={{ maxWidth: '700px', height: ' 500px' }}
       className="w-9"
       onHide={() => {
         selectedContact.set([])
@@ -1295,12 +1308,12 @@ const ContactModal = () => {
               <Column body={phoneBody} header="Número de Telefone"></Column>
               <Column field="city" header="Cidade"></Column>
               <Column field="state" header="UF"></Column>
-              <Column body={contactActionsBody} header="Ações" 
-                headerStyle={{width: '9em'}} 
+              <Column body={contactActionsBody} header="Ações"
+                headerStyle={{ width: '9em' }}
                 headerClassName="justify-content-center text-center"
-                bodyStyle={{width: '9em'}}/>
+                bodyStyle={{ width: '9em' }} />
             </DataTable>
-          :
+            :
             <DataTable
               value={emailRecords}
               scrollable
@@ -1310,10 +1323,10 @@ const ContactModal = () => {
               <Column body={emailBody} header="Email"></Column>
               <Column field="city" header="Cidade"></Column>
               <Column field="state" header="UF"></Column>
-              <Column body={contactActionsBody} header="Ações" 
-                headerStyle={{width: '9em'}} 
+              <Column body={contactActionsBody} header="Ações"
+                headerStyle={{ width: '9em' }}
                 headerClassName="justify-content-center text-center"
-                bodyStyle={{width: '9em'}}/>
+                bodyStyle={{ width: '9em' }} />
             </DataTable>
         }
       </div>
@@ -1323,47 +1336,47 @@ const ContactModal = () => {
 
 
 export const contactActionsBody = (row: Contact, column: ColumnBodyOptions) => {
-    const n = Math.trunc(Math.random() * 10000000000)
-    const iconStyle = { fontSize: '1.25rem', color: 'white', background: 'navy', cursor: 'pointer'}
-    const whatsapp_id = `whatsapp-${row.contact_id}-${n}`
-    const phone_id = `phone-${row.contact_id}-${n}`
-    const email_id = `email-${row.contact_id}-${n}`
+  const n = Math.trunc(Math.random() * 10000000000)
+  const iconStyle = { fontSize: '1.25rem', color: 'white', background: 'navy', cursor: 'pointer' }
+  const whatsapp_id = `whatsapp-${row.contact_id}-${n}`
+  const phone_id = `phone-${row.contact_id}-${n}`
+  const email_id = `email-${row.contact_id}-${n}`
 
-    return <div className="text-left justify-left" style={{}}>
-      {/* Disabled due to Weird bug where tooltip lingers */}
-      {/* <Tooltip target={`#${whatsapp_id}`} position="top">Abrir WhatsApp</Tooltip>
+  return <div className="text-left justify-left" style={{}}>
+    {/* Disabled due to Weird bug where tooltip lingers */}
+    {/* <Tooltip target={`#${whatsapp_id}`} position="top">Abrir WhatsApp</Tooltip>
       <Tooltip target={`#${phone_id}`} position="top">Ligue para o telefone</Tooltip>
       <Tooltip target={`#${email_id}`} position="right">Enviar Email</Tooltip> */}
 
-      {
-        row.telephone ?
-          <>
-            <a id={phone_id} href={telephoneURL(row.telephone)} target="_blank">
-              <i
-                className="pi pi-phone p-2 border-round-lg ml-2"
-                style={iconStyle}
-              />
-            </a>
+    {
+      row.telephone ?
+        <>
+          <a id={phone_id} href={telephoneURL(row.telephone)} target="_blank">
+            <i
+              className="pi pi-phone p-2 border-round-lg ml-2"
+              style={iconStyle}
+            />
+          </a>
 
-            <a id={whatsapp_id} href={whatsAppURL(row.telephone)} target="_blank">
-              <i
-                className="pi pi-whatsapp p-2 border-round-lg ml-2"
-                style={iconStyle}
-              />
-            </a>
-          </>
-          :
-          <>
-            <a id={email_id} href={emailURL(row.email)} target="_blank">
-              <i
-                className="pi pi-envelope p-2 border-round-lg ml-2"
-                style={iconStyle}
-              />
-            </a>
-          </>
-      }
-    </div> 
-  }
+          <a id={whatsapp_id} href={whatsAppURL(row.telephone)} target="_blank">
+            <i
+              className="pi pi-whatsapp p-2 border-round-lg ml-2"
+              style={iconStyle}
+            />
+          </a>
+        </>
+        :
+        <>
+          <a id={email_id} href={emailURL(row.email)} target="_blank">
+            <i
+              className="pi pi-envelope p-2 border-round-lg ml-2"
+              style={iconStyle}
+            />
+          </a>
+        </>
+    }
+  </div>
+}
 
 interface MessengerBatchDialogParams {
   records: ResultRecord[];
@@ -1371,14 +1384,14 @@ interface MessengerBatchDialogParams {
 }
 
 
-  /*
-  Columns:
-  - Obra Shortened address
-  - Contact name
-  - Contact role
-  - Contacted status [New (no chat/message found), Existing (chat/message found)]
-  - Actions: exclude/remove, Template to use & Message preview
-  */
+/*
+Columns:
+- Obra Shortened address
+- Contact name
+- Contact role
+- Contacted status [New (no chat/message found), Existing (chat/message found)]
+- Actions: exclude/remove, Template to use & Message preview
+*/
 
 type statusType = 'Duplicado' | 'Novo' | 'Ja Contactato'
 type roleType = 'Proprietário' | 'Profissional'
@@ -1402,10 +1415,10 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   ///////////////////////////  VARIABLES  ///////////////////////////
   ///////////////////////////  HOOKS  ///////////////////////////
   const toast = React.useRef<Toast>(null)
-  
+
   ///////////////////////////  EFFECTS  ///////////////////////////
   React.useEffect(() => {
-    if(visible.get()) {
+    if (visible.get()) {
       prepareData()
     }
     console.log(window.token)
@@ -1414,17 +1427,17 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
 
   const prepareData = async () => {
 
-    let table_data : MessageQueueRecord[] = []
-    
+    let table_data: MessageQueueRecord[] = []
+
     // find out if recipient has been contacted before
     let name_contacted_map = await getRecipientStatusMap()
 
-    let name_map : ObjectAny = {}
-    for(let record of props.records) {
+    let name_map: ObjectAny = {}
+    for (let record of props.records) {
       let contact_name = record.has_owner_phone ? record.owner : record.professional
       let suffix = `${record.bairro} - ${record.city}, ${record.state}`
       let template_id = (Math.floor(Math.random() * 10000000000) % 2) + 1
-      
+
       let m_record = {
         obra_id: record.obra_id,
         contact_name: contact_name,
@@ -1448,31 +1461,31 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   }
 
   const makeText = (record: MessageQueueRecord) => {
-      let text = ''
-      let team_properties = userS.team.properties.get()
-      let templates = team_properties?.templates
-      let sender_name = templates.sender
-      let store = team_properties?.name
-      let contact_first_name = record.contact_name.split(' ')[0].toLowerCase()
-      contact_first_name = contact_first_name.charAt(0).toUpperCase() + contact_first_name.slice(1)
+    let text = ''
+    let team_properties = userS.team.properties.get()
+    let templates = team_properties?.templates
+    let sender_name = templates.sender
+    let store = team_properties?.name
+    let contact_first_name = record.contact_name.split(' ')[0].toLowerCase()
+    contact_first_name = contact_first_name.charAt(0).toUpperCase() + contact_first_name.slice(1)
 
-      if(record.contact_role == 'Proprietário') {
-        if(record.template_id === 1) text = templates.owner1
-        if(record.template_id === 2) text = templates.owner2
-        text = text?.replaceAll('[nome]', contact_first_name)
-        text = text?.replaceAll('[remetente]', sender_name)
-        text = text?.replaceAll('[loja]', store)
-      }
+    if (record.contact_role == 'Proprietário') {
+      if (record.template_id === 1) text = templates.owner1
+      if (record.template_id === 2) text = templates.owner2
+      text = text?.replaceAll('[nome]', contact_first_name)
+      text = text?.replaceAll('[remetente]', sender_name)
+      text = text?.replaceAll('[loja]', store)
+    }
 
-      if(record.contact_role == 'Profissional') {
-        if(record.template_id === 1) text = templates.professional1
-        if(record.template_id === 2) text = templates.professional2
-        text = text?.replaceAll('[nome]', contact_first_name)
-        text = text?.replaceAll('[remetente]', sender_name)
-        text = text?.replaceAll('[loja]', store)
-      }
+    if (record.contact_role == 'Profissional') {
+      if (record.template_id === 1) text = templates.professional1
+      if (record.template_id === 2) text = templates.professional2
+      text = text?.replaceAll('[nome]', contact_first_name)
+      text = text?.replaceAll('[remetente]', sender_name)
+      text = text?.replaceAll('[loja]', store)
+    }
 
-      return text
+    return text
   }
 
   const makeRecipientNames = () => props.records.map(r => r.owner).concat(props.records.map(r => r.professional))
@@ -1480,11 +1493,11 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   // this is get whether a number has been contacted before
   const getRecipientStatusMap = async () => {
     // makeRecipientNames will be mapped to their number
-    let data = {  names: makeRecipientNames() }
+    let data = { names: makeRecipientNames() }
     loading.set(true)
     let resp = await api().post(`${baseURL()}/messenger/existing`, data)
     loading.set(false)
-    if(resp.error) throw new Error(resp.error)
+    if (resp.error) throw new Error(resp.error)
     let json_data = await resp.json()
 
     let name_contacted_map = (json_data.name_contacted_map || {}) as ObjectBoolean
@@ -1493,15 +1506,15 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   }
 
   const submit = async () => {
-    let new_records = records.get().filter((r) => !shouldExclude(r.status)) 
+    let new_records = records.get().filter((r) => !shouldExclude(r.status))
     loading.set(true)
     let resp = await api().post(`${baseURL()}/messenger/queue/submit`, { records: new_records })
     loading.set(false)
-    if(resp.error) return doToast(toast, {
-        severity: 'error',
-        summary: 'Erro',
-        detail: 'Não foi possível enviar o lote. Ocorreu um erro.\n'+resp.error,
-      }, 4000)
+    if (resp.error) return doToast(toast, {
+      severity: 'error',
+      summary: 'Erro',
+      detail: 'Não foi possível enviar o lote. Ocorreu um erro.\n' + resp.error,
+    }, 4000)
     visible.set(false)
   }
 
@@ -1520,15 +1533,15 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   }
 
   const statusCode = (status: statusType) => {
-    if(status === 'Duplicado') return 'duplicado'
-    if(status === 'Ja Contactato') return 'ja-contactato'
-    if(status === 'Novo') return 'novo'
+    if (status === 'Duplicado') return 'duplicado'
+    if (status === 'Ja Contactato') return 'ja-contactato'
+    if (status === 'Novo') return 'novo'
     return ''
   }
 
   const roleCode = (status: roleType) => {
-    if(status === 'Proprietário') return 'proprietario'
-    if(status === 'Profissional') return 'profissional'
+    if (status === 'Proprietário') return 'proprietario'
+    if (status === 'Profissional') return 'profissional'
     return ''
   }
 
@@ -1540,20 +1553,20 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   }
 
   const recObraBody = (row: MessageQueueRecord, column: ColumnBodyOptions) => {
-    const obra = row.obra.length > 40 ? row.obra.substring(1,40) + '...' : row.obra
+    const obra = row.obra.length > 40 ? row.obra.substring(1, 40) + '...' : row.obra
     return <div>
       <span style={{ textDecoration: shouldExclude(row.status) ? 'line-through' : null }}>{obra}</span>
     </div>
   }
 
   const recContactedRole = (row: MessageQueueRecord, column: ColumnBodyOptions) => {
-    return <div style={{fontSize: '10px', fontWeight: 700, letterSpacing:'.3px' }} className={'text-center border-round-md contact-role '+roleCode(row.contact_role)}>
+    return <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.3px' }} className={'text-center border-round-md contact-role ' + roleCode(row.contact_role)}>
       {row.contact_role}
     </div>
   }
 
   const recContactedBody = (row: MessageQueueRecord, column: ColumnBodyOptions) => {
-    return <div style={{fontSize: '10px', fontWeight: 700, letterSpacing:'.3px' }} className={'text-center border-round-md contact-status '+statusCode(row.status)}>
+    return <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.3px' }} className={'text-center border-round-md contact-status ' + statusCode(row.status)}>
       {row.status}
     </div>
   }
@@ -1561,8 +1574,8 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
   const recActionsBody = (row: MessageQueueRecord, column: ColumnBodyOptions) => {
     const removeRow = () => {
       let new_records = [] as MessageQueueRecord[]
-      for(let record of records.get()) {
-        if(row.obra_id !== record.obra_id)
+      for (let record of records.get()) {
+        if (row.obra_id !== record.obra_id)
           new_records.push(record)
       }
       records.set(new_records)
@@ -1570,8 +1583,8 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
 
     const changetext = () => {
       let new_records = [] as MessageQueueRecord[]
-      for(let record of records.get()) {
-        if(row.obra_id === record.obra_id) {
+      for (let record of records.get()) {
+        if (row.obra_id === record.obra_id) {
           record.template_id = record.template_id === 1 ? 2 : 1
           record.text = makeText(record)
         }
@@ -1586,7 +1599,7 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
         icon='pi pi-pencil'
         size="small"
         tooltip={row.text}
-        tooltipOptions={{ position: 'top', style:{ width: '400px'} }}
+        tooltipOptions={{ position: 'top', style: { width: '400px' } }}
         disabled={shouldExclude(row.status)}
         onClick={() => {
           // regenerate text
@@ -1598,10 +1611,10 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
         className="button"
         icon='pi pi-times'
         size="small"
-        tooltip={"Excluír" + ( shouldExclude(row.status) ? " (será automaticamente excluído)" : '' ) }
+        tooltip={"Excluír" + (shouldExclude(row.status) ? " (será automaticamente excluído)" : '')}
         severity="warning"
         tooltipOptions={{ position: 'top' }}
-        onClick={() => removeRow()}/>
+        onClick={() => removeRow()} />
     </div>
   }
 
@@ -1649,10 +1662,10 @@ const MessengerBatchDialog = (props: MessengerBatchDialogParams) => {
         <Column body={recContactedRole} header="Título"></Column>
         <Column body={recContactedBody} header="Status"></Column>
         <Column body={recObraBody} header="Obra Enderco"></Column>
-        <Column body={recActionsBody} header="Ações" 
-          headerStyle={{width: '11em'}} 
+        <Column body={recActionsBody} header="Ações"
+          headerStyle={{ width: '11em' }}
           headerClassName="justify-content-center text-center"
-          bodyStyle={{width: '11em'}}/>
+          bodyStyle={{ width: '11em' }} />
       </DataTable>
     </Dialog>
   </div>
