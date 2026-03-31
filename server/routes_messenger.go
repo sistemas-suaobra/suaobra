@@ -161,7 +161,7 @@ func MessengerSync(c echo.Context) error {
 			maskMessengerPhone(telefone),
 		)
 
-		if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato); err != nil {
+		if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato, ""); err != nil {
 			g.Error(
 				err,
 				"MessengerSync[WA]: erro ao processar mensagem team=%s telefone=%s mensagem=%s",

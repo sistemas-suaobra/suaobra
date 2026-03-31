@@ -13,6 +13,7 @@ import { type City, makeCity } from "../../../store/cities";
 import { api, baseURL, PB } from "../../../store/api";
 import type { LeadOption, Campaign, CampaignStatus } from "../types/campanhastab";
 import CreateCampaignDialog from "./CreateCampaignDialog";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 
 type SortMode = "CREATED_DESC" | "CREATED_ASC" | "NAME_ASC" | "NAME_DESC";
 type StatusFilter = "ALL" | CampaignStatus;
@@ -497,13 +498,19 @@ export default function CampanhasTab() {
         </div>
       </div>
 
-      <div className="bg-white border-round-3xl p-2 md:p-3 border-1 surface-border">
+      <div
+        className="bg-white border-round-3xl p-2 md:p-3 border-1 surface-border"
+        style={{ position: "relative", minHeight: loadingCampaigns ? 240 : undefined }}
+      >
+        {loadingCampaigns ? (
+          <MestreIaTransitionLoader overlay caption="Carregando campanhas…" />
+        ) : null}
         {!isMobile ? (
           <DataTable
             value={filteredSorted}
             dataKey="id"
             rowHover
-            loading={loadingCampaigns}
+            loading={false}
             className="p-datatable-sm"
             emptyMessage="Nenhuma campanha encontrada. Crie uma nova campanha!"
             scrollable
@@ -516,9 +523,7 @@ export default function CampanhasTab() {
           </DataTable>
         ) : (
           <div className="flex flex-column gap-3">
-            {loadingCampaigns ? (
-              <div className="text-center text-secondary py-4">Carregando campanhas...</div>
-            ) : filteredSorted.length === 0 ? (
+            {loadingCampaigns ? null : filteredSorted.length === 0 ? (
               <div className="text-center text-secondary py-4">
                 Nenhuma campanha encontrada. Crie uma nova campanha!
               </div>

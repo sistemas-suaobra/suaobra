@@ -2,9 +2,16 @@ import React from "react"
 import { Button } from "primereact/button"
 import { InputSwitch } from "primereact/inputswitch"
 import type { AgenteIaTabProps } from "../types/agenteiatab"
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader"
 
 export default function AgenteIaTab(props: AgenteIaTabProps) {
-  const { intents, onNew, onEdit, onDelete, onToggleActive } = props
+  const { intents, loading, onNew, onEdit, onDelete, onToggleActive } = props
+
+  if (loading) {
+    return (
+      <MestreIaTransitionLoader minHeight={320} caption="Carregando intenções…" />
+    )
+  }
 
   return (
     <div className="w-full">

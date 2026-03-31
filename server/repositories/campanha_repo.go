@@ -381,17 +381,14 @@ func (r *CampanhaRepo) CountEnviadosHojeByTeam(teamID string) (int, error) {
 	return total, nil
 }
 
-// CountRespostas conta todas as mensagens recebidas (role=user) vinculadas à campanha.
-// A fonte da verdade é conversas_ia.mensagens (JSON), não campanha_respostas.
+// CountRespostas conta mensagens recebidas do lead (webhook) ligadas à campanha.
+// Fonte: collection campanha_lead_respostas.
 func (r *CampanhaRepo) CountRespostas(campanhaID string) (int, error) {
 	var totalRespostas int
 	query := `
-		SELECT COUNT(1)
-		FROM conversas_ia ci
-		JOIN json_each(ci.mensagens) je
-		WHERE ci.campanha_id = {:campanhaId}
-		  AND LOWER(COALESCE(json_extract(je.value, '$.role'), '')) = 'user'
-		  AND TRIM(COALESCE(json_extract(je.value, '$.content'), '')) <> ''
+		SELECT COUNT(clr.id)
+		FROM campanha_lead_respostas clr
+		WHERE clr.campanha_id = {:campanhaId}
 	`
 
 	err := r.dao.DB().
@@ -431,16 +428,13 @@ func (r *CampanhaRepo) GetDashboardStats(teamID string) (map[string]any, error) 
 		stats["enviadas"] = totalEnviadas
 	}
 
-	// 2. Total respostas (mensagens recebidas no WhatsApp)
+	// 2. Total respostas (mensagens recebidas — campanha_lead_respostas)
 	var totalRespostas int
 	queryRespostas := `
-		SELECT COUNT(1)
-		FROM conversas_ia ci
-		INNER JOIN campanhas c ON c.id = ci.campanha_id
-		JOIN json_each(ci.mensagens) je
+		SELECT COUNT(clr.id)
+		FROM campanha_lead_respostas clr
+		INNER JOIN campanhas c ON c.id = clr.campanha_id
 		WHERE c.team_id = {:teamId}
-		  AND LOWER(COALESCE(json_extract(je.value, '$.role'), '')) = 'user'
-		  AND TRIM(COALESCE(json_extract(je.value, '$.content'), '')) <> ''
 	`
 	err = r.dao.DB().
 		NewQuery(queryRespostas).

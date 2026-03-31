@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/spf13/cast"
 
@@ -600,6 +601,8 @@ func WebhookWhatsmeow(c echo.Context) error {
 			return c.JSON(200, g.M("ok", true))
 		}
 
+		msgIDExterno := extractWAInfoMessageID(info)
+
 		g.Info(
 			"webhook/whatsmeow: Mensagem recebida team=%s de %s (%s): %s",
 			teamID,
@@ -673,7 +676,7 @@ func WebhookWhatsmeow(c echo.Context) error {
 
 		if !iaAtiva {
 			// Mesmo sem IA ativa, registrar resposta para refletir no dashboard.
-			if err := registrarRespostaWhatsAppSemIA(conversaRepo, conversaAtual, teamID, telefone, nomeContato, mensagem, dest); err != nil {
+			if err := registrarRespostaWhatsAppSemIA(app.Dao(), conversaRepo, conversaAtual, teamID, telefone, nomeContato, mensagem, dest, msgIDExterno); err != nil {
 				g.Warn(
 					"webhook/whatsmeow: falha ao registrar resposta sem IA telefone=%s err=%v",
 					maskWebhookPhone(telefone),
@@ -692,7 +695,7 @@ func WebhookWhatsmeow(c echo.Context) error {
 
 		g.Info("webhook/whatsmeow: Lead %s encontrado em campanha com IA ativa, processando...", maskWebhookPhone(telefone))
 
-		go func(teamID, telefone, mensagem, nomeContato string) {
+		go func(teamID, telefone, mensagem, nomeContato, msgID string) {
 			dao := app.Dao()
 
 			intencaoRepo := repositories.NewIntencaoRepo(dao)
@@ -710,12 +713,12 @@ func WebhookWhatsmeow(c echo.Context) error {
 			iaSvc := services.NewIAConversacionalService(dao, intencaoRepo, conversaRepo, whatsappSvc, geminiSvc)
 
 			g.Info("webhook/whatsmeow: goroutine IA start team=%s telefone=%s", teamID, maskWebhookPhone(telefone))
-			if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato); err != nil {
+			if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato, msgID); err != nil {
 				g.Error(err, "webhook/whatsmeow: erro ao processar mensagem telefone=%s", maskWebhookPhone(telefone))
 				return
 			}
 			g.Info("webhook/whatsmeow: goroutine IA end telefone=%s", maskWebhookPhone(telefone))
-		}(teamID, telefone, mensagem, nomeContato)
+		}(teamID, telefone, mensagem, nomeContato, msgIDExterno)
 	}
 
 	return c.JSON(200, g.M("ok", true))
@@ -901,6 +904,19 @@ func normalizeWASender(sender string) string {
 		}
 	}
 	return b.String()
+}
+
+// extractWAInfoMessageID tenta obter o identificador da mensagem no evento WhatsApp (deduplicação).
+func extractWAInfoMessageID(info map[string]any) string {
+	if info == nil {
+		return ""
+	}
+	for _, k := range []string{"ID", "Id", "id"} {
+		if v := strings.TrimSpace(cast.ToString(info[k])); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func extractWAMessageText(evt map[string]any) string {
@@ -1141,10 +1157,12 @@ func extractPhoneFromAny(v any, requireServerJID bool) string {
 }
 
 func registrarRespostaWhatsAppSemIA(
+	dao *daos.Dao,
 	conversaRepo *repositories.ConversaRepo,
 	conversa *models.Record,
 	teamID, telefone, nomeContato, mensagem string,
 	dest *models.Record,
+	messageIDExterno string,
 ) error {
 	if conversaRepo == nil {
 		return nil
@@ -1248,7 +1266,23 @@ func registrarRespostaWhatsAppSemIA(
 	conversa.Set("mensagens", mensagens)
 	conversa.Set("ultima_mensagem_em", now)
 
-	return conversaRepo.Save(conversa)
+	if err := conversaRepo.Save(conversa); err != nil {
+		return err
+	}
+
+	_ = repositories.SaveCampanhaLeadResposta(dao, repositories.CampanhaLeadRespostaInput{
+		TeamID:           teamID,
+		CampanhaID:       campanhaID,
+		DestinatarioID:   destinatarioID,
+		ConversaID:       conversa.Id,
+		Canal:            "WHATSAPP",
+		TelefoneE164:     telefone,
+		NomeContato:      nomeContato,
+		Corpo:            mensagem,
+		MessageIDExterno: strings.TrimSpace(messageIDExterno),
+		RecebidaEm:       now,
+	})
+	return nil
 }
 
 func truncateWebhookLog(s string, max int) string {

@@ -4,10 +4,31 @@ import { Calendar } from "primereact/calendar";
 import { Button } from "primereact/button";
 
 import CamapanhasDashboardTab from "./sub-tabs/dashboard/CamapanhasDashboardTab";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 
 export default function DashboardTab() {
+  const subTabTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dashSubIndex, setDashSubIndex] = React.useState(0);
+  const [dashSubTransitioning, setDashSubTransitioning] = React.useState(false);
+
   const [dataInicio, setDataInicio] = React.useState<Date | null>(null);
   const [dataFim, setDataFim] = React.useState<Date | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (subTabTimer.current) clearTimeout(subTabTimer.current);
+    };
+  }, []);
+
+  const handleDashSubTabChange = React.useCallback((e: { index: number }) => {
+    setDashSubIndex(e.index);
+    setDashSubTransitioning(true);
+    if (subTabTimer.current) clearTimeout(subTabTimer.current);
+    subTabTimer.current = setTimeout(() => {
+      setDashSubTransitioning(false);
+      subTabTimer.current = null;
+    }, 400);
+  }, []);
 
   const clearFilters = () => {
     setDataInicio(null);
@@ -58,11 +79,16 @@ export default function DashboardTab() {
       </div>
 
       {/* Tabs internas */}
-      <TabView>
-        <TabPanel header="Campanhas" leftIcon="pi pi-fw pi-megaphone">
-          <CamapanhasDashboardTab />
-        </TabPanel>
-      </TabView>
+      <div className="border-round-2xl overflow-hidden" style={{ position: "relative" }}>
+        {dashSubTransitioning ? (
+          <MestreIaTransitionLoader overlay caption="Carregando…" />
+        ) : null}
+        <TabView activeIndex={dashSubIndex} onTabChange={handleDashSubTabChange}>
+          <TabPanel header="Campanhas" leftIcon="pi pi-fw pi-megaphone">
+            <CamapanhasDashboardTab />
+          </TabPanel>
+        </TabView>
+      </div>
     </div>
   );
 }

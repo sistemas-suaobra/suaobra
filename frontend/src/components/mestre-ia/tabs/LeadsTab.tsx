@@ -1,4 +1,5 @@
 import React from "react";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 import { Button } from "primereact/button";
 import { Tag } from "primereact/tag";
 import { Toast } from "primereact/toast";
@@ -231,9 +232,7 @@ export default function LeadsTab() {
 
       <div className="border-round-3xl p-2 surface-border">
         {loading ? (
-          <div className="flex justify-content-center align-items-center" style={{ minHeight: 120 }}>
-            <i className="pi pi-spin pi-spinner" style={{ fontSize: 32 }} />
-          </div>
+          <MestreIaTransitionLoader minHeight={200} caption="Carregando leads…" />
         ) : records.length === 0 ? (
           <div className="text-center py-5 text-secondary">
             Nenhum lead encontrado.

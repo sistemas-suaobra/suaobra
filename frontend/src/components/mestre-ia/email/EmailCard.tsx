@@ -8,6 +8,7 @@ import { InputTextarea } from "primereact/inputtextarea";
 import { Dialog } from "primereact/dialog";
 import { Toast } from "primereact/toast";
 import { useEmailConnection } from "../hooks/useEmailConnection";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 
 export function EmailCard() {
   const toast = useRef<Toast>(null);
@@ -204,7 +205,7 @@ export function EmailCard() {
 
             <div className="text-secondary" style={{ lineHeight: 1.6, wordBreak: "break-word" }}>
               {loading ? (
-                <span>Carregando...</span>
+                <MestreIaTransitionLoader row size="sm" minHeight={0} caption="Carregando configuração…" />
               ) : configured ? (
                 <span style={{ color: "#6366f1", fontWeight: 600 }}>
                   Email configurado: {remetenteEmail}

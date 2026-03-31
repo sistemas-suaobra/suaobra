@@ -90,12 +90,14 @@ func respostaSimilar(nova string, anteriores []string) bool {
 	return false
 }
 
-// ProcessarMensagemRecebida processa uma mensagem recebida do lead
+// ProcessarMensagemRecebida processa uma mensagem recebida do lead.
+// messageIDExterno é o ID da mensagem no provedor (ex.: WhatsApp), para deduplicação em campanha_lead_respostas.
 func (s *IAConversacionalService) ProcessarMensagemRecebida(
 	teamID string,
 	telefone string,
 	mensagem string,
 	nomeContato string,
+	messageIDExterno string,
 ) error {
 	startedAt := time.Now()
 
@@ -166,6 +168,19 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 
 		g.Info("IA: mensagem do usuário adicionada ao histórico conversa=%s", conversa.Id)
 	}
+
+	_ = repositories.SaveCampanhaLeadResposta(s.dao, repositories.CampanhaLeadRespostaInput{
+		TeamID:           teamID,
+		CampanhaID:       strings.TrimSpace(conversa.GetString("campanha_id")),
+		DestinatarioID:   strings.TrimSpace(conversa.GetString("destinatario_id")),
+		ConversaID:       conversa.Id,
+		Canal:            "WHATSAPP",
+		TelefoneE164:     telefone,
+		NomeContato:      nomeContato,
+		Corpo:            mensagem,
+		MessageIDExterno: strings.TrimSpace(messageIDExterno),
+		RecebidaEm:       time.Now().UTC(),
+	})
 
 	intencoes, err := s.intencaoRepo.FindAtivasByTeamID(teamID)
 	if err != nil {

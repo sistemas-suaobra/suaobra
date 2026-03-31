@@ -4,6 +4,7 @@ import { Tag } from "primereact/tag";
 import { InputText } from "primereact/inputtext";
 import { InputTextarea } from "primereact/inputtextarea";
 import { WhatsAppQrDialog } from "./WhatsAppQrDialog";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 import { baseURL } from "../../../store/api";
 import { user } from "../../../store/store";
 
@@ -122,7 +123,13 @@ export function WhatsAppCard(props: Props) {
 
   return (
     <div className="col-12 lg:col-6">
-      <div className="bg-white border-round-3xl p-3 md:p-4 border-1 surface-border h-full whatsapp-card">
+      <div
+        className="bg-white border-round-3xl p-3 md:p-4 border-1 surface-border h-full whatsapp-card"
+        style={{ position: "relative" }}
+      >
+        {props.waCreating ? (
+          <MestreIaTransitionLoader overlay caption="Criando instância WhatsApp…" />
+        ) : null}
         <div className="flex flex-column gap-3 mb-3">
           <div className="flex flex-column md:flex-row md:align-items-start md:justify-content-between gap-3">
             <div className="flex align-items-center gap-2 min-w-0">

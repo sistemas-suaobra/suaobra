@@ -1,7 +1,7 @@
 import React from "react";
 import { Dialog } from "primereact/dialog";
 import { Button } from "primereact/button";
-import { ProgressSpinner } from "primereact/progressspinner";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 
 type Props = {
   visible: boolean;
@@ -82,10 +82,7 @@ export function WhatsAppQrDialog({
         </div>
 
         {waQrLoading ? (
-          <div className="flex flex-column align-items-center gap-3 py-5">
-            <ProgressSpinner style={{ width: 56, height: 56 }} strokeWidth="4" />
-            <div className="text-600">Gerando QR Code...</div>
-          </div>
+          <MestreIaTransitionLoader minHeight={200} size="sm" caption="Gerando QR Code…" />
         ) : waQr ? (
           <div className="flex flex-column align-items-center gap-3">
             <div

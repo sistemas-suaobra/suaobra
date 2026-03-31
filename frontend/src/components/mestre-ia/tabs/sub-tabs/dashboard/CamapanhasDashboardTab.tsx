@@ -3,6 +3,7 @@ import { Chart } from "primereact/chart";
 
 import { percent } from "../../../utils/dashboard";
 import { api, makeURL } from "../../../../../store/api";
+import { MestreIaTransitionLoader } from "../../../MestreIaTransitionLoader";
 
 const StatCard = (props: {
   icon: string;
@@ -50,6 +51,7 @@ const SectionCard = (props: { title: string; subtitle?: string; children: React.
 };
 
 export default function CamapanhasDashboardTab() {
+  const [loading, setLoading] = React.useState(true);
   const [stats, setStats] = React.useState({
     enviadas: 0,
     lidas: 0,
@@ -59,25 +61,28 @@ export default function CamapanhasDashboardTab() {
   });
 
   React.useEffect(() => {
-    api().get(makeURL('/query/dashboard/campanhas'), {}).then(async resp => {
-      const data = await resp.json();
-      if (data && data.stats) {
-        setStats(data.stats);
-      }
-    });
+    let cancelled = false;
+    setLoading(true);
+    api()
+      .get(makeURL('/query/dashboard/campanhas'), {})
+      .then(async (resp) => {
+        const data = await resp.json();
+        if (!cancelled && data && data.stats) {
+          setStats(data.stats);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const campanhaStats = React.useMemo(() => {
     const enviadas = stats.enviadas;
     const lidas = stats.lidas;
     const respostas = stats.respostas;
-    // taxa already calculated in backend but we can use percent helper too if we want string format
-    // backend returns float like 0.2, frontend expects formatted string or number?
-    // Looking at usage below...
-    
-    // The original code was: const taxa = percent(respostas, enviadas);
-    // percent helper likely returns a formatted string or number.
-    
     const taxa = percent(respostas, enviadas);
     return { enviadas, lidas, respostas, taxa };
   }, [stats]);
@@ -128,6 +133,12 @@ export default function CamapanhasDashboardTab() {
     };
   }, [stats]);
 
+  if (loading) {
+    return (
+      <MestreIaTransitionLoader minHeight={360} caption="Carregando dados do relatório…" />
+    );
+  }
+
   return (
     <div>
       <div className="flex align-items-center justify-content-between mb-3">
@@ -158,7 +169,7 @@ export default function CamapanhasDashboardTab() {
           icon="pi pi-chart-line"
           iconBg="rgba(249,115,22,0.12)"
           title="Taxa de Resposta"
-          value={campanhaStats.taxa}
+          value={`${campanhaStats.taxa}%`}
           subtitle="Respostas / envios"
         />
 

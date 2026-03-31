@@ -7,11 +7,16 @@ import AgenteIaTab from "./tabs/AgenteIATab";
 import CampanhasTab from "./tabs/CampanhasTab";
 import { IntentDialog, type Intent } from "./tabs/IntentDialog";
 import DashboardTab from "./tabs/DashboardTab";
+import { MestreIaTransitionLoader } from "./MestreIaTransitionLoader";
 import { api, baseURL } from "../../store/api";
 import { loadUserState, user } from "../../store/store";
 
 export default function MestreIaPage() {
   const toast = React.useRef<Toast>(null);
+  const tabTransitionTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [activeTabIndex, setActiveTabIndex] = React.useState(0);
+  const [tabTransitioning, setTabTransitioning] = React.useState(false);
 
   const [intents, setIntents] = React.useState<Intent[]>([]);
   const [loadingIntents, setLoadingIntents] = React.useState(false);
@@ -62,6 +67,22 @@ export default function MestreIaPage() {
       loadIntents();
     });
   }, [loadIntents]);
+
+  React.useEffect(() => {
+    return () => {
+      if (tabTransitionTimer.current) clearTimeout(tabTransitionTimer.current);
+    };
+  }, []);
+
+  const handleMainTabChange = React.useCallback((e: { index: number }) => {
+    setActiveTabIndex(e.index);
+    setTabTransitioning(true);
+    if (tabTransitionTimer.current) clearTimeout(tabTransitionTimer.current);
+    tabTransitionTimer.current = setTimeout(() => {
+      setTabTransitioning(false);
+      tabTransitionTimer.current = null;
+    }, 400);
+  }, []);
 
   const openNewIntent = () => {
     setEditingIntent(null);
@@ -156,10 +177,20 @@ export default function MestreIaPage() {
   };
 
   return (
-    <div className="mestre-ia-page bg-white border-round-3xl p-4">
+    <div
+      className="mestre-ia-page bg-white border-round-3xl p-4"
+      style={{ position: "relative" }}
+    >
       <Toast ref={toast} />
 
-      <TabView scrollable className="mestre-ia-tabs">
+      {tabTransitioning ? <MestreIaTransitionLoader overlay caption="Carregando…" /> : null}
+
+      <TabView
+        activeIndex={activeTabIndex}
+        onTabChange={handleMainTabChange}
+        scrollable
+        className="mestre-ia-tabs"
+      >
         <TabPanel header="Campanhas" leftIcon="pi pi-megaphone">
           <CampanhasTab />
         </TabPanel>
@@ -167,6 +198,7 @@ export default function MestreIaPage() {
         <TabPanel header="Agente IA" leftIcon="pi pi-bolt">
           <AgenteIaTab
             intents={intents}
+            loading={loadingIntents}
             onNew={openNewIntent}
             onEdit={openEditIntent}
             onDelete={deleteIntent}

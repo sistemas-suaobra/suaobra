@@ -10,7 +10,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/react": "^3.0.2",
+    "@astrojs/react": "^3.6.3",
     "@hookstate/core": "^4.0.1",
     "@nanostores/persistent": "^0.9.1",
     "@nanostores/react": "^0.7.1",
@@ -18,7 +18,7 @@
     "@sentry/astro": "^7.84.0",
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
-    "astro": "^5.18.0",
+    "astro": "^5.18.1",
     "chart.js": "^4.4.0",
     "js-md5": "^0.8.3",
     "nanostores": "^0.9.3",
@@ -29,8 +29,11 @@
     "primereact": "^9.6.2",
     "qrcode": "^1.5.3",
     "quill": "^2.0.3",
-    "react": "^18.2.0",
+    "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
