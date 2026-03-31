@@ -95,6 +95,10 @@ export default function DashboardPage(props: Props) {
     {
       title: 'Login e Master Equipe',
       url: 'https://files.suaobra.com.br/videos/login-master-equipe.mp4',
+    },
+    {
+      title: 'Mestre IA',
+      url: 'https://files.suaobra.com.br/videos/mestre-ia.mp4',
     }
   ]
 
