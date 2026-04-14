@@ -138,6 +138,26 @@ func DisconnectConexaoWhatsapp(c echo.Context) error {
 	return c.JSON(200, g.M("ok", true))
 }
 
+// POST /conexoes/whatsapp/delete
+// Remove a instância no WuzAPI e exclui os registros locais da conexão.
+func ExcluirConexaoWhatsapp(c echo.Context) error {
+	req := NewRequest(c)
+
+	user, err := getUser(c, req.UserID())
+	if err != nil || user.ID == "" {
+		return ErrJSON(401, g.Error("unauthorized"))
+	}
+
+	svc := newWhatsAppService(req)
+
+	if err := svc.DeleteConnection(user.Team.ID); err != nil {
+		g.Warn("delete instance error: %v", err)
+		return c.JSON(200, g.M("ok", false, "error", err.Error()))
+	}
+
+	return c.JSON(200, g.M("ok", true))
+}
+
 // GET /conexoes/whatsapp/status
 // Consulta o wuzapi diretamente para saber se está connected e atualiza o banco.
 func StatusConexaoWhatsapp(c echo.Context) error {

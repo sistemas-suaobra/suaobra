@@ -15,6 +15,7 @@ type Props = {
   waDialogVisible: boolean;
   setWaDialogVisible: (v: boolean) => void;
   waCreating: boolean;
+  waDeleting: boolean;
   waSessionLoading: boolean;
   waQrLoading: boolean;
   waQr: string;
@@ -25,6 +26,7 @@ type Props = {
   carregarQRCode: () => Promise<void>;
   verificarStatusWhatsapp: () => Promise<boolean>;
   disconnectWhatsApp: () => Promise<void>;
+  removeWhatsAppInstance: () => Promise<void>;
   sendTestMessage: (phone: string, body: string) => Promise<void>;
 };
 
@@ -120,6 +122,16 @@ export function WhatsAppCard(props: Props) {
     props.waSessionLoading || props.waQrLoading ? "Gerando QR..." : "Ver QR Code";
 
   const primaryActionDisabled = props.waSessionLoading || props.waQrLoading;
+  const canRemoveInstance = props.waConnected && !props.waCreating;
+
+  const handleRemoveInstance = async () => {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja excluir a instância do WhatsApp? Essa ação remove a conexão atual."
+    );
+    if (!confirmed) return;
+
+    await props.removeWhatsAppInstance();
+  };
 
   return (
     <div className="col-12 lg:col-6">
@@ -185,6 +197,20 @@ export function WhatsAppCard(props: Props) {
               />
             )}
           </div>
+
+          {canRemoveInstance ? (
+            <div className="field col-12">
+              <Button
+                label={props.waDeleting ? "Excluindo..." : "Excluir instância"}
+                icon="pi pi-trash"
+                onClick={handleRemoveInstance}
+                className="w-full"
+                severity="danger"
+                outlined
+                disabled={props.waDeleting}
+              />
+            </div>
+          ) : null}
 
           {fullyConnected && (
             <>

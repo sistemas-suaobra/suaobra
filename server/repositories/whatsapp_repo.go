@@ -70,6 +70,13 @@ func (r *WhatsAppRepo) FindAll() ([]*models.Record, error) {
 	return r.dao.FindRecordsByFilter("conexoes_whatsapp", "id != ''", "", 0, 0, nil)
 }
 
+func (r *WhatsAppRepo) Delete(rec *models.Record) error {
+	if rec == nil || rec.Id == "" {
+		return nil
+	}
+	return r.dao.DeleteRecord(rec)
+}
+
 func (r *WhatsAppRepo) Create(conexaoID string, fields map[string]any) (*models.Record, error) {
 	col, err := r.dao.FindCollectionByNameOrId("conexoes_whatsapp")
 	if err != nil {

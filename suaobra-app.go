@@ -54,7 +54,7 @@ func main() {
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		e.Router.Use(contextMiddleware)
-		
+
 		e.Router.GET("/query/obras-plus", server.QueryObrasPlus)
 		e.Router.GET("/query/leads-plus", server.QueryLeadsPlus)
 		e.Router.GET("/query/obras-plus-neighborhood", server.QueryCityNeighborhood)
@@ -91,6 +91,7 @@ func main() {
 		e.Router.GET("/conexoes/whatsapp/qr", server.ObterQRCodeWhatsapp)
 		e.Router.GET("/conexoes/whatsapp/status", server.StatusConexaoWhatsapp)
 		e.Router.POST("/conexoes/whatsapp/disconnect", server.DisconnectConexaoWhatsapp)
+		e.Router.POST("/conexoes/whatsapp/delete", server.ExcluirConexaoWhatsapp)
 		e.Router.POST("/conexoes/whatsapp/send-test", server.EnviarMensagemTesteWhatsapp)
 		e.Router.GET("/conexoes/whatsapp", server.ObterConexaoWhatsapp)
 		e.Router.POST("/conexoes/whatsapp/fix-webhook", server.FixWebhookWhatsapp)
@@ -121,40 +122,40 @@ func main() {
 		e.Router.POST("/team/invite", server.TeamInvite)
 		e.Router.POST("/team/remove-member", server.TeamRemoveMember)
 		e.Router.POST("/team/set-manager", server.TeamSetManager)
-		
+
 		// Debug endpoint para RudderStack (temporário)
 		e.Router.POST("/debug/rudderstack", func(c echo.Context) error {
 			token := c.Request().Header.Get("TOKEN")
 			if token != "sua-obra-rudderstack" {
 				return c.JSON(401, map[string]string{"error": "unauthorized"})
 			}
-			
+
 			var payload map[string]interface{}
 			if err := c.Bind(&payload); err != nil {
 				return c.JSON(400, map[string]string{"error": "bind error: " + err.Error()})
 			}
-			
+
 			// Log do payload recebido
 			g.Info("DEBUG: Received payload: %v", payload)
-			
+
 			collection, err := app.Dao().FindCollectionByNameOrId("rudderstack")
 			if err != nil {
 				return c.JSON(400, map[string]string{"error": "collection not found: " + err.Error()})
 			}
-			
+
 			record := models.NewRecord(collection)
-			
+
 			// Setar cada campo manualmente
 			for key, value := range payload {
 				record.Set(key, value)
 			}
-			
+
 			// Tentar salvar
 			if err := app.Dao().SaveRecord(record); err != nil {
 				g.Error(err, "Failed to save record")
 				return c.JSON(400, map[string]string{"error": "save error: " + err.Error()})
 			}
-			
+
 			return c.JSON(200, map[string]interface{}{
 				"success": true,
 				"id":      record.Id,

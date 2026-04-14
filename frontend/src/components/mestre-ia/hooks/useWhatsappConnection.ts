@@ -49,6 +49,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
   const [waDialogVisible, setWaDialogVisible] = React.useState(false);
 
   const [waCreating, setWaCreating] = React.useState(false);
+  const [waDeleting, setWaDeleting] = React.useState(false);
   const [waSessionLoading, setWaSessionLoading] = React.useState(false);
 
   const [waQrLoading, setWaQrLoading] = React.useState(false);
@@ -287,6 +288,34 @@ export function useWhatsappConnection(notify: NotifyFn) {
     }
   }, [checkConnected, notify]);
 
+  const removeWhatsAppInstance = React.useCallback(async (): Promise<void> => {
+    try {
+      setWaDeleting(true);
+
+      const url = `${baseURL()}/conexoes/whatsapp/delete`;
+      await requestWithLog({
+        label: "Excluir Instância WhatsApp",
+        method: "POST",
+        url,
+        body: {},
+      });
+
+      setWaDialogVisible(false);
+      setWaQr("");
+      setWaQrError("");
+      setWaConnected(false);
+      setWaSessionOk(false);
+      setWaJid("");
+
+      notify("success", "WhatsApp", "Instância excluída com sucesso.");
+    } catch (e: any) {
+      console.error(e);
+      notify("error", "WhatsApp", e?.message || "Falha ao excluir instância.");
+    } finally {
+      setWaDeleting(false);
+    }
+  }, [notify]);
+
   const sendTestMessage = React.useCallback(
     async (phone: string, body: string): Promise<void> => {
       try {
@@ -321,6 +350,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
     setWaDialogVisible,
 
     waCreating,
+    waDeleting,
     waSessionLoading,
 
     waQrLoading,
@@ -333,6 +363,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
     carregarQRCode,
     verificarStatusWhatsapp,
     disconnectWhatsApp,
+    removeWhatsAppInstance,
     sendTestMessage,
   };
 }

@@ -68,11 +68,11 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 	}
 
 	fields := map[string]any{
-		"provider":      "WUZAPI",
-		"api_base_url":  s.wuzBaseURL(),
-		"numero_e164":   userToken,
-		"instancia_id":  created.Data.ID,
-		"device_jid":    "",
+		"provider":     "WUZAPI",
+		"api_base_url": s.wuzBaseURL(),
+		"numero_e164":  userToken,
+		"instancia_id": created.Data.ID,
+		"device_jid":   "",
 		"name":         created.Data.Name,
 		"webhook":      created.Data.Webhook,
 		"events":       created.Data.Events,
@@ -271,9 +271,9 @@ func (s *WhatsAppService) CheckAndUpdateStatus(teamID string) (connected bool, j
 	// Verifica se ultimo_qr_em é recente (últimos 5 min) — evita detectar sessões antigas.
 	conectadoEm := wa.GetDateTime("conectado_em")
 	ultimoQrEm := wa.GetDateTime("ultimo_qr_em")
-	
+
 	qrRecente := !ultimoQrEm.Time().IsZero() && time.Since(ultimoQrEm.Time()) < 5*time.Minute
-	
+
 	if (conectadoEm.Time().IsZero() || wa.GetString("device_jid") != info.JID) && qrRecente {
 		if saveErr := s.waRepo.UpdateConnected(wa, info.JID); saveErr != nil {
 			g.Error(saveErr, "erro ao salvar conectado_em para instancia=%s", instanciaID)
@@ -299,6 +299,37 @@ func (s *WhatsAppService) Disconnect(teamID string) error {
 	}
 
 	return s.waRepo.ClearConnected(wa)
+}
+
+func (s *WhatsAppService) DeleteConnection(teamID string) error {
+	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+	if err != nil {
+		return err
+	}
+	if con == nil || con.Id == "" {
+		return nil
+	}
+
+	wa, err := s.waRepo.FindByConexao(con.Id)
+	if err != nil {
+		return err
+	}
+
+	if wa != nil && wa.Id != "" {
+		instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
+		if instanciaID != "" {
+			if err := s.wuz.DeleteAdminUser(instanciaID); err != nil {
+				return err
+			}
+		}
+
+		if err := s.waRepo.Delete(wa); err != nil {
+			return err
+		}
+	}
+
+	s.conRepo.Delete(con)
+	return nil
 }
 
 func (s *WhatsAppService) GetByTeam(teamID string) (exists bool, con *models.Record, wa *models.Record, err error) {

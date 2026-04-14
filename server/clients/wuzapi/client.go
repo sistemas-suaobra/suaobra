@@ -231,6 +231,29 @@ func (c *Client) UpdateAdminUser(userID string, fields map[string]any) error {
 	return nil
 }
 
+func (c *Client) DeleteAdminUser(userID string) error {
+	url := c.cfg.BaseURL + "admin/users/" + userID
+	r, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	r.Header.Set("Authorization", c.cfg.APIKey)
+
+	res, err := c.http.Do(r)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return g.Error("wuzapi DELETE /admin/users/%s failed status=%d", userID, res.StatusCode)
+	}
+	return nil
+}
+
 func (c *Client) SessionQR(userToken string) (SessionQRResp, map[string]any, error) {
 	var parsed SessionQRResp
 
