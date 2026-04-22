@@ -229,6 +229,21 @@ func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
 		criadosItem := 0
 
 		for _, telefone := range telefones {
+			telefone = s.formatPhone(telefone)
+			if telefone == "" {
+				ignorados++
+				continue
+			}
+
+			existenteTelefone, err := s.repo.FindDestinatarioByCampanhaTelefone(campanhaID, telefone)
+			if err != nil {
+				return criados, ignorados, g.Error(err, "erro ao verificar destinatário duplicado por telefone")
+			}
+			if existenteTelefone != nil {
+				ignorados++
+				continue
+			}
+
 			existente, err := s.repo.FindDestinatarioByCampanhaContatoValor(
 				campanhaID,
 				contato.ObraID,
@@ -508,6 +523,7 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 
 	enviados := 0
 	falhas := 0
+	jaEnviadosPorTelefone := map[string]struct{}{}
 
 	// Loop contínuo: busca PENDENTE → processa → espera → repete até acabar.
 	for {
@@ -579,6 +595,13 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			nomeContato = "Cliente"
 		}
 
+		if targetWhatsApp && telefone != "" {
+			telefone = s.formatPhone(telefone)
+			if telefone == "" {
+				targetWhatsApp = false
+			}
+		}
+
 		// 4. Sem contato disponível → IGNORADO (pula sem delay)
 		if !((!targetWhatsApp || telefone != "") && (!targetEmail || email != "")) {
 			g.Warn("Destinatário %s ignorado: sem contato para os canais selecionados", dest.Id)
@@ -603,10 +626,31 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 		enviouWhatsApp := false
 
 		if targetWhatsApp && telefone != "" {
+			if _, jaEnviadoNoLoop := jaEnviadosPorTelefone[telefone]; jaEnviadoNoLoop {
+				g.Info("Destinatário %s ignorado: telefone %s já enviado nesta execução", dest.Id, telefone)
+				if err := s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusIgnorado, "Número duplicado na campanha"); err != nil {
+					g.Error(err, "Erro ao atualizar status para IGNORADO do destinatário %s", dest.Id)
+				}
+				continue
+			}
+
+			jaEnviadoAntes, err := s.repo.ExistsEnviadoByCampanhaTelefone(campanhaID, telefone, dest.Id)
+			if err != nil {
+				g.Warn("erro ao verificar telefone já enviado campanha=%s telefone=%s: %v", campanhaID, telefone, err)
+			}
+			if jaEnviadoAntes {
+				g.Info("Destinatário %s ignorado: telefone %s já recebeu envio nesta campanha", dest.Id, telefone)
+				if err := s.repo.UpdateDestinatarioStatus(dest, repositories.DestStatusIgnorado, "Número já enviado nesta campanha"); err != nil {
+					g.Error(err, "Erro ao atualizar status para IGNORADO do destinatário %s", dest.Id)
+				}
+				continue
+			}
+
 			sendErr = s.enviarWhatsApp(teamID, telefone, mensagem)
 			if sendErr == nil {
 				enviouAlgum = true
 				enviouWhatsApp = true
+				jaEnviadosPorTelefone[telefone] = struct{}{}
 				g.Info("WhatsApp enviado para %s", telefone)
 
 				if manterIA && s.conversaRepo != nil {

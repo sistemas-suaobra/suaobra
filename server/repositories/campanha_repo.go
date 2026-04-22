@@ -234,6 +234,65 @@ func (r *CampanhaRepo) FindDestinatarioByCampanhaContatoValor(
 	return records[0], nil
 }
 
+// FindDestinatarioByCampanhaTelefone busca qualquer destinatário da campanha com o mesmo telefone.
+func (r *CampanhaRepo) FindDestinatarioByCampanhaTelefone(campanhaID, telefone string) (*models.Record, error) {
+	telefone = strings.TrimSpace(telefone)
+	if campanhaID == "" || telefone == "" {
+		return nil, nil
+	}
+
+	records, err := r.dao.FindRecordsByExpr(
+		"campanha_destinatarios",
+		dbx.NewExp(
+			"campanha_id = {:campanhaId} AND telefone_e164 = {:telefone}",
+			dbx.Params{
+				"campanhaId": campanhaID,
+				"telefone":   telefone,
+			},
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(records) == 0 {
+		return nil, nil
+	}
+
+	return records[0], nil
+}
+
+// ExistsEnviadoByCampanhaTelefone indica se já existe envio com sucesso para o mesmo telefone na campanha.
+func (r *CampanhaRepo) ExistsEnviadoByCampanhaTelefone(campanhaID, telefone, excludeDestinatarioID string) (bool, error) {
+	telefone = strings.TrimSpace(telefone)
+	if campanhaID == "" || telefone == "" {
+		return false, nil
+	}
+
+	expr := "campanha_id = {:campanhaId} AND telefone_e164 = {:telefone} AND status = {:status}"
+	params := dbx.Params{
+		"campanhaId": campanhaID,
+		"telefone":   telefone,
+		"status":     DestStatusEnviado,
+	}
+
+	excludeDestinatarioID = strings.TrimSpace(excludeDestinatarioID)
+	if excludeDestinatarioID != "" {
+		expr += " AND id <> {:excludeId}"
+		params["excludeId"] = excludeDestinatarioID
+	}
+
+	records, err := r.dao.FindRecordsByExpr(
+		"campanha_destinatarios",
+		dbx.NewExp(expr, params),
+	)
+	if err != nil {
+		return false, err
+	}
+
+	return len(records) > 0, nil
+}
+
 // CreateDestinatario cria um destinatário
 func (r *CampanhaRepo) CreateDestinatario(data map[string]any) (*models.Record, error) {
 	col, err := r.dao.FindCollectionByNameOrId("campanha_destinatarios")

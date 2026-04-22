@@ -269,6 +269,15 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 		return nil
 	}
 
+	if !s.conversaPermiteRespostaAutomatica(conversa.Id) {
+		g.Info(
+			"IA: resposta automática abortada por intervenção manual conversa=%s telefone=%s",
+			conversa.Id,
+			maskIAPhone(telefone),
+		)
+		return nil
+	}
+
 	g.Info("IA: enviando resposta WhatsApp telefone=%s resposta=%s", maskIAPhone(telefone), truncateIAContent(respostaIA, 1000))
 	if err := s.enviarRespostaWhatsApp(teamID, telefone, respostaIA); err != nil {
 		g.Error(err, "IA: falha ao enviar resposta WhatsApp telefone=%s", maskIAPhone(telefone))
@@ -554,6 +563,21 @@ func (s *IAConversacionalService) enviarRespostaWhatsApp(teamID, telefone, mensa
 		return g.Error(err, "falha ao enviar mensagem WhatsApp")
 	}
 	return nil
+}
+
+func (s *IAConversacionalService) conversaPermiteRespostaAutomatica(conversaID string) bool {
+	conversaID = strings.TrimSpace(conversaID)
+	if conversaID == "" {
+		return false
+	}
+
+	rec, err := s.dao.FindRecordById("conversas_ia", conversaID)
+	if err != nil || rec == nil {
+		return false
+	}
+
+	status := strings.ToUpper(strings.TrimSpace(rec.GetString("status")))
+	return status == "ATIVA"
 }
 
 func (s *IAConversacionalService) obterMensagens(conversa *models.Record) []map[string]interface{} {

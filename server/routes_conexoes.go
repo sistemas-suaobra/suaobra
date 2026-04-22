@@ -580,7 +580,8 @@ func WebhookWhatsmeow(c echo.Context) error {
 
 		isFromMe := cast.ToBool(info["IsFromMe"])
 		if isFromMe {
-			g.Debug("webhook/whatsmeow: ignorando mensagem enviada por nós")
+			pauseConversationalIAOnHumanMessage(app.Dao(), teamID, info, evt)
+			g.Debug("webhook/whatsmeow: mensagem enviada por nós (ia pausada para atendimento manual quando aplicável)")
 			return c.JSON(200, g.M("ok", true))
 		}
 
@@ -901,6 +902,144 @@ func resolveWAConexaoID(wa *models.Record) string {
 	}
 
 	return strings.TrimSpace(wa.GetString("conexoes"))
+}
+
+// pauseConversationalIAOnHumanMessage pausa conversa ativa para o telefone quando
+// detectamos mensagem enviada pelo próprio usuário (intervenção manual).
+func pauseConversationalIAOnHumanMessage(dao *daos.Dao, teamID string, info map[string]any, evt map[string]any) {
+	if dao == nil || strings.TrimSpace(teamID) == "" {
+		return
+	}
+
+	candidatos := resolvePhonesForManualIntervention(info)
+	if len(candidatos) == 0 {
+		g.Debug("webhook/whatsmeow: intervenção manual sem telefone elegível para pausar IA")
+		return
+	}
+
+	conversaRepo := repositories.NewConversaRepo(dao)
+	conversa := conversaRepo.FindByTelefoneCandidates(teamID, candidatos)
+	if conversa == nil {
+		g.Debug("webhook/whatsmeow: intervenção manual sem conversa encontrada team=%s candidatos=%v", teamID, candidatos)
+		return
+	}
+
+	statusAtual := strings.ToUpper(strings.TrimSpace(conversa.GetString("status")))
+	if statusAtual != "ATIVA" {
+		return
+	}
+
+	// Evita pausar quando o webhook apenas ecoa uma mensagem que a própria IA acabou de enviar.
+	msgEnviada := normalizeWAMessageForCompare(extractWAMessageText(evt))
+	ultimaModel := normalizeWAMessageForCompare(lastModelMessageFromConversa(conversa))
+	if msgEnviada != "" && ultimaModel != "" && msgEnviada == ultimaModel {
+		return
+	}
+
+	conversa.Set("status", "PAUSADA")
+	conversa.Set("ultima_mensagem_em", time.Now().UTC())
+	if err := conversaRepo.Save(conversa); err != nil {
+		g.Warn("webhook/whatsmeow: falha ao pausar conversa por intervenção manual conversa=%s err=%v", conversa.Id, err)
+		return
+	}
+
+	g.Info(
+		"webhook/whatsmeow: conversa pausada por intervenção manual conversa=%s team=%s telefone=%s",
+		conversa.Id,
+		teamID,
+		maskWebhookPhone(candidatos[0]),
+	)
+}
+
+func resolvePhonesForManualIntervention(info map[string]any) []string {
+	candidates := make([]string, 0, 4)
+	seen := map[string]struct{}{}
+
+	add := func(raw string) {
+		phone := normalizeWASender(raw)
+		if phone == "" {
+			return
+		}
+		if _, ok := seen[phone]; ok {
+			return
+		}
+		seen[phone] = struct{}{}
+		candidates = append(candidates, phone)
+	}
+
+	// Em mensagens enviadas manualmente (IsFromMe=true), o contato de destino costuma vir aqui.
+	add(cast.ToString(info["RecipientAlt"]))
+	add(cast.ToString(info["recipientAlt"]))
+
+	// Fallback: em alguns payloads o número útil vem no SenderAlt quando há LID no Sender.
+	add(cast.ToString(info["SenderAlt"]))
+	add(cast.ToString(info["senderAlt"]))
+
+	// Último fallback: tenta extração genérica dos campos Info.
+	add(extractBestPhoneFromInfo(info))
+
+	out := make([]string, 0, len(candidates)*2)
+	outSeen := map[string]struct{}{}
+	for _, phone := range candidates {
+		for _, v := range buildTelefoneCandidates(phone) {
+			if _, ok := outSeen[v]; ok {
+				continue
+			}
+			outSeen[v] = struct{}{}
+			out = append(out, v)
+		}
+	}
+
+	return out
+}
+
+func lastModelMessageFromConversa(conversa *models.Record) string {
+	if conversa == nil {
+		return ""
+	}
+
+	raw := conversa.Get("mensagens")
+	var mensagens []map[string]any
+
+	switch v := raw.(type) {
+	case []map[string]any:
+		mensagens = v
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				mensagens = append(mensagens, m)
+				continue
+			}
+			if m, ok := item.(map[string]interface{}); ok {
+				tmp := map[string]any{}
+				for k, val := range m {
+					tmp[k] = val
+				}
+				mensagens = append(mensagens, tmp)
+			}
+		}
+	}
+
+	for i := len(mensagens) - 1; i >= 0; i-- {
+		role := strings.TrimSpace(strings.ToLower(cast.ToString(mensagens[i]["role"])))
+		if role != "model" && role != "assistant" {
+			continue
+		}
+		content := strings.TrimSpace(cast.ToString(mensagens[i]["content"]))
+		if content != "" {
+			return content
+		}
+	}
+
+	return ""
+}
+
+func normalizeWAMessageForCompare(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func normalizeWASender(sender string) string {
