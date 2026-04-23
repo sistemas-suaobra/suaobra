@@ -388,12 +388,12 @@ export class Lead {
   }
 
   get start_date_str() {
-    if(this.start_date) return (new Date(this.start_date*1000)).toLocaleDateString('pt-BR')
+    if(this.start_date) return (new Date(this.start_date*1000)).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
     return '-'
   }
 
   get end_date_str() {
-    if(this.end_date) return (new Date(this.end_date*1000)).toLocaleDateString('pt-BR')
+    if(this.end_date) return (new Date(this.end_date*1000)).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
     return '-'
   }
 

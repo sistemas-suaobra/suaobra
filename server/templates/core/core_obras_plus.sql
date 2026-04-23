@@ -8,7 +8,7 @@ select
   cop.city,
   cop.state,
   cop.start_date,
-  date(julianday(cop.end_date) + 400) as end_date,
+  cop.end_date,
   cop.type,
   cop.activity,
   cop.size,
