@@ -55,7 +55,7 @@ export default function MestreIaPage() {
       notify(
         "error",
         "Erro",
-        err?.response?.data?.message || "Erro ao carregar intenções!!!"
+        err?.response?.data?.message || "Erro ao carregar intenções!"
       );
     } finally {
       setLoadingIntents(false);
