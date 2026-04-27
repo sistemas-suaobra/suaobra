@@ -186,10 +186,10 @@ func makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo strin
 
 	// Filtros de data de fim
 	if endDateFrom != "" {
-		whereArr = append(whereArr, g.F("date(julianday(cop.end_date) + 400) >= '%s'", endDateFrom))
+		whereArr = append(whereArr, g.F("cop.end_date >= '%s'", endDateFrom))
 	}
 	if endDateTo != "" {
-		whereArr = append(whereArr, g.F("date(julianday(cop.end_date) + 400) <= '%s'", endDateTo))
+		whereArr = append(whereArr, g.F("cop.end_date <= '%s'", endDateTo))
 	}
 
 	if len(whereArr) == 0 {

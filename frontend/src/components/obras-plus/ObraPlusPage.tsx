@@ -864,7 +864,7 @@ const parseDate = (date: string, add_days = 0) => {
     const daysInMs = add_days * 24 * 60 * 60 * 1000
     d = new Date(epochMs + daysInMs)
   }
-  return `${d.getUTCDate()}/${d.getMonth() + 1}/${d.getFullYear()}`
+  return `${d.getUTCDate().toString().padStart(2, '0')}/${(d.getUTCMonth() + 1).toString().padStart(2, '0')}/${d.getUTCFullYear()}`
 }
 
 const calculateObraStage = (startDateStr: string, endDateStr: string): string => {
