@@ -14,10 +14,16 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       ENV: ${ENV:-production}
+      DEBUG: ${DEBUG:-LOW}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MESSENGER_TOKEN: ${MESSENGER_TOKEN:-}
+      MESSENGER_BASE_URL: ${MESSENGER_BASE_URL:-}
+      WHATSMEOW_URL: ${WHATSMEOW_URL:-}
+      WHATSMEOW_APIKEY: ${WHATSMEOW_APIKEY:-}
+      WHATSMEOW_WEBHOOK_BASE: ${WHATSMEOW_WEBHOOK_BASE:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     ports:
       - "8080:8080"
     volumes:
