@@ -1,7 +1,7 @@
 # Deploy no Dokploy (Docker Compose)
 #
 # Modo atual: acesso por IP + porta (sem domínio / sem Traefik).
-#   Frontend: http://<IP>:8081
+#   Frontend: http://<IP>:8091
 #   Backend:  http://<IP>:8080
 #
 # Compose path no Dokploy: ./docker-compose.dockploy.yml
@@ -33,7 +33,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8081:80"
+      - "8091:80"
     networks:
       - dokploy-network
 
