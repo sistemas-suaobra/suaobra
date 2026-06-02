@@ -13,7 +13,7 @@ export const baseURL = () => {
   const url = isProd() ? 'https://api.suaobra.com.br' :
     isStage() ? 'https://api-hml.suaobra.com.br' :
       window.location.hostname.includes('suaobra.test') ? `http://api.suaobra.test` :
-        `http://${window.location.hostname}:8090`
+        `http://${window.location.hostname}:8080`
   console.log('baseURL', url)
   return url
 }
