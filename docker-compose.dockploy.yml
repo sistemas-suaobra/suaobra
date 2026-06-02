@@ -1,0 +1,59 @@
+# Deploy no Dokploy/Dockploy (Docker Compose)
+#
+# No painel: Create Service → Docker Compose
+#   - Compose path: docker-compose.dockploy.yml
+#   - Branch: main
+#   - Repo: https://github.com/sistemas-suaobra/suaobra
+#
+# Variáveis obrigatórias no painel (Environment):
+#   APP_DOMAIN=app.suaobra.com.br   → domínio do frontend
+#   API_DOMAIN=api.suaobra.com.br   → domínio do backend
+#   ENV=production
+#   GEMINI_API_KEY, MESSENGER_TOKEN, MESSENGER_BASE_URL
+#   WHATSMEOW_URL, WHATSMEOW_APIKEY, WHATSMEOW_WEBHOOK_BASE (URL pública da API)
+#
+# Dados persistentes (recomendado pelo Dokploy): pasta ../files relativa ao projeto no servidor.
+# Coloque core.db em ../files/suaobra/data/core.db antes do primeiro deploy (ou copie depois).
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENV: ${ENV:-production}
+    volumes:
+      - ../files/suaobra/data:/app/data
+    networks:
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.entrypoints=websecure
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.tls.certResolver=letsencrypt
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.loadbalancer.server.port=8080
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.entrypoints=websecure
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.tls.certResolver=letsencrypt
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
+
+networks:
+  dokploy-network:
+    external: true

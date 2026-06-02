@@ -5,3 +5,13 @@ http://app.suaobra.test {
 http://api.suaobra.test {
     reverse_proxy backend:8080
 }
+
+# Catch-all: encaminha webhooks vindos de qualquer host (ngrok, etc.) ao backend
+:80 {
+    handle /webhooks/* {
+        reverse_proxy backend:8080
+    }
+    handle {
+        respond "Not Found" 404
+    }
+}

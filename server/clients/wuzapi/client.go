@@ -69,7 +69,7 @@ func (c *Client) CreateAdminUser(name, token string) (CreateAdminUserResp, map[s
 	_ = json.Unmarshal(rawBytes, &parsed)
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return parsed, raw, g.Error("wuzapi /admin2/users failed status=%d raw=%v", res.StatusCode, raw)
+		return parsed, raw, g.Error("wuzapi POST /admin/users failed status=%d raw=%v", res.StatusCode, raw)
 	}
 	if parsed.Data.ID == "" {
 		return parsed, raw, g.Error("wuzapi returned empty data.id: %v", raw)
