@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/flarco/g"
@@ -92,7 +93,11 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 		return nil, g.Error("empty user token")
 	}
 
-	body := map[string]any{"Immediate": true}
+	// WuzAPI exige Subscribe no payload; só {"Immediate":true} retorna 400 "could not decode Payload".
+	body := map[string]any{
+		"Subscribe": []string{"Message"},
+		"Immediate": true,
+	}
 	b, _ := json.Marshal(body)
 
 	url := c.cfg.BaseURL + "session/connect"
@@ -115,7 +120,16 @@ func (c *Client) SessionConnect(userToken string) (map[string]any, error) {
 	if err := json.NewDecoder(res.Body).Decode(&raw); err != nil {
 		return nil, g.Error("wuzapi returned non-json response (status=%d)", res.StatusCode)
 	}
-	return raw, nil
+
+	// "already connected" é idempotente — sessão já ativa, QR pode ser obtido em seguida.
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		return raw, nil
+	}
+	if errMsg, _ := raw["error"].(string); strings.EqualFold(strings.TrimSpace(errMsg), "already connected") {
+		return raw, nil
+	}
+
+	return raw, g.Error("wuzapi /session/connect failed status=%d raw=%v", res.StatusCode, raw)
 }
 
 func (c *Client) SessionDisconnect(userToken string) (map[string]any, error) {

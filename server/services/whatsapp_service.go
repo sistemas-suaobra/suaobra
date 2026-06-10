@@ -165,6 +165,13 @@ func (s *WhatsAppService) GetQRByTeam(teamID string) (code int, qr string, err e
 	}
 
 	parsed, err := s.GetQR(token)
+	if err != nil && isWuzNoSessionErr(err) {
+		if _, connectErr := s.ConnectSession(token); connectErr != nil {
+			return 0, "", connectErr
+		}
+		time.Sleep(900 * time.Millisecond)
+		parsed, err = s.GetQR(token)
+	}
 	if err != nil {
 		return 0, "", err
 	}
@@ -173,6 +180,14 @@ func (s *WhatsAppService) GetQRByTeam(teamID string) (code int, qr string, err e
 	s.waRepo.TouchUltimoQR(wa)
 
 	return parsed.Code, parsed.Data.QRCode, nil
+}
+
+func isWuzNoSessionErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no session") || strings.Contains(msg, "/session/qr failed")
 }
 
 func (s *WhatsAppService) wuzBaseURL() string {
