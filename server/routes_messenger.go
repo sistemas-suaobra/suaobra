@@ -142,6 +142,16 @@ func MessengerSync(c echo.Context) error {
 			break
 		}
 
+		candidatos := services.BuildTelefoneCandidates(telefone)
+		if !services.IAAtivaParaTelefone(req.Dao(), teamID, candidatos) {
+			g.Info(
+				"MessengerSync[WA]: IA desativada (manter_ia=false) team=%s telefone=%s",
+				teamID,
+				maskMessengerPhone(telefone),
+			)
+			break
+		}
+
 		intencaoRepo := repositories.NewIntencaoRepo(req.Dao())
 		conversaRepo := repositories.NewConversaRepo(req.Dao())
 		waSvc := newWhatsAppServiceFromRequest(req)

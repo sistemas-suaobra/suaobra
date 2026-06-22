@@ -6,7 +6,6 @@ import (
 
 	"github.com/flarco/g"
 	"github.com/labstack/echo/v5"
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
@@ -635,68 +634,23 @@ func WebhookWhatsmeow(c echo.Context) error {
 		candidatos := buildTelefoneCandidates(telefone)
 		g.Info("webhook/whatsmeow: candidatos telefone=%v", candidatos)
 
-		// ── 1. Tentar encontrar destinatário na campanha ──
-		var dest *models.Record
-		for _, candidato := range candidatos {
-			dest, _ = app.Dao().FindFirstRecordByFilter(
-				"campanha_destinatarios",
-				"team_id = {:teamId} && telefone_e164 = {:telefone} && status = 'ENVIADO'",
-				dbx.Params{
-					"teamId":   teamID,
-					"telefone": candidato,
-				},
-			)
-			if dest != nil {
-				g.Info(
-					"webhook/whatsmeow: destinatário encontrado dest_id=%s campanha_id=%s telefone_match=%s",
-					dest.Id,
-					dest.GetString("campanha_id"),
-					candidato,
-				)
-				break
-			}
-		}
-
-		// ── 2. Verificar se a campanha tem IA ativa ──
-		iaAtiva := false
+		dest := services.FindDestinatarioEnviadoRecente(app.Dao(), teamID, candidatos)
 		if dest != nil {
-			campanhaID := strings.TrimSpace(dest.GetString("campanha_id"))
-			if campanhaID != "" {
-				campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
-				if campErr == nil && campanha != nil {
-					manterIA := campanha.GetBool("manter_ia")
-					g.Info("webhook/whatsmeow: campanha=%s manter_ia=%v", campanhaID, manterIA)
-					iaAtiva = manterIA
-				} else {
-					g.Warn("webhook/whatsmeow: erro ao buscar campanha=%s err=%v", campanhaID, campErr)
-				}
-			}
+			g.Info(
+				"webhook/whatsmeow: destinatário encontrado dest_id=%s campanha_id=%s",
+				dest.Id,
+				dest.GetString("campanha_id"),
+			)
 		}
 
 		conversaRepo := repositories.NewConversaRepo(app.Dao())
 		conversaAtual := conversaRepo.FindByTelefoneCandidates(teamID, candidatos)
 
-		// ── 3. Fallback: verificar se já existe conversa ativa em conversas_ia ──
-		if !iaAtiva {
-			if conversaAtual != nil && strings.ToUpper(strings.TrimSpace(conversaAtual.GetString("status"))) == "ATIVA" {
-				campanhaID := strings.TrimSpace(conversaAtual.GetString("campanha_id"))
-				if campanhaID != "" {
-					campanha, campErr := app.Dao().FindRecordById("campanhas", campanhaID)
-					if campErr == nil && campanha != nil && campanha.GetBool("manter_ia") {
-						iaAtiva = true
-						g.Info(
-							"webhook/whatsmeow: conversa ativa encontrada via fallback conversa_id=%s campanha=%s telefone=%s",
-							conversaAtual.Id,
-							campanhaID,
-							maskWebhookPhone(telefone),
-						)
-					}
-				}
-			}
-		}
+		iaAtiva := services.IAAtivaParaTelefone(app.Dao(), teamID, candidatos)
 
 		if !iaAtiva {
-			// Mesmo sem IA ativa, registrar resposta para refletir no dashboard.
+			services.PausarConversaIA(conversaRepo, teamID, candidatos)
+
 			if err := registrarRespostaWhatsAppSemIA(app.Dao(), conversaRepo, conversaAtual, teamID, telefone, nomeContato, mensagem, dest, msgIDExterno); err != nil {
 				g.Warn(
 					"webhook/whatsmeow: falha ao registrar resposta sem IA telefone=%s err=%v",
@@ -705,11 +659,10 @@ func WebhookWhatsmeow(c echo.Context) error {
 				)
 			}
 
-			g.Warn(
-				"webhook/whatsmeow: nenhuma campanha com IA ativa encontrada para telefone=%s team=%s candidatos=%v",
+			g.Info(
+				"webhook/whatsmeow: IA desativada para telefone=%s team=%s (manter_ia=false ou sem campanha)",
 				maskWebhookPhone(telefone),
 				teamID,
-				candidatos,
 			)
 			return c.JSON(200, g.M("ok", true))
 		}
@@ -1362,7 +1315,7 @@ func registrarRespostaWhatsAppSemIA(
 			"telefone":           telefone,
 			"nome_contato":       nomeContato,
 			"mensagens":          []map[string]any{},
-			"status":             "ATIVA",
+			"status":             "PAUSADA",
 			"ultima_mensagem_em": now,
 		}
 		if destinatarioID != "" {
@@ -1375,6 +1328,9 @@ func registrarRespostaWhatsAppSemIA(
 		}
 	}
 
+	if strings.ToUpper(strings.TrimSpace(conversa.GetString("status"))) == "ATIVA" {
+		conversa.Set("status", "PAUSADA")
+	}
 	if strings.TrimSpace(conversa.GetString("campanha_id")) == "" {
 		conversa.Set("campanha_id", campanhaID)
 	}

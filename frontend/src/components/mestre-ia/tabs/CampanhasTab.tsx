@@ -252,7 +252,7 @@ export default function CampanhasTab() {
         leads: [],
         channelWa: true,
         channelEmail: false,
-        iaContinuar: true,
+        iaContinuar: !!r.manter_ia,
       }));
 
       setCampaigns(mapped);

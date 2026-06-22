@@ -125,8 +125,17 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 		return nil
 	}
 
-	// Gerar candidatos de telefone para busca mais robusta
 	candidatosTelefone := s.buildPhoneCandidates(telefone)
+	if !IAAtivaParaTelefone(s.dao, teamID, candidatosTelefone) {
+		g.Info(
+			"IA: campanha sem manter_ia para telefone=%s team=%s — ignorando resposta automática",
+			maskIAPhone(telefone),
+			teamID,
+		)
+		return nil
+	}
+
+	// Gerar candidatos de telefone para busca mais robusta
 	g.Info("IA: candidatos telefone=%v", candidatosTelefone)
 
 	conversa := s.conversaRepo.FindByTelefoneCandidates(teamID, candidatosTelefone)

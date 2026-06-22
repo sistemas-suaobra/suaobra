@@ -657,6 +657,8 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 					if err := s.garantirConversaIA(teamID, campanhaID, dest, telefone, nomeContato, mensagem); err != nil {
 						g.Warn("manter_ia: erro ao garantir conversa para %s: %v", telefone, err)
 					}
+				} else if s.conversaRepo != nil {
+					PausarConversaIA(s.conversaRepo, teamID, []string{telefone})
 				}
 			} else {
 				g.Error(sendErr, "Falha WhatsApp para %s (destinatário %s)", telefone, dest.Id)
