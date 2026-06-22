@@ -39,9 +39,13 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.rule=Host(`api.suaobra.com.br`)
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.entrypoints=websecure
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.tls.certResolver=letsencrypt
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-api
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api-http.rule=Host(`api.suaobra.com.br`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api-http.entrypoints=web
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api-http.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-api
       - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.loadbalancer.server.port=8080
 
   frontend:
@@ -58,9 +62,13 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.rule=Host(`app.suaobra.com.br`)
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.entrypoints=websecure
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.tls.certResolver=letsencrypt
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.rule=Host(`app.suaobra.com.br`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.entrypoints=web
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
       - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
 
 networks:
