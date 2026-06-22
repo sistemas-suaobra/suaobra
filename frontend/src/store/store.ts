@@ -336,6 +336,10 @@ export class Lead {
       this.lead_properties.obra.owner = this.lead_properties.obra.owner || this.owner
       this.lead_properties.obra.professional = this.lead_properties.obra.professional || this.professional
       this.lead_properties.obra.address = this.lead_properties.obra.address || this.address_short
+      this.lead_properties.obra.bairro = this.lead_properties.obra.bairro || this.bairro
+      this.lead_properties.obra.city = this.lead_properties.obra.city || this.city
+      this.lead_properties.obra.state = this.lead_properties.obra.state || this.state
+      this.lead_properties.obra.size = this.lead_properties.obra.size || this.size
     }
 
     if(this.is_opportunity) {
@@ -357,7 +361,9 @@ export class Lead {
   }
 
   get is_obra() {
-    return this.obra_id?.startsWith('obra_') || false
+    // Obras do Obras+ usam qualquer obra_id que nao seja oportunidade manual (oppo_*).
+    // Importacoes CAU geram ids sem prefixo fixo; o prefixo obra_ nao e obrigatorio.
+    return !!this.obra_id && !this.is_opportunity
   }
 
   get is_opportunity() {

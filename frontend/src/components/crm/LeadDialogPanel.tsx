@@ -170,14 +170,16 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
 
   const buildObraProps = () => {
       let obra_properties = new ObraProperties(jsonClone(lead.lead_properties.obra.get()))
-      
-      // obra_properties.address = obra_properties.address || lead.address.get() || ''
-      // obra_properties.bairro = obra_properties.bairro || lead.bairro.get() || ''
-      // obra_properties.city = obra_properties.city || lead.city.get() || ''
-      // obra_properties.state = obra_properties.state || lead.state.get() || ''
-      // obra_properties.owner = obra_properties.owner || lead.owner.get() || ''
-      // obra_properties.professional = obra_properties.professional || lead.professional.get() || ''
-      // obra_properties.size = obra_properties.size || lead.size.get()
+
+      if(lead.is_obra.get()) {
+        obra_properties.address = obra_properties.address || lead.address_short.get() || ''
+        obra_properties.bairro = obra_properties.bairro || lead.bairro.get() || ''
+        obra_properties.city = obra_properties.city || lead.city.get() || ''
+        obra_properties.state = obra_properties.state || lead.state.get() || ''
+        obra_properties.owner = obra_properties.owner || lead.owner.get() || ''
+        obra_properties.professional = obra_properties.professional || lead.professional.get() || ''
+        obra_properties.size = obra_properties.size || lead.size.get()
+      }
 
       for(let city of allCities) {
         if(city.city.toUpperCase() === obra_properties.city?.toUpperCase()) customCityID.set(city.id)
