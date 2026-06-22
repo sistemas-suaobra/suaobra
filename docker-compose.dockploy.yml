@@ -1,12 +1,18 @@
 # Deploy no Dokploy (Docker Compose)
 #
-# Modo atual: acesso por IP + porta (sem domínio / sem Traefik).
-#   Frontend: http://<IP>:8091
-#   Backend:  http://<IP>:8080
-#
 # Compose path no Dokploy: ./docker-compose.dockploy.yml
 #
-# Quando tiver domínio, volte labels Traefik e remova ports (ver git history).
+# Variaveis obrigatorias no painel Dokploy (Environment):
+#   APP_DOMAIN=app.suaobra.com.br
+#   API_DOMAIN=api.suaobra.com.br
+#   ENV=production
+#   GEMINI_API_KEY, MESSENGER_TOKEN, MESSENGER_BASE_URL
+#   WHATSMEOW_URL, WHATSMEOW_APIKEY, WHATSMEOW_WEBHOOK_BASE
+#
+# Cloudflare -> Traefik (Dokploy) -> containers via labels abaixo.
+# Portas 8091/8080 sao apenas para debug direto por IP.
+#
+# Dados: core.db em ../files/suaobra/data/core.db (volume abaixo).
 
 services:
   backend:
@@ -30,6 +36,13 @@ services:
       - ../files/suaobra/data:/app/data
     networks:
       - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.entrypoints=websecure
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.tls.certResolver=letsencrypt
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-api.loadbalancer.server.port=8080
 
   frontend:
     build:
@@ -42,6 +55,13 @@ services:
       - "8091:80"
     networks:
       - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.entrypoints=websecure
+      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.tls.certResolver=letsencrypt
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
 
 networks:
   dokploy-network:
