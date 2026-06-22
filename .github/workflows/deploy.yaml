@@ -1,9 +1,8 @@
 name: Deploy to Production (SSH)
 
+# Producao usa Dokploy (docker-compose.dockploy.yml). Deploy manual apenas — push em main
+# nao deve parar containers nem conflitar com o stack do Dokploy/Cloudflare.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 env:

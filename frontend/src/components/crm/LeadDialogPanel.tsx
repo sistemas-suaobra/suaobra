@@ -172,7 +172,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       let obra_properties = new ObraProperties(jsonClone(lead.lead_properties.obra.get()))
 
       if(lead.is_obra.get()) {
-        obra_properties.address = obra_properties.address || lead.address_short.get() || ''
+        obra_properties.address = obra_properties.address || lead.get().address_short || ''
         obra_properties.bairro = obra_properties.bairro || lead.bairro.get() || ''
         obra_properties.city = obra_properties.city || lead.city.get() || ''
         obra_properties.state = obra_properties.state || lead.state.get() || ''

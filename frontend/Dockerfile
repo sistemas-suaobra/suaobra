@@ -17,6 +17,9 @@ COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
+
+# Evita falha de build no Dokploy quando upload de source maps ao Sentry nao esta disponivel.
+ENV DISABLE_SENTRY_UPLOAD=1
 RUN npm run build
 
 # Stage 2: Serve the static assets with Caddy

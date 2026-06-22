@@ -38,23 +38,51 @@ func SetPocketBaseDB(app *pocketbase.PocketBase) (err error) {
 		return g.Error(err, "could not attach core.db")
 	}
 
-	// err = LoadCoreData()
-	// g.LogFatal(err, "could not init main db")
-
 	err = loadCities()
-	g.LogFatal(err, "could not init main db")
+	if err != nil {
+		return err
+	}
 
-	return
+	return nil
+}
+
+// CoreDbPath caminho do SQLite de obras (volume Dokploy: /app/data/core.db).
+func CoreDbPath() string {
+	if p := strings.TrimSpace(os.Getenv("CORE_DB_PATH")); p != "" {
+		return p
+	}
+	return "/app/data/core.db"
 }
 
 func AttachCoreDb() error {
-	// check if attached first.
-	_, err := MainDB.Exec("select 1 from core.core_obras_plus limit 1")
-	if err != nil {
-		g.Warn("attaching core")
-		_, err = MainDB.Exec("attach database '/app/data/core.db' as 'core'")
+	path := CoreDbPath()
+
+	if _, err := MainDB.Exec("select 1 from core.core_obras_plus limit 1"); err == nil {
+		return nil
 	}
-	return err
+
+	st, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			g.Warn("core.db nao encontrado em %s — Obras+ indisponivel ate copiar o ficheiro para o volume", path)
+			return nil
+		}
+		return g.Error(err, "stat core.db")
+	}
+	if st.Size() < 4096 {
+		g.Warn("core.db invalido ou vazio (%d bytes) em %s — remova e copie o ficheiro real", st.Size(), path)
+		return nil
+	}
+
+	g.Warn("attaching core from %s", path)
+	if _, err = MainDB.Exec(g.F("attach database '%s' as 'core'", path)); err != nil {
+		return err
+	}
+
+	if _, err = MainDB.Exec("select 1 from core.core_obras_plus limit 1"); err != nil {
+		g.Warn("core.db em %s nao contem core_obras_plus: %v", path, err)
+	}
+	return nil
 }
 
 func MainDaoDB() dbx.Builder {
@@ -123,7 +151,10 @@ func loadCities() error {
 		from core.core_obras_plus
 		group by 1
 		-- having count(1) >= 1000`)
-	g.LogFatal(err, "could not load duckbdb cities")
+	if err != nil {
+		g.Warn("nao foi possivel carregar cidades do core (Obras+): %v", err)
+		return nil
+	}
 
 	for _, row := range data.Rows {
 		ObrasCities[cast.ToString(row[0])] = struct{}{}
