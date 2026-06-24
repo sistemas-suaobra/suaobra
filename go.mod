@@ -5,13 +5,13 @@ go 1.24.0
 require (
 	github.com/flarco/dbio v0.4.3
 	github.com/flarco/g v0.1.63
-	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/pocketbase/dbx v1.10.1
 	github.com/pocketbase/pocketbase v0.22.22
 	github.com/samber/lo v1.25.0
 	github.com/spf13/cast v1.7.0
+	github.com/stretchr/testify v1.11.1
 	golang.org/x/exp v0.0.0-20251017212417-90e834f514db
 	golang.org/x/text v0.30.0
 )
@@ -120,6 +120,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/flatbuffers v25.9.23+incompatible // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
@@ -181,7 +182,6 @@ require (
 	github.com/snowflakedb/gosnowflake v1.11.1 // indirect
 	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
 	github.com/tklauser/numcpus v0.4.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
