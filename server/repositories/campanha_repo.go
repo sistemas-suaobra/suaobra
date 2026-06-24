@@ -328,26 +328,33 @@ func (r *CampanhaRepo) CreateDestinatario(data map[string]any) (*models.Record, 
 	return rec, nil
 }
 
-// ExistsContatoEnviado verifica se já houve envio anterior para a mesma obra/tipo no time
+// ExistsContatoEnviado verifica se já houve envio (ou está pendente/em fila) para a mesma obra/tipo no time.
+// Considera ENVIADO, PENDENTE e EM_FILA para evitar que uma segunda campanha alcance os mesmos
+// contatos enquanto a primeira ainda está em andamento.
 func (r *CampanhaRepo) ExistsContatoEnviado(teamID, obraID, contatoTipo string) (bool, error) {
-	recs, err := r.dao.FindRecordsByFilter(
-		"campanha_destinatarios",
-		"team_id = {:team_id} && obra_id = {:obra_id} && contato_tipo = {:contato_tipo} && status = {:status}",
-		"-enviado_em,-updated",
-		1,
-		0,
-		dbx.Params{
+	var total int
+	query := `
+		SELECT COUNT(cd.id)
+		FROM campanha_destinatarios cd
+		WHERE cd.team_id = {:team_id}
+		  AND cd.obra_id = {:obra_id}
+		  AND cd.contato_tipo = {:contato_tipo}
+		  AND cd.status NOT IN ('FALHOU', 'IGNORADO')
+	`
+
+	err := r.dao.DB().
+		NewQuery(query).
+		Bind(dbx.Params{
 			"team_id":      teamID,
 			"obra_id":      obraID,
 			"contato_tipo": contatoTipo,
-			"status":       DestStatusEnviado,
-		},
-	)
+		}).
+		Row(&total)
 	if err != nil {
 		return false, err
 	}
 
-	return len(recs) > 0, nil
+	return total > 0, nil
 }
 
 // UpdateDestinatarioStatus atualiza o status de um destinatário
