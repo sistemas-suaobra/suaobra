@@ -86,7 +86,7 @@ func ConectarSessaoWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	raw, err := svc.ConnectByTeam(user.Team.ID)
+	raw, err := svc.ConnectByUser(user.Team.ID, user.ID)
 	if err != nil {
 		return ErrJSON(502, err, "error connecting session")
 	}
@@ -105,7 +105,7 @@ func ObterQRCodeWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	code, qr, err := svc.GetQRByTeam(user.Team.ID)
+	code, qr, err := svc.GetQRByUser(user.Team.ID, user.ID)
 	if err != nil {
 		return ErrJSON(502, err, "error getting qr")
 	}
@@ -129,7 +129,7 @@ func DisconnectConexaoWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	if err := svc.Disconnect(user.Team.ID); err != nil {
+	if err := svc.Disconnect(user.Team.ID, user.ID); err != nil {
 		g.Warn("disconnect error: %v", err)
 		return c.JSON(200, g.M("ok", false, "error", err.Error()))
 	}
@@ -149,7 +149,7 @@ func ExcluirConexaoWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	if err := svc.DeleteConnection(user.Team.ID); err != nil {
+	if err := svc.DeleteConnection(user.Team.ID, user.ID); err != nil {
 		g.Warn("delete instance error: %v", err)
 		return c.JSON(200, g.M("ok", false, "error", err.Error()))
 	}
@@ -169,13 +169,15 @@ func StatusConexaoWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	connected, jid, err := svc.CheckAndUpdateStatus(user.Team.ID)
+	connected, jid, err := svc.CheckAndUpdateStatus(user.Team.ID, user.ID)
 	if err != nil {
+		// Falha transitória (ex.: wuzapi indisponível). Sinalizamos o erro para que
+		// o frontend NÃO rebaixe um estado "conectado" por causa de uma falha pontual.
 		g.Warn("status check error: %v", err)
-		return c.JSON(200, g.M("connected", false, "jid", ""))
+		return c.JSON(200, g.M("connected", false, "jid", "", "error", err.Error()))
 	}
 
-	return c.JSON(200, g.M("connected", connected, "jid", jid))
+	return c.JSON(200, g.M("connected", connected, "jid", jid, "error", ""))
 }
 
 // POST /conexoes/whatsapp/send-test
@@ -204,7 +206,7 @@ func EnviarMensagemTesteWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	resp, err := svc.SendTestMessage(user.Team.ID, body.Phone, body.Body)
+	resp, err := svc.SendTestMessage(user.Team.ID, user.ID, body.Phone, body.Body)
 	if err != nil {
 		g.Warn("send test message error: %v", err)
 		return c.JSON(200, g.M("success", false, "error", err.Error()))
@@ -224,7 +226,7 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	exists, con, wa, err := svc.GetByTeam(user.Team.ID)
+	exists, owned, con, wa, err := svc.GetByUser(user.Team.ID, user.ID)
 	if err != nil {
 		return ErrJSON(500, err)
 	}
@@ -232,6 +234,7 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 	if !exists {
 		return c.JSON(200, g.M(
 			"exists", false,
+			"owned", false,
 			"conexao", nil,
 			"whatsapp", nil,
 		))
@@ -241,6 +244,7 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 	if wa == nil || wa.Id == "" {
 		return c.JSON(200, g.M(
 			"exists", true,
+			"owned", owned,
 			"conexao", con.PublicExport(),
 			"whatsapp", nil,
 		))
@@ -248,6 +252,7 @@ func ObterConexaoWhatsapp(c echo.Context) error {
 
 	return c.JSON(200, g.M(
 		"exists", true,
+		"owned", owned,
 		"conexao", con.PublicExport(),
 		"whatsapp", wa.PublicExport(),
 	))
@@ -354,7 +359,7 @@ func FixWebhookWhatsapp(c echo.Context) error {
 	conRepo := repositories.NewConexaoRepo(req.Dao())
 	waRepo := repositories.NewWhatsAppRepo(req.Dao())
 
-	con, err := conRepo.FindActiveWhatsappByTeam(user.Team.ID)
+	con, err := conRepo.FindActiveWhatsappForUser(user.Team.ID, user.ID)
 	if err != nil || con == nil || con.Id == "" {
 		return ErrJSON(404, g.Error("nenhuma conexão WhatsApp ativa encontrada"))
 	}
@@ -669,7 +674,11 @@ func WebhookWhatsmeow(c echo.Context) error {
 
 		g.Info("webhook/whatsmeow: Lead %s encontrado em campanha com IA ativa, processando...", maskWebhookPhone(telefone))
 
-		go func(teamID, telefone, mensagem, nomeContato, msgID string) {
+		// Token da instância que RECEBEU a mensagem: a IA deve responder pelo
+		// mesmo número (conexão por usuário), e não por uma conexão qualquer do time.
+		ownerToken := strings.TrimSpace(wa.GetString("numero_e164"))
+
+		go func(teamID, telefone, mensagem, nomeContato, msgID, ownerToken string) {
 			dao := app.Dao()
 
 			intencaoRepo := repositories.NewIntencaoRepo(dao)
@@ -687,12 +696,12 @@ func WebhookWhatsmeow(c echo.Context) error {
 			iaSvc := services.NewIAConversacionalService(dao, intencaoRepo, conversaRepo, whatsappSvc, geminiSvc)
 
 			g.Info("webhook/whatsmeow: goroutine IA start team=%s telefone=%s", teamID, maskWebhookPhone(telefone))
-			if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato, msgID); err != nil {
+			if err := iaSvc.ProcessarMensagemRecebida(teamID, telefone, mensagem, nomeContato, msgID, ownerToken); err != nil {
 				g.Error(err, "webhook/whatsmeow: erro ao processar mensagem telefone=%s", maskWebhookPhone(telefone))
 				return
 			}
 			g.Info("webhook/whatsmeow: goroutine IA end telefone=%s", maskWebhookPhone(telefone))
-		}(teamID, telefone, mensagem, nomeContato, msgIDExterno)
+		}(teamID, telefone, mensagem, nomeContato, msgIDExterno, ownerToken)
 	}
 
 	return c.JSON(200, g.M("ok", true))

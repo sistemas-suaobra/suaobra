@@ -485,7 +485,7 @@ export default function CampanhasTab() {
             icon="pi pi-plus"
             label="Nova campanha"
             onClick={() => setCreateOpen(true)}
-            disabled={leadsOptions.length === 0}
+            disabled={!selectedCity}
             className="w-full sm:w-auto"
           />
           <Button

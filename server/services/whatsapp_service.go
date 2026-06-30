@@ -28,9 +28,11 @@ func NewWhatsAppService(
 	return &WhatsAppService{conRepo: conRepo, waRepo: waRepo, wuz: wuz, tokens: tokens}
 }
 
-// Idempotente: se já existir, retorna.
+// Idempotente POR USUÁRIO: se o próprio usuário já tiver a sua conexão, retorna.
+// Importante: NÃO usamos o fallback legado aqui — assim, um usuário sem número
+// próprio consegue criar o seu, mesmo que o time tenha uma conexão compartilhada.
 func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) (already bool, con *models.Record, wa *models.Record, err error) {
-	exCon, _ := s.conRepo.FindActiveWhatsappByTeam(teamID)
+	exCon, _ := s.conRepo.FindActiveWhatsappByOwner(teamID, userID)
 	if exCon != nil && exCon.Id != "" {
 		exWa, _ := s.waRepo.FindByConexao(exCon.Id)
 		if exWa != nil && exWa.Id != "" {
@@ -61,7 +63,7 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 	}
 
 	if con == nil {
-		con, err = s.conRepo.CreateWhatsapp(teamID, name)
+		con, err = s.conRepo.CreateWhatsapp(teamID, userID, name)
 		if err != nil {
 			return false, nil, nil, err
 		}
@@ -97,8 +99,10 @@ func (s *WhatsAppService) GetQR(userToken string) (wuzapi.SessionQRResp, error) 
 	return parsed, err
 }
 
-func (s *WhatsAppService) getTokenAndRecordByTeam(teamID string) (token string, wa *models.Record, err error) {
-	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+// getTokenAndRecordByOwner resolve a conexão a ser usada pelo usuário
+// (a dele; senão a legada/compartilhada do time) e retorna o token + registro.
+func (s *WhatsAppService) getTokenAndRecordByOwner(teamID, userID string) (token string, wa *models.Record, err error) {
+	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
 	if err != nil || con == nil || con.Id == "" {
 		return "", nil, g.Error("whatsapp connection not found")
 	}
@@ -116,8 +120,8 @@ func (s *WhatsAppService) getTokenAndRecordByTeam(teamID string) (token string, 
 	return token, wa, nil
 }
 
-func (s *WhatsAppService) ConnectByTeam(teamID string) (map[string]any, error) {
-	token, wa, err := s.getTokenAndRecordByTeam(teamID)
+func (s *WhatsAppService) ConnectByUser(teamID, userID string) (map[string]any, error) {
+	token, wa, err := s.getTokenAndRecordByOwner(teamID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +152,9 @@ func (s *WhatsAppService) ConnectByTeam(teamID string) (map[string]any, error) {
 				"webhook": webhookURL,
 				"events":  "All",
 			}); updateErr != nil {
-				g.Warn("ConnectByTeam: falha ao garantir Events=All instancia=%s: %v", iid, updateErr)
+				g.Warn("ConnectByUser: falha ao garantir Events=All instancia=%s: %v", iid, updateErr)
 			} else {
-				g.Info("ConnectByTeam: Events=All garantido após conexão instancia=%s", iid)
+				g.Info("ConnectByUser: Events=All garantido após conexão instancia=%s", iid)
 			}
 		}(instanciaID)
 	}
@@ -158,8 +162,8 @@ func (s *WhatsAppService) ConnectByTeam(teamID string) (map[string]any, error) {
 	return raw, nil
 }
 
-func (s *WhatsAppService) GetQRByTeam(teamID string) (code int, qr string, err error) {
-	token, wa, err := s.getTokenAndRecordByTeam(teamID)
+func (s *WhatsAppService) GetQRByUser(teamID, userID string) (code int, qr string, err error) {
+	token, wa, err := s.getTokenAndRecordByOwner(teamID, userID)
 	if err != nil {
 		return 0, "", err
 	}
@@ -194,55 +198,41 @@ func (s *WhatsAppService) wuzBaseURL() string {
 	return s.wuz.BaseURL()
 }
 
-func (s *WhatsAppService) SendTestMessage(teamID, phone, body string) (map[string]any, error) {
+// SendFromToken envia uma mensagem usando DIRETAMENTE o token (numero_e164) de
+// uma instância específica. Usado quando já sabemos por qual número responder
+// (ex.: a IA responde pela mesma instância que recebeu a mensagem).
+func (s *WhatsAppService) SendFromToken(token, phone, body string) (map[string]any, error) {
 	startedAt := time.Now()
+	token = strings.TrimSpace(token)
 	phone = strings.TrimSpace(phone)
 	body = strings.TrimSpace(body)
 
+	if token == "" {
+		return nil, g.Error("numero_e164 token is empty")
+	}
+
 	g.Info(
-		"WhatsAppService.SendTestMessage: start team=%s phone=%s body_len=%d body=%s",
-		teamID,
+		"WhatsAppService.SendFromToken: start token=%s phone=%s body_len=%d body=%s",
+		maskWAToken(token),
 		maskWAPhone(phone),
 		len(body),
 		truncateWALog(body, 800),
-	)
-
-	token, wa, err := s.getTokenAndRecordByTeam(teamID)
-	if err != nil {
-		g.Error(err, "WhatsAppService.SendTestMessage: erro ao obter token/record team=%s", teamID)
-		return nil, err
-	}
-
-	instanciaID := ""
-	deviceJID := ""
-	if wa != nil {
-		instanciaID = strings.TrimSpace(wa.GetString("instancia_id"))
-		deviceJID = strings.TrimSpace(wa.GetString("device_jid"))
-	}
-
-	g.Info(
-		"WhatsAppService.SendTestMessage: resolved team=%s instancia_id=%s device_jid=%s token=%s",
-		teamID,
-		instanciaID,
-		deviceJID,
-		maskWAToken(token),
 	)
 
 	resp, err := s.wuz.SendTextMessage(token, phone, body)
 	if err != nil {
 		g.Error(
 			err,
-			"WhatsAppService.SendTestMessage: falha no WUZAPI team=%s phone=%s instancia_id=%s",
-			teamID,
+			"WhatsAppService.SendFromToken: falha no WUZAPI token=%s phone=%s",
+			maskWAToken(token),
 			maskWAPhone(phone),
-			instanciaID,
 		)
 		return nil, err
 	}
 
 	g.Info(
-		"WhatsAppService.SendTestMessage: success team=%s phone=%s duration=%s response=%s",
-		teamID,
+		"WhatsAppService.SendFromToken: success token=%s phone=%s duration=%s response=%s",
+		maskWAToken(token),
 		maskWAPhone(phone),
 		time.Since(startedAt),
 		truncateWALog(g.Marshal(resp), 1500),
@@ -251,11 +241,34 @@ func (s *WhatsAppService) SendTestMessage(teamID, phone, body string) (map[strin
 	return resp, nil
 }
 
+// SendForOwner resolve a conexão do dono (owner; senão a legada do time) e
+// envia pela instância dele. Usado pelas campanhas (criado_por) e pela IA quando
+// não há token de instância específico.
+func (s *WhatsAppService) SendForOwner(teamID, ownerUserID, phone, body string) (map[string]any, error) {
+	token, wa, err := s.getTokenAndRecordByOwner(teamID, ownerUserID)
+	if err != nil {
+		g.Error(err, "WhatsAppService.SendForOwner: erro ao obter token team=%s owner=%s", teamID, ownerUserID)
+		return nil, err
+	}
+	if wa != nil {
+		g.Info(
+			"WhatsAppService.SendForOwner: resolved team=%s owner=%s instancia_id=%s",
+			teamID, ownerUserID, strings.TrimSpace(wa.GetString("instancia_id")),
+		)
+	}
+	return s.SendFromToken(token, phone, body)
+}
+
+// SendTestMessage envia a mensagem de teste pela conexão do próprio usuário.
+func (s *WhatsAppService) SendTestMessage(teamID, userID, phone, body string) (map[string]any, error) {
+	return s.SendForOwner(teamID, userID, phone, body)
+}
+
 // CheckAndUpdateStatus consulta o wuzapi para saber se o user está connected,
 // e atualiza conectado_em + device_jid no registro local se necessário.
 // Retorna (connected, jid, error).
-func (s *WhatsAppService) CheckAndUpdateStatus(teamID string) (connected bool, jid string, err error) {
-	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+func (s *WhatsAppService) CheckAndUpdateStatus(teamID, userID string) (connected bool, jid string, err error) {
+	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
 	if err != nil || con == nil || con.Id == "" {
 		return false, "", g.Error("whatsapp connection not found")
 	}
@@ -279,29 +292,36 @@ func (s *WhatsAppService) CheckAndUpdateStatus(teamID string) (connected bool, j
 	// Connected = conectado ao servidor WhatsApp
 	// LoggedIn = escaneou QR e autenticou de fato
 	if !info.LoggedIn {
+		// Não está logado de fato. Como o wuzapi respondeu sem erro, isto significa
+		// que a sessão realmente caiu/foi deslogada. Auto-curamos o DB local para
+		// não ficar mostrando "conectado" de forma desatualizada.
+		if !wa.GetDateTime("conectado_em").Time().IsZero() || strings.TrimSpace(wa.GetString("device_jid")) != "" {
+			if clearErr := s.waRepo.ClearConnected(wa); clearErr != nil {
+				g.Warn("erro ao limpar conexão obsoleta instancia=%s: %v", instanciaID, clearErr)
+			} else {
+				g.Info("conexão obsoleta limpa para instancia=%s (wuzapi reportou LoggedIn=false)", instanciaID)
+			}
+		}
 		return false, "", nil
 	}
 
-	// Logado! Mas só salva conectado_em se for uma conexão RECENTE.
-	// Verifica se ultimo_qr_em é recente (últimos 5 min) — evita detectar sessões antigas.
+	// Logado! Persistimos conectado_em + device_jid SEMPRE que o wuzapi confirmar
+	// que a sessão está autenticada. Isto torna o estado durável (a tela continua
+	// mostrando "conectado" após dias) e independe do webhook "connected" chegar.
 	conectadoEm := wa.GetDateTime("conectado_em")
-	ultimoQrEm := wa.GetDateTime("ultimo_qr_em")
-
-	qrRecente := !ultimoQrEm.Time().IsZero() && time.Since(ultimoQrEm.Time()) < 5*time.Minute
-
-	if (conectadoEm.Time().IsZero() || wa.GetString("device_jid") != info.JID) && qrRecente {
+	if conectadoEm.Time().IsZero() || wa.GetString("device_jid") != info.JID {
 		if saveErr := s.waRepo.UpdateConnected(wa, info.JID); saveErr != nil {
 			g.Error(saveErr, "erro ao salvar conectado_em para instancia=%s", instanciaID)
 		} else {
-			g.Info("conectado_em salvo para instancia=%s jid=%s (QR recente, LOGADO)", instanciaID, info.JID)
+			g.Info("conectado_em salvo para instancia=%s jid=%s (LOGADO)", instanciaID, info.JID)
 		}
 	}
 
 	return true, info.JID, nil
 }
 
-func (s *WhatsAppService) Disconnect(teamID string) error {
-	token, wa, err := s.getTokenAndRecordByTeam(teamID)
+func (s *WhatsAppService) Disconnect(teamID, userID string) error {
+	token, wa, err := s.getTokenAndRecordByOwner(teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -316,8 +336,8 @@ func (s *WhatsAppService) Disconnect(teamID string) error {
 	return s.waRepo.ClearConnected(wa)
 }
 
-func (s *WhatsAppService) DeleteConnection(teamID string) error {
-	con, err := s.conRepo.FindActiveWhatsappByTeam(teamID)
+func (s *WhatsAppService) DeleteConnection(teamID, userID string) error {
+	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -347,24 +367,33 @@ func (s *WhatsAppService) DeleteConnection(teamID string) error {
 	return nil
 }
 
-func (s *WhatsAppService) GetByTeam(teamID string) (exists bool, con *models.Record, wa *models.Record, err error) {
-	con, err = s.conRepo.FindActiveWhatsappByTeam(teamID)
-	if err != nil {
-		return false, nil, nil, err
+// GetByUser resolve a conexão exibida na tela de Conexões.
+// owned indica se a conexão pertence ao próprio usuário (true) ou é a
+// legada/compartilhada do time emprestada como fallback (false). A UI usa isso
+// para permitir que um colega conecte o número dele mesmo estando "emprestado".
+func (s *WhatsAppService) GetByUser(teamID, userID string) (exists bool, owned bool, con *models.Record, wa *models.Record, err error) {
+	con, _ = s.conRepo.FindActiveWhatsappByOwner(teamID, userID)
+	if con != nil && con.Id != "" {
+		owned = true
+	} else {
+		con, err = s.conRepo.FindActiveWhatsappLegacy(teamID)
+		if err != nil {
+			return false, false, nil, nil, err
+		}
 	}
 	if con == nil || con.Id == "" {
-		return false, nil, nil, nil
+		return false, false, nil, nil, nil
 	}
 
 	wa, err = s.waRepo.FindByConexao(con.Id)
 	if err != nil {
-		return true, con, nil, err
+		return true, owned, con, nil, err
 	}
 	if wa == nil || wa.Id == "" {
-		return true, con, nil, nil
+		return true, owned, con, nil, nil
 	}
 
-	return true, con, wa, nil
+	return true, owned, con, wa, nil
 }
 
 func truncateWALog(s string, max int) string {

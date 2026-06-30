@@ -98,6 +98,7 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 	mensagem string,
 	nomeContato string,
 	messageIDExterno string,
+	ownerToken string,
 ) error {
 	startedAt := time.Now()
 
@@ -288,7 +289,7 @@ func (s *IAConversacionalService) ProcessarMensagemRecebida(
 	}
 
 	g.Info("IA: enviando resposta WhatsApp telefone=%s resposta=%s", maskIAPhone(telefone), truncateIAContent(respostaIA, 1000))
-	if err := s.enviarRespostaWhatsApp(teamID, telefone, respostaIA); err != nil {
+	if err := s.enviarRespostaWhatsApp(teamID, telefone, respostaIA, ownerToken); err != nil {
 		g.Error(err, "IA: falha ao enviar resposta WhatsApp telefone=%s", maskIAPhone(telefone))
 		return g.Error(err, "erro ao enviar resposta WhatsApp")
 	}
@@ -565,9 +566,18 @@ func (s *IAConversacionalService) construirContextoNegocio(conversa *models.Reco
 	return strings.Join(partes, "\n\n") + "\n\nLEMBRETE: Nunca repita suas respostas anteriores. Avance a conversa."
 }
 
-// enviarRespostaWhatsApp envia a resposta via WhatsApp
-func (s *IAConversacionalService) enviarRespostaWhatsApp(teamID, telefone, mensagem string) error {
-	_, err := s.whatsappSvc.SendTestMessage(teamID, s.normalizarTelefoneE164(telefone), mensagem)
+// enviarRespostaWhatsApp envia a resposta via WhatsApp.
+// Se ownerToken != "" (caminho do webhook do whatsmeow), responde pela MESMA
+// instância que recebeu a mensagem. Caso contrário (ex.: messenger sync),
+// cai na conexão do time (legado/compartilhada).
+func (s *IAConversacionalService) enviarRespostaWhatsApp(teamID, telefone, mensagem, ownerToken string) error {
+	dest := s.normalizarTelefoneE164(telefone)
+	var err error
+	if strings.TrimSpace(ownerToken) != "" {
+		_, err = s.whatsappSvc.SendFromToken(ownerToken, dest, mensagem)
+	} else {
+		_, err = s.whatsappSvc.SendForOwner(teamID, "", dest, mensagem)
+	}
 	if err != nil {
 		return g.Error(err, "falha ao enviar mensagem WhatsApp")
 	}

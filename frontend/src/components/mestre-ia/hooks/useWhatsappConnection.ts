@@ -17,6 +17,7 @@ type ConexaoWhatsappResponse = {
 
 type GetConexaoWhatsappResp = {
   exists?: boolean;
+  owned?: boolean;
   conexao?: any;
   whatsapp?: any;
 };
@@ -35,6 +36,7 @@ type WhatsMeowConnectResp = {
 type WhatsMeowStatusResp = {
   connected?: boolean;
   jid?: string;
+  error?: string;
 };
 
 function sleep(ms: number) {
@@ -43,6 +45,9 @@ function sleep(ms: number) {
 
 export function useWhatsappConnection(notify: NotifyFn) {
   const [waConnected, setWaConnected] = React.useState(false);
+  // waOwned: a conexão exibida é do próprio usuário (true) ou é a conexão
+  // legada/compartilhada do time emprestada como fallback (false).
+  const [waOwned, setWaOwned] = React.useState(false);
   const [waSessionOk, setWaSessionOk] = React.useState(false);
   const [waJid, setWaJid] = React.useState<string>("");
 
@@ -79,7 +84,10 @@ export function useWhatsappConnection(notify: NotifyFn) {
         body: {},
       });
 
+      // A criação é sempre do número do PRÓPRIO usuário (o backend isola por
+      // usuário), então marcamos como conexão própria.
       setWaConnected(true);
+      setWaOwned(true);
       setWaSessionOk(false);
       setWaJid("");
 
@@ -193,43 +201,96 @@ export function useWhatsappConnection(notify: NotifyFn) {
     }
   }, [fetchQrOnce, notify, waConnected]);
 
+  // Verificador unificado do status real (consulta o wuzapi via backend).
+  // Quando conectado, atualiza o estado e fecha o modal automaticamente.
+  // Opções controlam o nível de notificações (silencioso no polling / load).
+  const checkStatus = React.useCallback(
+    async (opts?: {
+      notifyOnSuccess?: boolean;
+      notifyWaiting?: boolean;
+      notifyError?: boolean;
+    }): Promise<boolean> => {
+      try {
+        const url = `${baseURL()}/conexoes/whatsapp/status`;
+        const { data } = await requestWithLog<WhatsMeowStatusResp>({
+          label: "Check WA Status",
+          method: "GET",
+          url,
+        });
+
+        if (data?.connected) {
+          const jid = data.jid ?? "";
+          setWaSessionOk(true);
+          setWaJid(jid);
+          setWaDialogVisible(false);
+
+          if (opts?.notifyOnSuccess) {
+            const phone = jid ? `+${jid.split("@")[0]}` : "";
+            notify(
+              "success",
+              "WhatsApp conectado!",
+              phone ? `Número: ${phone}` : "Conexão estabelecida!"
+            );
+          }
+
+          return true;
+        }
+
+        // connected = false. Se houve erro transitório (wuzapi indisponível), NÃO
+        // rebaixamos o estado atual; apenas reportamos quando solicitado.
+        if (data?.error) {
+          if (opts?.notifyError) {
+            notify("error", "WhatsApp", "Falha ao verificar status da conexão.");
+          }
+          return false;
+        }
+
+        if (opts?.notifyWaiting) {
+          notify("info", "WhatsApp", "Ainda aguardando a leitura do QR Code.");
+        }
+        return false;
+      } catch (e: any) {
+        console.error(e);
+        if (opts?.notifyError) {
+          notify("error", "WhatsApp", e?.message || "Falha ao verificar status da conexão.");
+        }
+        return false;
+      }
+    },
+    [notify]
+  );
+
+  // Ação manual do botão "Já escaneei" (mantida como fallback).
   const verificarStatusWhatsapp = React.useCallback(async (): Promise<boolean> => {
     try {
       setWaSessionLoading(true);
-
-      const url = `${baseURL()}/conexoes/whatsapp/status`;
-      const { data } = await requestWithLog<WhatsMeowStatusResp>({
-        label: "Check WA Status",
-        method: "GET",
-        url,
+      return await checkStatus({
+        notifyOnSuccess: true,
+        notifyWaiting: true,
+        notifyError: true,
       });
-
-      if (data?.connected) {
-        const jid = data.jid ?? "";
-        setWaSessionOk(true);
-        setWaJid(jid);
-        setWaDialogVisible(false);
-
-        const phone = jid ? `+${jid.split("@")[0]}` : "";
-        notify(
-          "success",
-          "WhatsApp conectado!",
-          phone ? `Número: ${phone}` : "Conexão estabelecida!"
-        );
-
-        return true;
-      }
-
-      notify("info", "WhatsApp", "Ainda aguardando a leitura do QR Code.");
-      return false;
-    } catch (e: any) {
-      console.error(e);
-      notify("error", "WhatsApp", e?.message || "Falha ao verificar status da conexão.");
-      return false;
     } finally {
       setWaSessionLoading(false);
     }
-  }, [notify]);
+  }, [checkStatus]);
+
+  // Polling automático: enquanto o modal do QR estiver aberto, verificamos o
+  // status a cada 3s. Assim que o webhook/wuzapi confirmar a conexão, o modal
+  // fecha sozinho — sem precisar clicar em "Já escaneei".
+  React.useEffect(() => {
+    if (!waDialogVisible) return;
+
+    let cancelled = false;
+    const intervalId = setInterval(async () => {
+      if (cancelled) return;
+      await checkStatus({ notifyOnSuccess: true });
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [waDialogVisible, checkStatus]);
 
   const checkConnected = React.useCallback(async (): Promise<boolean> => {
     try {
@@ -244,6 +305,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
       // Nesse caso, mantemos "instância criada" para evitar desaparecer da UI.
       const hasConexao = !!data?.exists && !!data?.conexao;
       setWaConnected(hasConexao);
+      setWaOwned(hasConexao ? !!data?.owned : false);
 
       const jid: string = data?.whatsapp?.device_jid ?? "";
       const conectadoEm: string = data?.whatsapp?.conectado_em ?? "";
@@ -304,6 +366,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
       setWaQr("");
       setWaQrError("");
       setWaConnected(false);
+      setWaOwned(false);
       setWaSessionOk(false);
       setWaJid("");
 
@@ -340,10 +403,19 @@ export function useWhatsappConnection(notify: NotifyFn) {
     [notify]
   );
 
-  const loadWhatsapp = checkConnected;
+  // Ao carregar a página: primeiro lemos o estado persistido (rápido) e, em
+  // seguida, confirmamos com o wuzapi de forma silenciosa. Isso "auto-cura" o
+  // banco — se a sessão estiver realmente ativa, o conectado_em é regravado e a
+  // tela deixa de mostrar "desconectado" indevidamente após alguns dias.
+  const loadWhatsapp = React.useCallback(async (): Promise<boolean> => {
+    const persisted = await checkConnected();
+    const live = await checkStatus();
+    return persisted || live;
+  }, [checkConnected, checkStatus]);
 
   return {
     waConnected,
+    waOwned,
     waSessionOk,
     waJid,
     waDialogVisible,

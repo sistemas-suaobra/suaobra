@@ -194,6 +194,9 @@ func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
 			continue
 		}
 
+		// O toggle "Ocultar já contactados" só pula contatos quando LIGADO.
+		// Quando o usuário DESLIGA o toggle e seleciona um contato já contatado,
+		// o envio é intencional ("foi uma escolha que fiz") e NÃO deve ser pulado.
 		if ocultarJaContactados {
 			jaFoi, err := s.jaFoiContactado(teamID, obraID, contatoTipo)
 			if err != nil {
@@ -509,6 +512,9 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 	}
 
 	teamID := campanha.GetString("team_id")
+	// Dono da campanha: usamos o número de WhatsApp dele para enviar (com fallback
+	// para a conexão legada/compartilhada do time quando criado_por estiver vazio).
+	criadoPor := campanha.GetString("criado_por")
 	manterIA := campanha.GetBool("manter_ia")
 	mensagemTemplate := campanha.GetString("mensagem_template")
 	assuntoEmail := campanha.GetString("assunto_email")
@@ -646,7 +652,7 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 				continue
 			}
 
-			sendErr = s.enviarWhatsApp(teamID, telefone, mensagem)
+			sendErr = s.enviarWhatsApp(teamID, criadoPor, telefone, mensagem)
 			if sendErr == nil {
 				enviouAlgum = true
 				enviouWhatsApp = true
@@ -1258,9 +1264,11 @@ func (s *CampanhaService) formatPhone(phone string) string {
 	return result
 }
 
-func (s *CampanhaService) enviarWhatsApp(teamID, telefone, mensagem string) error {
+func (s *CampanhaService) enviarWhatsApp(teamID, criadoPor, telefone, mensagem string) error {
 	phone := s.formatPhone(telefone)
-	_, err := s.waSvc.SendTestMessage(teamID, phone, mensagem)
+	// Envia pelo número do DONO da campanha (criado_por). Se ele ainda não tiver
+	// número próprio, SendForOwner cai no fallback legado/compartilhado do time.
+	_, err := s.waSvc.SendForOwner(teamID, criadoPor, phone, mensagem)
 	return err
 }
 

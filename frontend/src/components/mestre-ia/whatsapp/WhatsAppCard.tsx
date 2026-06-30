@@ -10,6 +10,7 @@ import { user } from "../../../store/store";
 
 type Props = {
   waConnected: boolean;
+  waOwned: boolean;
   waSessionOk: boolean;
   waJid?: string;
   waDialogVisible: boolean;
@@ -106,6 +107,8 @@ export function WhatsAppCard(props: Props) {
   };
 
   const fullyConnected = props.waSessionOk && !!props.waJid;
+  // Está "emprestando" a conexão legada/compartilhada do time (não é a própria).
+  const isBorrowed = props.waConnected && !props.waOwned;
 
   const handleSendTest = async () => {
     if (!testPhone || !testMessage) return;
@@ -122,7 +125,8 @@ export function WhatsAppCard(props: Props) {
     props.waSessionLoading || props.waQrLoading ? "Gerando QR..." : "Ver QR Code";
 
   const primaryActionDisabled = props.waSessionLoading || props.waQrLoading;
-  const canRemoveInstance = props.waConnected && !props.waCreating;
+  // Excluir/gerenciar só a conexão PRÓPRIA — nunca a compartilhada emprestada.
+  const canRemoveInstance = props.waConnected && props.waOwned && !props.waCreating;
 
   const handleRemoveInstance = async () => {
     const confirmed = window.confirm(
@@ -156,7 +160,13 @@ export function WhatsAppCard(props: Props) {
           </div>
 
           <div className="text-secondary" style={{ lineHeight: 1.6, wordBreak: "break-word" }}>
-            {fullyConnected ? (
+            {isBorrowed ? (
+              <>
+                Você está usando o número compartilhado do time
+                {fullyConnected ? <> ({phoneDisplay})</> : null}. Conecte o seu
+                próprio número para ter uma conexão isolada dos colegas.
+              </>
+            ) : fullyConnected ? (
               <span style={{ color: "#25d366", fontWeight: 600 }}>
                 WhatsApp conectado! Número: {phoneDisplay}
               </span>
@@ -170,7 +180,15 @@ export function WhatsAppCard(props: Props) {
 
         <div className="formgrid grid">
           <div className="field col-12">
-            {!props.waConnected ? (
+            {isBorrowed ? (
+              <Button
+                label={props.waCreating ? "Criando..." : "Conectar meu próprio número"}
+                icon="pi pi-plus"
+                onClick={props.criarConexaoWhatsApp}
+                className="w-full"
+                disabled={props.waCreating}
+              />
+            ) : !props.waConnected ? (
               <Button
                 label={props.waCreating ? "Criando..." : "Conectar (criar instância)"}
                 icon="pi pi-plus"
@@ -212,7 +230,7 @@ export function WhatsAppCard(props: Props) {
             </div>
           ) : null}
 
-          {fullyConnected && (
+          {fullyConnected && !isBorrowed && (
             <>
               <div className="col-12">
                 <hr

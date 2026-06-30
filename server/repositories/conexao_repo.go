@@ -29,7 +29,56 @@ func (r *ConexaoRepo) FindActiveWhatsappByTeam(teamID string) (*models.Record, e
 	return con, nil
 }
 
-func (r *ConexaoRepo) CreateWhatsapp(teamID, name string) (*models.Record, error) {
+// FindActiveWhatsappByOwner busca a conexão de WhatsApp do PRÓPRIO usuário
+// (sem fallback). Retorna (nil, nil) quando o usuário ainda não tem a sua.
+// Usado na criação para garantir idempotência por usuário sem "herdar" a
+// conexão legada/compartilhada do time.
+func (r *ConexaoRepo) FindActiveWhatsappByOwner(teamID, userID string) (*models.Record, error) {
+	if userID == "" {
+		return nil, nil
+	}
+	con, err := r.dao.FindFirstRecordByFilter(
+		"conexoes",
+		`team_id = {:team} && canal = "WHATSAPP" && ativo = true && user_id = {:user}`,
+		dbx.Params{"team": teamID, "user": userID},
+	)
+	if err != nil {
+		// not found vira (nil, nil) para simplificar os checks de idempotência
+		return nil, nil
+	}
+	if con == nil || con.Id == "" {
+		return nil, nil
+	}
+	return con, nil
+}
+
+// FindActiveWhatsappLegacy busca a conexão legada/compartilhada do time
+// (user_id vazio), usada como fallback para quem ainda não conectou o seu número.
+func (r *ConexaoRepo) FindActiveWhatsappLegacy(teamID string) (*models.Record, error) {
+	con, err := r.dao.FindFirstRecordByFilter(
+		"conexoes",
+		`team_id = {:team} && canal = "WHATSAPP" && ativo = true && user_id = ""`,
+		dbx.Params{"team": teamID},
+	)
+	if err != nil {
+		return nil, nil
+	}
+	if con == nil || con.Id == "" {
+		return nil, nil
+	}
+	return con, nil
+}
+
+// FindActiveWhatsappForUser resolve a conexão a ser USADA pelo usuário:
+// primeiro a dele (user_id), e se não houver, cai no fallback legado do time.
+func (r *ConexaoRepo) FindActiveWhatsappForUser(teamID, userID string) (*models.Record, error) {
+	if con, _ := r.FindActiveWhatsappByOwner(teamID, userID); con != nil {
+		return con, nil
+	}
+	return r.FindActiveWhatsappLegacy(teamID)
+}
+
+func (r *ConexaoRepo) CreateWhatsapp(teamID, userID, name string) (*models.Record, error) {
 	col, err := r.dao.FindCollectionByNameOrId("conexoes")
 	if err != nil {
 		return nil, err
@@ -37,6 +86,7 @@ func (r *ConexaoRepo) CreateWhatsapp(teamID, name string) (*models.Record, error
 
 	con := models.NewRecord(col)
 	con.Set("team_id", teamID)
+	con.Set("user_id", userID)
 	con.Set("canal", "WHATSAPP")
 	con.Set("nome", name)
 	con.Set("ativo", true)
