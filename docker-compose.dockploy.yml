@@ -10,7 +10,8 @@
 #   WHATSMEOW_URL, WHATSMEOW_APIKEY, WHATSMEOW_WEBHOOK_BASE
 #
 # Cloudflare -> Traefik (Dokploy) -> containers via labels abaixo.
-# Portas 8091/8080 sao apenas para debug direto por IP.
+# Frontend escuta na 8091 (Caddy); backend na 8080.
+# Dokploy: Container Port do app = 8091.
 #
 # Dados: core.db em ../files/suaobra/data/core.db (volume abaixo).
 
@@ -56,7 +57,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8091:80"
+      - "8091:8091"
     networks:
       - dokploy-network
     labels:
@@ -69,7 +70,7 @@ services:
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.rule=Host(`app.suaobra.com.br`)
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.entrypoints=web
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
-      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=8091
 
 networks:
   dokploy-network:

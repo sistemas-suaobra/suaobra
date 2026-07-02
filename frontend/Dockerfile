@@ -33,5 +33,6 @@ COPY --from=builder /app/dist .
 # Copy the dedicated Caddyfile for the frontend
 COPY Caddyfile /etc/caddy/Caddyfile
 
-# Caddy will automatically use the Caddyfile in /etc/caddy
-# and listen on port 80.
+EXPOSE 8091
+
+# Caddy escuta na porta 8091 (alinhado ao Container Port do Dokploy).
