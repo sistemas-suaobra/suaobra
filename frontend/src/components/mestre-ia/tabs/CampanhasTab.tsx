@@ -331,18 +331,46 @@ export default function CampanhasTab() {
 
   const startCampaign = async (id: string) => {
     try {
-      await api().post(`${baseURL()}/campanhas/${id}/iniciar`, {});
+      const resp = await api().post(`${baseURL()}/campanhas/${id}/iniciar`, {});
+      if (resp?.error) {
+        throw new Error(resp.error);
+      }
       setCampaigns((prev) =>
         prev.map((c) =>
           c.id === id ? { ...c, status: "EM_ANDAMENTO" as CampaignStatus } : c
         )
       );
-      notify("success", "Campanha iniciada", "O envio será processado em background.");
+      const campanha = campaigns.find((c) => c.id === id);
+      const isResume = campanha?.status === "PAUSADA";
+      notify(
+        "success",
+        isResume ? "Campanha retomada" : "Campanha iniciada",
+        "O envio será processado em background."
+      );
     } catch (error: any) {
-      const detail =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Erro ao iniciar campanha";
+      const detail = error?.message || "Erro ao iniciar campanha";
+      notify("error", "Erro", detail);
+    }
+  };
+
+  const pauseCampaign = async (id: string) => {
+    try {
+      const resp = await api().post(`${baseURL()}/campanhas/${id}/pausar`, {});
+      if (resp?.error) {
+        throw new Error(resp.error);
+      }
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, status: "PAUSADA" as CampaignStatus } : c
+        )
+      );
+      notify(
+        "success",
+        "Campanha pausada",
+        "O envio será interrompido após concluir o destinatário atual."
+      );
+    } catch (error: any) {
+      const detail = error?.message || "Erro ao pausar campanha";
       notify("error", "Erro", detail);
     }
   };
@@ -447,13 +475,30 @@ export default function CampanhasTab() {
   const canDelete = (status: CampaignStatus) =>
     status === "CONCLUIDA" || status === "RASCUNHO";
 
+  const canStart = (status: CampaignStatus) =>
+    status !== "EM_ANDAMENTO" && status !== "CONCLUIDA" && status !== "CANCELADA";
+
+  const canPause = (status: CampaignStatus) => status === "EM_ANDAMENTO";
+
+  const startLabel = (status: CampaignStatus) =>
+    status === "PAUSADA" ? "RETOMAR" : "INICIAR";
+
   const actionsCell = (row: Campaign, _opts: ColumnBodyOptions) => (
     <div className="flex align-items-center gap-2 justify-content-end flex-wrap">
+      {canPause(row.status) ? (
+        <Button
+          label="PAUSAR"
+          icon="pi pi-pause"
+          className="p-button-sm p-button-outlined"
+          severity="warning"
+          onClick={() => pauseCampaign(row.id)}
+        />
+      ) : null}
       <Button
-        label="INICIAR"
+        label={startLabel(row.status)}
         icon="pi pi-play"
         className="p-button-sm"
-        disabled={row.status === "EM_ANDAMENTO" || row.status === "CONCLUIDA"}
+        disabled={!canStart(row.status)}
         onClick={() => startCampaign(row.id)}
       />
       <Button
@@ -579,13 +624,20 @@ export default function CampanhasTab() {
                     </div>
 
                     <div className="flex flex-column gap-2 mt-3">
+                      {canPause(row.status) ? (
+                        <Button
+                          label="PAUSAR"
+                          icon="pi pi-pause"
+                          className="p-button-sm p-button-outlined w-full"
+                          severity="warning"
+                          onClick={() => pauseCampaign(row.id)}
+                        />
+                      ) : null}
                       <Button
-                        label="INICIAR"
+                        label={startLabel(row.status)}
                         icon="pi pi-play"
                         className="p-button-sm w-full"
-                        disabled={
-                          row.status === "EM_ANDAMENTO" || row.status === "CONCLUIDA"
-                        }
+                        disabled={!canStart(row.status)}
                         onClick={() => startCampaign(row.id)}
                       />
                       <Button
