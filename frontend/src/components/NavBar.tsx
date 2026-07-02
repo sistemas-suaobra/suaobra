@@ -721,13 +721,19 @@ function TeamDialog(props: { state: State<DialogParams> }) {
 
       if (resp.error) {
         error.set(resp.error)
+        doToast(toast, {
+          severity: 'error',
+          summary: 'Erro',
+          detail: resp.error,
+        }, 4000)
         return false
       }
 
+      const data = await resp.json()
       doToast(toast, {
         severity: 'success',
         summary: 'Sucesso',
-        detail: 'Convite enviado com sucesso',
+        detail: data?.message || 'Convite enviado com sucesso',
       }, 4000)
 
       newUserEmail.set('')

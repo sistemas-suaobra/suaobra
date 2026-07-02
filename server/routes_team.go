@@ -1,18 +1,58 @@
 package server
 
 import (
-	"log"
 	"net/mail"
 
 	"github.com/flarco/g"
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/tools/mailer"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/spf13/cast"
 	"github.com/suaobra/suaobra-app/store"
 )
+
+const teamInviteAppURL = "https://app.suaobra.com.br"
+
+func sendTeamInviteEmail(app *pocketbase.PocketBase, email, password string, isNewUser bool) error {
+	settings := app.Settings()
+	message := &mailer.Message{
+		From: mail.Address{
+			Address: settings.Meta.SenderAddress,
+			Name:    settings.Meta.SenderName,
+		},
+		To:      []mail.Address{{Address: email}},
+		Subject: "Convite para Sua Obra",
+	}
+
+	if isNewUser {
+		message.HTML = g.F(`
+		<p>Olá,</p>
+		<p>Você foi convidado para se juntar a uma equipe no Sua Obra.</p>
+		<p>Email: <strong>%s</strong></p>
+		<p>Senha temporária: <strong>%s</strong></p>
+		<p>Por favor, acesse <a href="%s">%s</a> e altere sua senha após o primeiro login.</p>
+		<p>
+			Obrigado,<br/>
+			Equipe SuaObra
+		</p>
+		`, email, password, teamInviteAppURL, teamInviteAppURL)
+	} else {
+		message.HTML = g.F(`
+		<p>Olá,</p>
+		<p>Você foi adicionado a uma equipe no Sua Obra.</p>
+		<p>Acesse <a href="%s">%s</a> com seu email e senha para entrar.</p>
+		<p>
+			Obrigado,<br/>
+			Equipe SuaObra
+		</p>
+		`, teamInviteAppURL, teamInviteAppURL)
+	}
+
+	return sendEmail(app, message)
+}
 
 // TeamMembers returns all team members for a team
 func TeamMembers(c echo.Context) error {
@@ -95,6 +135,9 @@ func TeamInvite(c echo.Context) error {
 			if err := req.Dao().SaveRecord(existingUser); err != nil {
 				return ErrJSON(500, err, "erro ao adicionar usuário à equipe")
 			}
+			if err := sendTeamInviteEmail(req.App, email, "", false); err != nil {
+				return ErrJSON(502, g.Error("Usuário adicionado à equipe, mas a notificação por e-mail falhou."))
+			}
 			return c.JSON(200, g.M("message", "Usuário adicionado à equipe"))
 		}
 
@@ -113,6 +156,9 @@ func TeamInvite(c echo.Context) error {
 			existingUser.Set("team_id", teamID)
 			if err := req.Dao().SaveRecord(existingUser); err != nil {
 				return ErrJSON(500, err, "erro ao adicionar usuário à equipe")
+			}
+			if err := sendTeamInviteEmail(req.App, email, "", false); err != nil {
+				return ErrJSON(502, g.Error("Usuário adicionado à equipe, mas a notificação por e-mail falhou."))
 			}
 			return c.JSON(200, g.M("message", "Usuário adicionado à equipe"))
 		}
@@ -150,30 +196,8 @@ func TeamInvite(c echo.Context) error {
 		return ErrJSON(400, err, "erro ao criar usuário")
 	}
 
-	// Send invitation email
-	message := &mailer.Message{
-		From: mail.Address{
-			Address: req.App.Settings().Meta.SenderAddress,
-			Name:    req.App.Settings().Meta.SenderName,
-		},
-		To:      []mail.Address{{Address: email}},
-		Subject: "Convite para Sua Obra",
-		HTML: g.F(`
-		<p>Olá,</p>
-		<p>Você foi convidado para se juntar a uma equipe no Sua Obra.</p>
-		<p>Email: <strong>%s</strong></p>
-		<p>Senha temporária: <strong>%s</strong></p>
-		<p>Por favor, acesse <a href="%s">%s</a> e altere sua senha após o primeiro login.</p>
-		<p>
-			Obrigado,<br/>
-			Equipe SuaObra
-		</p>
-		`, email, password, "https://app.suaobra.com.br", "https://app.suaobra.com.br"),
-	}
-
-	if err := sendEmail(req.App, message); err != nil {
-		log.Printf("ERROR: Failed to send invitation email: %v", err)
-		// Continue anyway - user was created
+	if err := sendTeamInviteEmail(req.App, email, password, true); err != nil {
+		return ErrJSON(502, g.Error("Usuário criado, mas o e-mail de convite não foi enviado. Verifique a configuração SMTP."))
 	}
 
 	return c.JSON(200, g.M("message", "Convite enviado com sucesso"))

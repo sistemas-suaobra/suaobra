@@ -13,14 +13,14 @@ import (
 )
 
 const (
-	// Intervalo de 2 minutos entre envios de WhatsApp (por campanha).
-	delayEntreEnviosWhatsApp = 2 * time.Minute
+	// Intervalo de 5 minutos entre envios de WhatsApp (por campanha).
+	delayEntreEnviosWhatsApp = 5 * time.Minute
 
 	ContatoTipoOwner        = "OWNER"
 	ContatoTipoProfessional = "PROFISSIONAL"
 
-	maxTelefonesPorContato = 10
-	maxEmailsPorContato    = 10
+	maxTelefonesPorContato = 3 // mesmo limite do modal Obras+ (core_obras_plus_phone.sql)
+	maxEmailsPorContato    = 3
 )
 
 type CampanhaDestinatarioInput struct {
@@ -493,7 +493,7 @@ func (s *CampanhaService) garantirConversaIA(
 // ProcessarCampanhaAsync processa os envios de uma campanha em background.
 // O loop busca destinatários PENDENTE continuamente (um a um) até que não
 // sobre nenhum, garantindo que todos sejam processados mesmo em caso de erro.
-// O intervalo de 2 minutos entre WhatsApp é POR CAMPANHA – cada campanha
+// O intervalo de 5 minutos entre WhatsApp é POR CAMPANHA – cada campanha
 // roda a sua própria goroutine, então os timers são independentes.
 func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 	// Garantir que a campanha seja finalizada mesmo em caso de panic
@@ -695,7 +695,7 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 				g.Error(err, "Erro ao atualizar status para FALHOU do destinatário %s", dest.Id)
 			}
 			falhas++
-			// Não aplica delay de 2 min em caso de falha – segue para o próximo
+			// Não aplica delay de 5 min em caso de falha – segue para o próximo
 			continue
 		}
 
@@ -718,10 +718,10 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 			email,
 		)
 
-		// 8. Aguardar 2 minutos entre envios de WhatsApp (por campanha).
+		// 8. Aguardar 5 minutos entre envios de WhatsApp (por campanha).
 		//    Se o envio foi apenas email, continua sem delay.
 		//    Verifica se ainda há pendentes ANTES de esperar para não aguardar
-		//    2 minutos desnecessários após o último envio.
+		//    5 minutos desnecessários após o último envio.
 		if enviouWhatsApp {
 			proximosPendentes, _ := s.repo.FindDestinatariosPendentes(campanhaID)
 			if len(proximosPendentes) == 0 {
@@ -1044,22 +1044,25 @@ func (s *CampanhaService) enriquecerDestinatarioComObra(
 }
 
 func (s *CampanhaService) buscarTelefones(nome, cidade, uf string) []string {
+	// Mesma regra do modal Obras+ (/query/obras-plus-contacts → core_obras_plus_phone.sql):
+	// telefones do nome na MESMA cidade/UF da obra, deduplicados, ordenados por telefone DESC,
+	// limit 3. Antes buscávamos até 10 registros globais por nome (incluindo outras cidades),
+	// o que fazia a campanha enviar para números que nem aparecem no modal — ex.: homônimos
+	// ou telefones extras de outra localidade.
 	sql := `
 		WITH prep AS (
 			SELECT
 				telefone,
-				cidade,
-				uf,
 				row_number() OVER(PARTITION BY telefone ORDER BY COALESCE(poder_aquisitivo, 1) DESC) AS row_num
 			FROM core.core_obras_plus_phone
 			WHERE nome = {:nome}
+			  AND uf = {:uf}
+			  AND cidade = {:cidade}
 		)
 		SELECT telefone
 		FROM prep
 		WHERE row_num = 1
-		ORDER BY
-			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
-			telefone DESC
+		ORDER BY telefone DESC
 		LIMIT {:limite}
 	`
 

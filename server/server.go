@@ -10,6 +10,10 @@ import (
 )
 
 func sendEmail(app *pocketbase.PocketBase, message *mailer.Message) (err error) {
+	settings := app.Settings()
+	if settings.Smtp.Host == "" || settings.Meta.SenderAddress == "" {
+		return g.Error("SMTP do sistema não configurado no PocketBase")
+	}
 
 	if err := app.NewMailClient().Send(message); err != nil {
 		NotifyDiscord(g.F("Could not send email:\n```\n%s\n```", g.Marshal(message)))
