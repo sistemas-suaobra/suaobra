@@ -9,9 +9,13 @@
 #   GEMINI_API_KEY, MESSENGER_TOKEN, MESSENGER_BASE_URL
 #   WHATSMEOW_URL, WHATSMEOW_APIKEY, WHATSMEOW_WEBHOOK_BASE
 #
-# Cloudflare -> Traefik (Dokploy) -> containers via labels abaixo.
-# Frontend escuta na 8091 (Caddy); backend na 8080.
-# Dokploy: Container Port do app = 8091.
+# Roteamento: Cloudflare -> Traefik (labels abaixo) -> container.
+# Caddy escuta na porta 80 DENTRO do container.
+# Mapeamento 8091:80 = acesso direto por IP (http://<IP>:8091), nao e a porta do Traefik.
+#
+# IMPORTANTE (Dokploy > Domains): NAO cadastre app.suaobra.com.br na aba Domains
+# do painel se estas labels Traefik estiverem ativas — rotas duplicadas geram 502.
+# O Traefik usa loadbalancer.server.port=80 (porta interna do Caddy).
 #
 # Dados: core.db em ../files/suaobra/data/core.db (volume abaixo).
 
@@ -57,7 +61,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8091:8091"
+      - "8091:80"
     networks:
       - dokploy-network
     labels:
@@ -70,7 +74,7 @@ services:
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.rule=Host(`app.suaobra.com.br`)
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.entrypoints=web
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
-      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=8091
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
 
 networks:
   dokploy-network:

@@ -1,4 +1,4 @@
-:8091 {
+:80 {
     root * /app
     file_server
 }
