@@ -1,4 +1,12 @@
-:80 {
-    root * /app
-    file_server
+{
+	admin off
+}
+
+# Porta 80: Traefik (loadbalancer.server.port=80).
+# Porta 8091: compatibilidade com Container Port antigo do Dokploy (commit ca88e0e).
+:80, :8091 {
+	root * /app
+	encode gzip
+	try_files {path} {path}/ /index.html
+	file_server
 }

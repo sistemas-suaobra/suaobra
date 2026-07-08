@@ -33,4 +33,9 @@ COPY --from=builder /app/dist .
 # Copy the dedicated Caddyfile for the frontend
 COPY Caddyfile /etc/caddy/Caddyfile
 
-EXPOSE 80
+EXPOSE 80 8091
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+	CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:80/ || exit 1
+
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

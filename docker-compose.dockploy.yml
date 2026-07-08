@@ -10,12 +10,12 @@
 #   WHATSMEOW_URL, WHATSMEOW_APIKEY, WHATSMEOW_WEBHOOK_BASE
 #
 # Roteamento: Cloudflare -> Traefik (labels abaixo) -> container.
-# Caddy escuta na porta 80 DENTRO do container.
-# Mapeamento 8091:80 = acesso direto por IP (http://<IP>:8091), nao e a porta do Traefik.
+# Caddy escuta nas portas 80 e 8091 DENTRO do container (80 = Traefik; 8091 = legado Dokploy).
+# Mapeamento 8091:80 = acesso direto por IP (http://<IP>:8091).
 #
 # IMPORTANTE (Dokploy > Domains): NAO cadastre app.suaobra.com.br na aba Domains
 # do painel se estas labels Traefik estiverem ativas — rotas duplicadas geram 502.
-# O Traefik usa loadbalancer.server.port=80 (porta interna do Caddy).
+# O Traefik usa loadbalancer.server.port=80.
 #
 # Dados: core.db em ../files/suaobra/data/core.db (volume abaixo).
 
@@ -58,8 +58,6 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      - backend
     ports:
       - "8091:80"
     networks:
@@ -75,6 +73,8 @@ services:
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.entrypoints=web
       - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
       - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.healthcheck.path=/
+      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.healthcheck.interval=30s
 
 networks:
   dokploy-network:
