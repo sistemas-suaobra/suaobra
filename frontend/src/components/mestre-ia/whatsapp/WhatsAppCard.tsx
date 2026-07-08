@@ -4,7 +4,7 @@ import { Tag } from "primereact/tag";
 import { InputText } from "primereact/inputtext";
 import { InputTextarea } from "primereact/inputtextarea";
 import { WhatsAppQrDialog } from "./WhatsAppQrDialog";
-import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
+import { formatWhatsappJid } from "../utils/whatsappJid";
 import { baseURL } from "../../../store/api";
 import { user } from "../../../store/store";
 
@@ -62,16 +62,10 @@ export function WhatsAppCard(props: Props) {
     }
   };
 
-  const phoneDisplay = React.useMemo(() => {
-    if (!props.waJid) return "";
-    const raw = props.waJid.split("@")[0];
-
-    if (raw.length >= 12) {
-      return `+${raw.slice(0, 2)} ${raw.slice(2, 4)} ${raw.slice(4, 9)}-${raw.slice(9)}`;
-    }
-
-    return `+${raw}`;
-  }, [props.waJid]);
+  const phoneDisplay = React.useMemo(
+    () => formatWhatsappJid(props.waJid ?? ""),
+    [props.waJid]
+  );
 
   const WhatsAppStatus = () => (
     <Tag

@@ -69,6 +69,17 @@ func (r *ConexaoRepo) FindActiveWhatsappLegacy(teamID string) (*models.Record, e
 	return con, nil
 }
 
+func (r *ConexaoRepo) FindAllActiveWhatsappByTeam(teamID string) ([]*models.Record, error) {
+	return r.dao.FindRecordsByFilter(
+		"conexoes",
+		`team_id = {:team} && canal = "WHATSAPP" && ativo = true`,
+		"-updated",
+		0,
+		0,
+		dbx.Params{"team": teamID},
+	)
+}
+
 // FindActiveWhatsappForUser resolve a conexão a ser USADA pelo usuário:
 // primeiro a dele (user_id), e se não houver, cai no fallback legado do time.
 func (r *ConexaoRepo) FindActiveWhatsappForUser(teamID, userID string) (*models.Record, error) {

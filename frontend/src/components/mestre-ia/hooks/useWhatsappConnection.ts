@@ -1,7 +1,7 @@
 import * as React from "react";
 import { baseURL } from "../../../store/api";
 import { requestWithLog } from "../utils/requestWithLog";
-import { normalizeQr } from "../utils/normalizeQr";
+import { formatWhatsappJid } from "../utils/whatsappJid";
 
 type NotifyFn = (
   severity: "success" | "info" | "warn" | "error",
@@ -225,7 +225,7 @@ export function useWhatsappConnection(notify: NotifyFn) {
           setWaDialogVisible(false);
 
           if (opts?.notifyOnSuccess) {
-            const phone = jid ? `+${jid.split("@")[0]}` : "";
+            const phone = formatWhatsappJid(jid);
             notify(
               "success",
               "WhatsApp conectado!",
@@ -234,6 +234,12 @@ export function useWhatsappConnection(notify: NotifyFn) {
           }
 
           return true;
+        }
+
+        // Sessão não autenticada — limpa estado local obsoleto (ex.: JID antigo no banco).
+        if (!data?.error) {
+          setWaSessionOk(false);
+          setWaJid("");
         }
 
         // connected = false. Se houve erro transitório (wuzapi indisponível), NÃO
@@ -408,9 +414,10 @@ export function useWhatsappConnection(notify: NotifyFn) {
   // banco — se a sessão estiver realmente ativa, o conectado_em é regravado e a
   // tela deixa de mostrar "desconectado" indevidamente após alguns dias.
   const loadWhatsapp = React.useCallback(async (): Promise<boolean> => {
-    const persisted = await checkConnected();
+    // Status live primeiro (atualiza o banco e evita JID obsoleto na UI).
     const live = await checkStatus();
-    return persisted || live;
+    const persisted = await checkConnected();
+    return live || persisted;
   }, [checkConnected, checkStatus]);
 
   return {

@@ -99,10 +99,98 @@ func (s *WhatsAppService) GetQR(userToken string) (wuzapi.SessionQRResp, error) 
 	return parsed, err
 }
 
-// getTokenAndRecordByOwner resolve a conexão a ser usada pelo usuário
-// (a dele; senão a legada/compartilhada do time) e retorna o token + registro.
+func (s *WhatsAppService) resolveWhatsappConnection(teamID, userID string) (owned bool, con *models.Record, err error) {
+	con, _ = s.conRepo.FindActiveWhatsappByOwner(teamID, userID)
+	if con != nil && con.Id != "" {
+		return true, con, nil
+	}
+
+	con = s.findBestTeamWhatsappFallback(teamID)
+	if con == nil || con.Id == "" {
+		return false, nil, nil
+	}
+	return false, con, nil
+}
+
+// findBestTeamWhatsappFallback escolhe a conexão WhatsApp do time realmente conectada.
+// Evita exibir a conexão legada (user_id vazio) obsoleta quando um colega já conectou o dele.
+func (s *WhatsAppService) findBestTeamWhatsappFallback(teamID string) *models.Record {
+	type candidate struct {
+		con *models.Record
+		at  time.Time
+	}
+
+	var best *candidate
+
+	pick := func(con *models.Record) {
+		if con == nil || con.Id == "" {
+			return
+		}
+		wa, err := s.waRepo.FindByConexao(con.Id)
+		if err != nil || wa == nil || wa.Id == "" {
+			return
+		}
+		if wa.GetDateTime("conectado_em").Time().IsZero() || strings.TrimSpace(wa.GetString("device_jid")) == "" {
+			return
+		}
+		at := wa.GetDateTime("conectado_em").Time()
+		if best == nil || at.After(best.at) {
+			best = &candidate{con: con, at: at}
+		}
+	}
+
+	if legacy, _ := s.conRepo.FindActiveWhatsappLegacy(teamID); legacy != nil {
+		pick(legacy)
+	}
+
+	if cons, err := s.conRepo.FindAllActiveWhatsappByTeam(teamID); err == nil {
+		for _, con := range cons {
+			pick(con)
+		}
+	}
+
+	if best != nil {
+		return best.con
+	}
+
+	// Sem sessão autenticada no time: mantém legado só para permitir criar/conectar QR.
+	if legacy, _ := s.conRepo.FindActiveWhatsappLegacy(teamID); legacy != nil {
+		return legacy
+	}
+	return nil
+}
+
+func (s *WhatsAppService) resolveOwnedWhatsappConnection(teamID, userID string) (*models.Record, error) {
+	con, _ := s.conRepo.FindActiveWhatsappByOwner(teamID, userID)
+	if con == nil || con.Id == "" {
+		return nil, g.Error("whatsapp connection not found")
+	}
+	return con, nil
+}
+
+// getTokenAndRecordForManage resolve apenas a conexão PRÓPRIA (connect/QR/disconnect).
+func (s *WhatsAppService) getTokenAndRecordForManage(teamID, userID string) (token string, wa *models.Record, err error) {
+	con, err := s.resolveOwnedWhatsappConnection(teamID, userID)
+	if err != nil {
+		return "", nil, err
+	}
+
+	wa, err = s.waRepo.FindByConexao(con.Id)
+	if err != nil || wa == nil || wa.Id == "" {
+		return "", nil, g.Error("whatsapp details not found")
+	}
+
+	token = strings.TrimSpace(wa.GetString("numero_e164"))
+	if token == "" {
+		return "", nil, g.Error("numero_e164 token is empty")
+	}
+
+	return token, wa, nil
+}
+
+// getTokenAndRecordByOwner resolve a conexão para envio (própria ou conectada do time).
 func (s *WhatsAppService) getTokenAndRecordByOwner(teamID, userID string) (token string, wa *models.Record, err error) {
-	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
+	_, con, err := s.resolveWhatsappConnection(teamID, userID)
 	if err != nil || con == nil || con.Id == "" {
 		return "", nil, g.Error("whatsapp connection not found")
 	}
@@ -121,7 +209,7 @@ func (s *WhatsAppService) getTokenAndRecordByOwner(teamID, userID string) (token
 }
 
 func (s *WhatsAppService) ConnectByUser(teamID, userID string) (map[string]any, error) {
-	token, wa, err := s.getTokenAndRecordByOwner(teamID, userID)
+	token, wa, err := s.getTokenAndRecordForManage(teamID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +251,7 @@ func (s *WhatsAppService) ConnectByUser(teamID, userID string) (map[string]any, 
 }
 
 func (s *WhatsAppService) GetQRByUser(teamID, userID string) (code int, qr string, err error) {
-	token, wa, err := s.getTokenAndRecordByOwner(teamID, userID)
+	token, wa, err := s.getTokenAndRecordForManage(teamID, userID)
 	if err != nil {
 		return 0, "", err
 	}
@@ -268,7 +356,7 @@ func (s *WhatsAppService) SendTestMessage(teamID, userID, phone, body string) (m
 // e atualiza conectado_em + device_jid no registro local se necessário.
 // Retorna (connected, jid, error).
 func (s *WhatsAppService) CheckAndUpdateStatus(teamID, userID string) (connected bool, jid string, err error) {
-	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
+	_, con, err := s.resolveWhatsappConnection(teamID, userID)
 	if err != nil || con == nil || con.Id == "" {
 		return false, "", g.Error("whatsapp connection not found")
 	}
@@ -321,7 +409,7 @@ func (s *WhatsAppService) CheckAndUpdateStatus(teamID, userID string) (connected
 }
 
 func (s *WhatsAppService) Disconnect(teamID, userID string) error {
-	token, wa, err := s.getTokenAndRecordByOwner(teamID, userID)
+	token, wa, err := s.getTokenAndRecordForManage(teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -337,7 +425,7 @@ func (s *WhatsAppService) Disconnect(teamID, userID string) error {
 }
 
 func (s *WhatsAppService) DeleteConnection(teamID, userID string) error {
-	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
+	con, err := s.resolveOwnedWhatsappConnection(teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -372,15 +460,12 @@ func (s *WhatsAppService) DeleteConnection(teamID, userID string) error {
 // legada/compartilhada do time emprestada como fallback (false). A UI usa isso
 // para permitir que um colega conecte o número dele mesmo estando "emprestado".
 func (s *WhatsAppService) GetByUser(teamID, userID string) (exists bool, owned bool, con *models.Record, wa *models.Record, err error) {
-	con, _ = s.conRepo.FindActiveWhatsappByOwner(teamID, userID)
-	if con != nil && con.Id != "" {
-		owned = true
-	} else {
-		con, err = s.conRepo.FindActiveWhatsappLegacy(teamID)
-		if err != nil {
-			return false, false, nil, nil, err
-		}
+	var ok bool
+	ok, con, err = s.resolveWhatsappConnection(teamID, userID)
+	if err != nil {
+		return false, false, nil, nil, err
 	}
+	owned = ok
 	if con == nil || con.Id == "" {
 		return false, false, nil, nil, nil
 	}
