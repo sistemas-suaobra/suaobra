@@ -10,16 +10,10 @@ export const isStage = () => window.location.hostname.includes('app-hml.suaobra.
 export const isDev = () => !(isStage() || isProd())
 
 export const baseURL = () => {
-  const envApiBase = String(import.meta.env?.PUBLIC_API_BASE_URL || '').trim()
-  if (envApiBase) {
-    console.log('baseURL (env)', envApiBase)
-    return envApiBase
-  }
-
   const url = isProd() ? 'https://api.suaobra.com.br' :
     isStage() ? 'https://api-hml.suaobra.com.br' :
       window.location.hostname.includes('suaobra.test') ? `http://api.suaobra.test` :
-        `http://${window.location.hostname}:8090`
+        `http://${window.location.hostname}:8080`
   console.log('baseURL', url)
   return url
 }
