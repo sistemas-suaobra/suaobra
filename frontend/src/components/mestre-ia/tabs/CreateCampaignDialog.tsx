@@ -101,6 +101,12 @@ function getPlaceholderByFilter(filter: RecipientFilter) {
   return "Selecione destinatários para esta campanha"
 }
 
+function recipientHasAnyContact(
+  option: Pick<RecipientOption, "hasPhone" | "hasEmail">
+): boolean {
+  return option.hasPhone || option.hasEmail
+}
+
 function recipientMatchesChannels(
   option: Pick<RecipientOption, "hasPhone" | "hasEmail">,
   channelWa: boolean,
@@ -343,10 +349,8 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             } • ${channels}`,
           }
 
-          if (recipientMatchesChannels(option, channelWa, channelEmail)) {
-            list.push(option)
-            seen.add(value)
-          }
+          list.push(option)
+          seen.add(value)
         }
       }
 
@@ -377,23 +381,14 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             }${address ? ` • ${address}` : ""} • ${channels}`,
           }
 
-          if (recipientMatchesChannels(option, channelWa, channelEmail)) {
-            list.push(option)
-            seen.add(value)
-          }
+          list.push(option)
+          seen.add(value)
         }
       }
     }
 
     return list
-  }, [
-    leadsOptionsLocal,
-    obraRecordMapRef,
-    contactedRecipientSet,
-    ocultarJaContactados,
-    channelWa,
-    channelEmail,
-  ])
+  }, [leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet, ocultarJaContactados])
 
   const recipientOptionMap = React.useMemo(() => {
     const map = new Map<string, RecipientOption>()
@@ -407,11 +402,15 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
   React.useEffect(() => {
     setSelectedRecipients((prev) => {
-      const next = prev.filter((value) => recipientOptionMap.has(value))
+      const next = prev.filter((value) => {
+        const item = recipientOptionMap.get(value)
+        if (!item) return false
+        return recipientMatchesChannels(item, channelWa, channelEmail)
+      })
       if (next.length > 50) return next.slice(0, 50)
       return next
     })
-  }, [recipientOptionMap])
+  }, [recipientOptionMap, channelWa, channelEmail])
 
   const recipientStats = React.useMemo(() => {
     let owners = 0
@@ -600,17 +599,39 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           const semContato = selectedRecipients
             .map((value) => recipientOptionMap.get(value))
             .filter((item): item is RecipientOption => !!item)
-            .filter((item) => !recipientMatchesChannels(item, channelWa, channelEmail))
+            .filter((item) => !recipientHasAnyContact(item))
 
           if (semContato.length) {
             const nomes = semContato
+              .map((item) => `${item.nomeContato} (sem telefone e sem e-mail)`)
+              .join("; ")
+
+            notify(
+              "warn",
+              "Destinatários sem contato",
+              `Remova da seleção: ${nomes}. Essas pessoas não têm telefone nem e-mail cadastrado.`
+            )
+            return
+          }
+
+          const incompativelCanal = selectedRecipients
+            .map((value) => recipientOptionMap.get(value))
+            .filter((item): item is RecipientOption => !!item)
+            .filter(
+              (item) =>
+                recipientHasAnyContact(item) &&
+                !recipientMatchesChannels(item, channelWa, channelEmail)
+            )
+
+          if (incompativelCanal.length) {
+            const nomes = incompativelCanal
               .map((item) => describeRecipientContactGap(item, channelWa, channelEmail))
               .join("; ")
 
             notify(
               "warn",
               "Destinatários sem contato",
-              `Remova da seleção: ${nomes}. Só é possível incluir quem tem telefone/e-mail para os canais marcados.`
+              `Remova da seleção: ${nomes}. Eles não têm telefone/e-mail para os canais marcados.`
             )
             return
           }
