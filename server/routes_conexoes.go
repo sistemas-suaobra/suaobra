@@ -169,15 +169,15 @@ func StatusConexaoWhatsapp(c echo.Context) error {
 
 	svc := newWhatsAppService(req)
 
-	connected, jid, err := svc.CheckAndUpdateStatus(user.Team.ID, user.ID)
+	connected, owned, jid, err := svc.CheckAndUpdateStatus(user.Team.ID, user.ID)
 	if err != nil {
 		// Falha transitória (ex.: wuzapi indisponível). Sinalizamos o erro para que
 		// o frontend NÃO rebaixe um estado "conectado" por causa de uma falha pontual.
 		g.Warn("status check error: %v", err)
-		return c.JSON(200, g.M("connected", false, "jid", "", "error", err.Error()))
+		return c.JSON(200, g.M("connected", false, "owned", false, "jid", "", "error", err.Error()))
 	}
 
-	return c.JSON(200, g.M("connected", connected, "jid", jid, "error", ""))
+	return c.JSON(200, g.M("connected", connected, "owned", owned, "jid", jid, "error", ""))
 }
 
 // POST /conexoes/whatsapp/send-test

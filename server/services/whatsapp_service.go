@@ -99,6 +99,100 @@ func (s *WhatsAppService) GetQR(userToken string) (wuzapi.SessionQRResp, error) 
 	return parsed, err
 }
 
+type liveWhatsappResult struct {
+	owned bool
+	con   *models.Record
+	wa    *models.Record
+	jid   string
+}
+
+func (s *WhatsAppService) checkConnectionLive(con *models.Record, owned bool) *liveWhatsappResult {
+	if con == nil || con.Id == "" {
+		return nil
+	}
+
+	wa, err := s.waRepo.FindByConexao(con.Id)
+	if err != nil || wa == nil || wa.Id == "" {
+		return nil
+	}
+
+	instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
+	if instanciaID == "" {
+		return nil
+	}
+
+	info, err := s.wuz.GetAdminUser(instanciaID)
+	if err != nil {
+		g.Warn("checkConnectionLive: wuzapi indisponivel instancia=%s: %v", instanciaID, err)
+		return nil
+	}
+
+	if !info.LoggedIn || strings.TrimSpace(info.JID) == "" {
+		if !wa.GetDateTime("conectado_em").Time().IsZero() || strings.TrimSpace(wa.GetString("device_jid")) != "" {
+			if clearErr := s.waRepo.ClearConnected(wa); clearErr != nil {
+				g.Warn("checkConnectionLive: erro ao limpar conexao obsoleta instancia=%s: %v", instanciaID, clearErr)
+			} else {
+				g.Info("checkConnectionLive: conexao obsoleta limpa instancia=%s", instanciaID)
+			}
+		}
+		return nil
+	}
+
+	if wa.GetDateTime("conectado_em").Time().IsZero() || wa.GetString("device_jid") != info.JID {
+		if saveErr := s.waRepo.UpdateConnected(wa, info.JID); saveErr != nil {
+			g.Warn("checkConnectionLive: erro ao salvar jid instancia=%s: %v", instanciaID, saveErr)
+		}
+	}
+
+	return &liveWhatsappResult{
+		owned: owned,
+		con:   con,
+		wa:    wa,
+		jid:   info.JID,
+	}
+}
+
+// resolveLiveWhatsapp consulta o wuzapi e retorna a conexao realmente autenticada.
+// Prioriza a conexao propria; se nao estiver logada, busca qualquer colega do time.
+func (s *WhatsAppService) resolveLiveWhatsapp(teamID, userID string) *liveWhatsappResult {
+	if ownCon, _ := s.conRepo.FindActiveWhatsappByOwner(teamID, userID); ownCon != nil {
+		if live := s.checkConnectionLive(ownCon, true); live != nil {
+			return live
+		}
+		// Usuario tem instancia propria nao autenticada — nao empresta numero de colega.
+		return nil
+	}
+
+	var best *liveWhatsappResult
+	cons, err := s.conRepo.FindAllActiveWhatsappByTeam(teamID)
+	if err != nil {
+		return nil
+	}
+
+	for _, con := range cons {
+		ownerID := strings.TrimSpace(con.GetString("user_id"))
+		if ownerID == userID {
+			continue
+		}
+		live := s.checkConnectionLive(con, false)
+		if live == nil {
+			continue
+		}
+		if best == nil {
+			best = live
+			continue
+		}
+		// Preferir conexao de usuario (nao legada) sobre legado user_id vazio.
+		bestOwner := strings.TrimSpace(best.con.GetString("user_id"))
+		curOwner := strings.TrimSpace(con.GetString("user_id"))
+		if bestOwner == "" && curOwner != "" {
+			best = live
+		}
+	}
+
+	return best
+}
+
 func (s *WhatsAppService) resolveWhatsappConnection(teamID, userID string) (owned bool, con *models.Record, err error) {
 	con, _ = s.conRepo.FindActiveWhatsappByOwner(teamID, userID)
 	if con != nil && con.Id != "" {
@@ -188,8 +282,16 @@ func (s *WhatsAppService) getTokenAndRecordForManage(teamID, userID string) (tok
 	return token, wa, nil
 }
 
-// getTokenAndRecordByOwner resolve a conexão para envio (própria ou conectada do time).
+// getTokenAndRecordByOwner resolve a conexão para envio (própria live ou do time).
 func (s *WhatsAppService) getTokenAndRecordByOwner(teamID, userID string) (token string, wa *models.Record, err error) {
+	if live := s.resolveLiveWhatsapp(teamID, userID); live != nil {
+		token = strings.TrimSpace(live.wa.GetString("numero_e164"))
+		if token == "" {
+			return "", nil, g.Error("numero_e164 token is empty")
+		}
+		return token, live.wa, nil
+	}
+
 	_, con, err := s.resolveWhatsappConnection(teamID, userID)
 	if err != nil || con == nil || con.Id == "" {
 		return "", nil, g.Error("whatsapp connection not found")
@@ -352,60 +454,12 @@ func (s *WhatsAppService) SendTestMessage(teamID, userID, phone, body string) (m
 	return s.SendForOwner(teamID, userID, phone, body)
 }
 
-// CheckAndUpdateStatus consulta o wuzapi para saber se o user está connected,
-// e atualiza conectado_em + device_jid no registro local se necessário.
-// Retorna (connected, jid, error).
-func (s *WhatsAppService) CheckAndUpdateStatus(teamID, userID string) (connected bool, jid string, err error) {
-	_, con, err := s.resolveWhatsappConnection(teamID, userID)
-	if err != nil || con == nil || con.Id == "" {
-		return false, "", g.Error("whatsapp connection not found")
+// CheckAndUpdateStatus consulta o wuzapi e retorna a sessao realmente autenticada.
+func (s *WhatsAppService) CheckAndUpdateStatus(teamID, userID string) (connected bool, owned bool, jid string, err error) {
+	if live := s.resolveLiveWhatsapp(teamID, userID); live != nil {
+		return true, live.owned, live.jid, nil
 	}
-
-	wa, err := s.waRepo.FindByConexao(con.Id)
-	if err != nil || wa == nil || wa.Id == "" {
-		return false, "", g.Error("whatsapp details not found")
-	}
-
-	instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
-	if instanciaID == "" {
-		return false, "", g.Error("instancia_id is empty")
-	}
-
-	info, err := s.wuz.GetAdminUser(instanciaID)
-	if err != nil {
-		return false, "", err
-	}
-
-	// Verifica se está LOGADO (não apenas connected aos servidores)
-	// Connected = conectado ao servidor WhatsApp
-	// LoggedIn = escaneou QR e autenticou de fato
-	if !info.LoggedIn {
-		// Não está logado de fato. Como o wuzapi respondeu sem erro, isto significa
-		// que a sessão realmente caiu/foi deslogada. Auto-curamos o DB local para
-		// não ficar mostrando "conectado" de forma desatualizada.
-		if !wa.GetDateTime("conectado_em").Time().IsZero() || strings.TrimSpace(wa.GetString("device_jid")) != "" {
-			if clearErr := s.waRepo.ClearConnected(wa); clearErr != nil {
-				g.Warn("erro ao limpar conexão obsoleta instancia=%s: %v", instanciaID, clearErr)
-			} else {
-				g.Info("conexão obsoleta limpa para instancia=%s (wuzapi reportou LoggedIn=false)", instanciaID)
-			}
-		}
-		return false, "", nil
-	}
-
-	// Logado! Persistimos conectado_em + device_jid SEMPRE que o wuzapi confirmar
-	// que a sessão está autenticada. Isto torna o estado durável (a tela continua
-	// mostrando "conectado" após dias) e independe do webhook "connected" chegar.
-	conectadoEm := wa.GetDateTime("conectado_em")
-	if conectadoEm.Time().IsZero() || wa.GetString("device_jid") != info.JID {
-		if saveErr := s.waRepo.UpdateConnected(wa, info.JID); saveErr != nil {
-			g.Error(saveErr, "erro ao salvar conectado_em para instancia=%s", instanciaID)
-		} else {
-			g.Info("conectado_em salvo para instancia=%s jid=%s (LOGADO)", instanciaID, info.JID)
-		}
-	}
-
-	return true, info.JID, nil
+	return false, false, "", nil
 }
 
 func (s *WhatsAppService) Disconnect(teamID, userID string) error {
@@ -460,25 +514,37 @@ func (s *WhatsAppService) DeleteConnection(teamID, userID string) error {
 // legada/compartilhada do time emprestada como fallback (false). A UI usa isso
 // para permitir que um colega conecte o número dele mesmo estando "emprestado".
 func (s *WhatsAppService) GetByUser(teamID, userID string) (exists bool, owned bool, con *models.Record, wa *models.Record, err error) {
-	var ok bool
-	ok, con, err = s.resolveWhatsappConnection(teamID, userID)
-	if err != nil {
-		return false, false, nil, nil, err
+	if live := s.resolveLiveWhatsapp(teamID, userID); live != nil {
+		return true, live.owned, live.con, live.wa, nil
 	}
-	owned = ok
+
+	if ownCon, _ := s.conRepo.FindActiveWhatsappByOwner(teamID, userID); ownCon != nil && ownCon.Id != "" {
+		wa, err = s.waRepo.FindByConexao(ownCon.Id)
+		if err != nil {
+			return true, true, ownCon, nil, err
+		}
+		if wa != nil && wa.Id != "" {
+			wa.Set("device_jid", "")
+			wa.Set("conectado_em", "")
+		}
+		return true, true, ownCon, wa, nil
+	}
+
+	con = s.findBestTeamWhatsappFallback(teamID)
 	if con == nil || con.Id == "" {
 		return false, false, nil, nil, nil
 	}
 
 	wa, err = s.waRepo.FindByConexao(con.Id)
 	if err != nil {
-		return true, owned, con, nil, err
+		return true, false, con, nil, err
 	}
-	if wa == nil || wa.Id == "" {
-		return true, owned, con, nil, nil
+	if wa != nil && wa.Id != "" {
+		// Nao expor JID obsoleto quando wuzapi nao confirmou login.
+		wa.Set("device_jid", "")
+		wa.Set("conectado_em", "")
 	}
-
-	return true, owned, con, wa, nil
+	return true, false, con, wa, nil
 }
 
 func truncateWALog(s string, max int) string {

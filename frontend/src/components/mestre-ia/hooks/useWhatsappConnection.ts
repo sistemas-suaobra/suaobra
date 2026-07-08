@@ -1,6 +1,7 @@
 import * as React from "react";
 import { baseURL } from "../../../store/api";
 import { requestWithLog } from "../utils/requestWithLog";
+import { normalizeQr } from "../utils/normalizeQr";
 import { formatWhatsappJid } from "../utils/whatsappJid";
 
 type NotifyFn = (
@@ -35,6 +36,7 @@ type WhatsMeowConnectResp = {
 
 type WhatsMeowStatusResp = {
   connected?: boolean;
+  owned?: boolean;
   jid?: string;
   error?: string;
 };
@@ -220,8 +222,12 @@ export function useWhatsappConnection(notify: NotifyFn) {
 
         if (data?.connected) {
           const jid = data.jid ?? "";
+          setWaConnected(true);
           setWaSessionOk(true);
           setWaJid(jid);
+          if (typeof data.owned === "boolean") {
+            setWaOwned(data.owned);
+          }
           setWaDialogVisible(false);
 
           if (opts?.notifyOnSuccess) {
@@ -313,18 +319,8 @@ export function useWhatsappConnection(notify: NotifyFn) {
       setWaConnected(hasConexao);
       setWaOwned(hasConexao ? !!data?.owned : false);
 
-      const jid: string = data?.whatsapp?.device_jid ?? "";
-      const conectadoEm: string = data?.whatsapp?.conectado_em ?? "";
-
-      if (conectadoEm && jid) {
-        setWaSessionOk(true);
-        setWaJid(jid);
-        return true;
-      }
-
-      setWaSessionOk(false);
-      setWaJid("");
-      return false;
+      // JID vem só do /status (wuzapi live). Não usar device_jid do banco — fica obsoleto.
+      return hasConexao;
     } catch (e: any) {
       console.error(e);
       return false;
