@@ -46,7 +46,6 @@ export function useCampaignLeadOptions(params: {
   endDateFrom: string
   endDateTo: string
   ocultarJaContactados?: boolean
-  fallbackOptions: LeadOption[]
 }) {
   const {
     visible,
@@ -59,17 +58,13 @@ export function useCampaignLeadOptions(params: {
     endDateFrom,
     endDateTo,
     ocultarJaContactados = true,
-    fallbackOptions,
   } = params
 
-  const [leadsOptionsLocal, setLeadsOptionsLocal] = React.useState<LeadOption[]>(fallbackOptions)
+  const [obraRecords, setObraRecords] = React.useState<ObrasPlusRecord[]>([])
+  const [leadsOptionsLocal, setLeadsOptionsLocal] = React.useState<LeadOption[]>([])
   const [contactedRecipientSet, setContactedRecipientSet] = React.useState<Set<string>>(new Set())
-
-  const obraRecordMapRef = React.useRef<Map<string, ObrasPlusRecord>>(new Map())
-
-  React.useEffect(() => {
-    setLeadsOptionsLocal(fallbackOptions)
-  }, [fallbackOptions])
+  const [loading, setLoading] = React.useState(false)
+  const [fetchError, setFetchError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!visible) return
@@ -78,6 +73,9 @@ export function useCampaignLeadOptions(params: {
     let cancelled = false
 
     const fetchObras = async () => {
+      setLoading(true)
+      setFetchError(null)
+
       try {
         const payload = {
           teamId,
@@ -88,7 +86,7 @@ export function useCampaignLeadOptions(params: {
           sizeMin: "0",
           sizeMax: "9999999",
           offset: "0",
-          itemsPerPage: "100",
+          itemsPerPage: "200",
           enriched: "false",
           startDateFrom,
           startDateTo,
@@ -105,15 +103,12 @@ export function useCampaignLeadOptions(params: {
 
         if (cancelled) return
 
-        const nextMap = new Map<string, ObrasPlusRecord>()
         const nextOptions: LeadOption[] = []
         const nextContactedRecipientSet = new Set<string>()
 
         for (const r of records) {
           const obraId = String((r as any)?.obra_id ?? "").trim()
           if (!obraId) continue
-
-          nextMap.set(obraId, r)
 
           nextOptions.push({
             label: (r as any)?.owner || (r as any)?.professional || (r as any)?.address || obraId,
@@ -139,17 +134,20 @@ export function useCampaignLeadOptions(params: {
           }
         }
 
-        obraRecordMapRef.current = nextMap
+        setObraRecords(records)
         setLeadsOptionsLocal(nextOptions)
         setContactedRecipientSet(nextContactedRecipientSet)
-      } catch (e) {
+      } catch (e: any) {
         console.error(e)
 
         if (cancelled) return
 
+        setObraRecords([])
         setLeadsOptionsLocal([])
         setContactedRecipientSet(new Set())
-        obraRecordMapRef.current = new Map()
+        setFetchError(e?.message || "Não foi possível carregar os destinatários.")
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
 
@@ -171,5 +169,5 @@ export function useCampaignLeadOptions(params: {
     ocultarJaContactados,
   ])
 
-  return { leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet }
+  return { obraRecords, leadsOptionsLocal, contactedRecipientSet, loading, fetchError }
 }

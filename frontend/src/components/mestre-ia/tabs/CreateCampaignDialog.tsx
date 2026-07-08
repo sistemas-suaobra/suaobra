@@ -146,7 +146,6 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const {
     visible,
     onClose,
-    leadsOptions,
     onCreate,
     notify,
     conexaoWhatsAppId,
@@ -267,7 +266,8 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     setEndDateTo,
   } = useObrasPlusFilters(visible)
 
-  const { leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet } = useCampaignLeadOptions({
+  const { obraRecords, contactedRecipientSet, loading: loadingLeads, fetchError } =
+    useCampaignLeadOptions({
     visible,
     teamId,
     selectedCity,
@@ -278,7 +278,6 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     endDateFrom,
     endDateTo,
     ocultarJaContactados,
-    fallbackOptions: leadsOptions,
   })
 
   const { saving, createCampaign } = useCreateCampaign({ teamId, userId, notify })
@@ -296,7 +295,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
       "Olá, {{primeiroNome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
     )
     setObjetivo("")
-    setOcultarJaContactados(true)
+    setOcultarJaContactados(false)
     cursorRef.current = { start: 0, end: 0 }
     textareaElRef.current = null
   }, [visible])
@@ -305,25 +304,22 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     const list: RecipientOption[] = []
     const seen = new Set<string>()
 
-    for (const opt of leadsOptionsLocal ?? []) {
-      const obraId = String(opt?.value ?? "").trim()
+    for (const rec of obraRecords ?? []) {
+      const obraId = String((rec as any)?.obra_id ?? "").trim()
       if (!obraId) continue
 
-      const rec: any = obraRecordMapRef.current.get(obraId)
-      if (!rec) continue
+      const cidade = safeStr((rec as any)?.city)
+      const bairro = safeStr((rec as any)?.bairro)
+      const uf = safeStr((rec as any)?.state)
+      const address = safeStr((rec as any)?.address)
 
-      const cidade = safeStr(rec?.city)
-      const bairro = safeStr(rec?.bairro)
-      const uf = safeStr(rec?.state)
-      const address = safeStr(rec?.address)
+      const ownerName = safeStr((rec as any)?.owner)
+      const professionalName = safeStr((rec as any)?.professional)
 
-      const ownerName = safeStr(rec?.owner)
-      const professionalName = safeStr(rec?.professional)
-
-      const ownerHasPhone = !!rec?.has_owner_phone
-      const ownerHasEmail = !!rec?.has_owner_email
-      const professionalHasPhone = !!rec?.has_professional_phone
-      const professionalHasEmail = !!rec?.has_professional_email
+      const ownerHasPhone = !!(rec as any)?.has_owner_phone
+      const ownerHasEmail = !!(rec as any)?.has_owner_email
+      const professionalHasPhone = !!(rec as any)?.has_professional_phone
+      const professionalHasEmail = !!(rec as any)?.has_professional_email
 
       if (ownerName) {
         const value = makeRecipientValue(obraId, "OWNER")
@@ -388,7 +384,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     }
 
     return list
-  }, [leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet, ocultarJaContactados])
+  }, [obraRecords, contactedRecipientSet, ocultarJaContactados])
 
   const recipientOptionMap = React.useMemo(() => {
     const map = new Map<string, RecipientOption>()
@@ -783,7 +779,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
         <div className="field col-12">
           <div className="flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
             <label style={{ fontWeight: 700, marginBottom: 0 }}>
-              Destinatários ({recipientStats.total} disponíveis)
+              Destinatários ({loadingLeads ? "carregando…" : `${recipientStats.total} disponíveis`})
             </label>
 
             <div className="flex gap-2 flex-wrap">
@@ -825,6 +821,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           <MultiSelect
             value={selectedRecipients}
             options={filteredRecipientOptions}
+            disabled={loadingLeads}
             onChange={(e) => {
               const val = (e.value || []) as string[]
               if (val.length > 50) {
@@ -847,9 +844,15 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
 
           <div className="text-secondary" style={{ fontSize: 12, marginTop: 8 }}>
-            Selecionados: {selectedRecipientStats.total} • Proprietários:{" "}
-            {selectedRecipientStats.owners} • Profissionais:{" "}
-            {selectedRecipientStats.professionals}
+            {fetchError ? (
+              <span style={{ color: "var(--red-500)" }}>{fetchError}</span>
+            ) : (
+              <>
+                Selecionados: {selectedRecipientStats.total} • Proprietários:{" "}
+                {selectedRecipientStats.owners} • Profissionais:{" "}
+                {selectedRecipientStats.professionals}
+              </>
+            )}
           </div>
         </div>
 
