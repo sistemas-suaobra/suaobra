@@ -9,13 +9,13 @@
 #   GEMINI_API_KEY, MESSENGER_TOKEN, MESSENGER_BASE_URL
 #   WHATSMEOW_URL, WHATSMEOW_APIKEY, WHATSMEOW_WEBHOOK_BASE
 #
-# Roteamento: Cloudflare -> Traefik (labels abaixo) -> container.
-# Caddy escuta nas portas 80 e 8091 DENTRO do container (80 = Traefik; 8091 = legado Dokploy).
-# Mapeamento 8091:80 = acesso direto por IP (http://<IP>:8091).
+# Roteamento:
+#   - API: labels Traefik no servico backend (abaixo).
+#   - App: Dokploy > Domains > app.suaobra.com.br, Container Port = 8091.
 #
-# IMPORTANTE (Dokploy > Domains): NAO cadastre app.suaobra.com.br na aba Domains
-# do painel se estas labels Traefik estiverem ativas — rotas duplicadas geram 502.
-# O Traefik usa loadbalancer.server.port=80.
+# NAO coloque labels Traefik no frontend E dominio na aba Domains ao mesmo tempo —
+# rotas duplicadas para o mesmo host geram 502 (compose :80 vs Dokploy :8091).
+# Caddy escuta na porta 8091 dentro do container; host 8091:8091 e debug por IP.
 #
 # Dados: core.db em ../files/suaobra/data/core.db (volume abaixo).
 
@@ -59,22 +59,9 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8091:80"
+      - "8091:8091"
     networks:
       - dokploy-network
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.rule=Host(`app.suaobra.com.br`)
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.entrypoints=websecure
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.tls.certResolver=letsencrypt
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.rule=Host(`app.suaobra.com.br`)
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.entrypoints=web
-      - traefik.http.routers.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app-http.service=${TRAEFIK_ROUTER_PREFIX:-suaobra}-app
-      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.server.port=80
-      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.healthcheck.path=/
-      - traefik.http.services.${TRAEFIK_ROUTER_PREFIX:-suaobra}-app.loadbalancer.healthcheck.interval=30s
 
 networks:
   dokploy-network:
