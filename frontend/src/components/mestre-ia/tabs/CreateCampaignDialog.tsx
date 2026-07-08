@@ -101,6 +101,41 @@ function getPlaceholderByFilter(filter: RecipientFilter) {
   return "Selecione destinatários para esta campanha"
 }
 
+function recipientMatchesChannels(
+  option: Pick<RecipientOption, "hasPhone" | "hasEmail">,
+  channelWa: boolean,
+  channelEmail: boolean
+): boolean {
+  if (!option.hasPhone && !option.hasEmail) return false
+  if (channelWa && !channelEmail) return option.hasPhone
+  if (channelEmail && !channelWa) return option.hasEmail
+  return option.hasPhone || option.hasEmail
+}
+
+function describeRecipientContactGap(
+  option: Pick<RecipientOption, "nomeContato" | "hasPhone" | "hasEmail">,
+  channelWa: boolean,
+  channelEmail: boolean
+): string {
+  if (!option.hasPhone && !option.hasEmail) {
+    return `${option.nomeContato} (sem telefone e sem e-mail)`
+  }
+  if (channelWa && channelEmail) {
+    if (!option.hasPhone && !option.hasEmail) {
+      return `${option.nomeContato} (sem telefone e sem e-mail)`
+    }
+    if (!option.hasPhone) return `${option.nomeContato} (sem telefone)`
+    if (!option.hasEmail) return `${option.nomeContato} (sem e-mail)`
+  }
+  if (channelWa && !option.hasPhone) {
+    return `${option.nomeContato} (sem telefone para WhatsApp)`
+  }
+  if (channelEmail && !option.hasEmail) {
+    return `${option.nomeContato} (sem e-mail)`
+  }
+  return option.nomeContato
+}
+
 export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const {
     visible,
@@ -292,7 +327,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           const location = formatLocation(bairro, cidade, uf)
           const channels = getRecipientChannelsLabel(ownerHasPhone, ownerHasEmail)
 
-          list.push({
+          const option: RecipientOption = {
             value,
             obraId,
             contatoTipo: "OWNER",
@@ -306,9 +341,12 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             label: `${ownerName} (Proprietário)${location ? ` — ${location}` : ""}${
               address ? ` • ${address}` : ""
             } • ${channels}`,
-          })
+          }
 
-          seen.add(value)
+          if (recipientMatchesChannels(option, channelWa, channelEmail)) {
+            list.push(option)
+            seen.add(value)
+          }
         }
       }
 
@@ -323,7 +361,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             professionalHasEmail
           )
 
-          list.push({
+          const option: RecipientOption = {
             value,
             obraId,
             contatoTipo: "PROFISSIONAL",
@@ -337,15 +375,25 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             label: `${professionalName} (Profissional)${
               location ? ` — ${location}` : ""
             }${address ? ` • ${address}` : ""} • ${channels}`,
-          })
+          }
 
-          seen.add(value)
+          if (recipientMatchesChannels(option, channelWa, channelEmail)) {
+            list.push(option)
+            seen.add(value)
+          }
         }
       }
     }
 
     return list
-  }, [leadsOptionsLocal, obraRecordMapRef, contactedRecipientSet, ocultarJaContactados])
+  }, [
+    leadsOptionsLocal,
+    obraRecordMapRef,
+    contactedRecipientSet,
+    ocultarJaContactados,
+    channelWa,
+    channelEmail,
+  ])
 
   const recipientOptionMap = React.useMemo(() => {
     const map = new Map<string, RecipientOption>()
@@ -545,6 +593,24 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
               "warn",
               "Assunto obrigatório",
               "Preencha o assunto do e-mail para continuar."
+            )
+            return
+          }
+
+          const semContato = selectedRecipients
+            .map((value) => recipientOptionMap.get(value))
+            .filter((item): item is RecipientOption => !!item)
+            .filter((item) => !recipientMatchesChannels(item, channelWa, channelEmail))
+
+          if (semContato.length) {
+            const nomes = semContato
+              .map((item) => describeRecipientContactGap(item, channelWa, channelEmail))
+              .join("; ")
+
+            notify(
+              "warn",
+              "Destinatários sem contato",
+              `Remova da seleção: ${nomes}. Só é possível incluir quem tem telefone/e-mail para os canais marcados.`
             )
             return
           }
