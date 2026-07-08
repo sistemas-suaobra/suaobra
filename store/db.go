@@ -21,9 +21,11 @@ var loadDataSQL string
 
 var MainDao *daos.Dao
 var MainDB database.Connection
+var mainDataDir string
 
 func SetPocketBaseDB(app *pocketbase.PocketBase) (err error) {
 	MainDao = app.Dao()
+	mainDataDir = app.DataDir()
 
 	if MainDB != nil {
 		MainDB.Close()
@@ -86,18 +88,51 @@ func AttachCoreDb() error {
 
 	if _, err = MainDB.Exec("select 1 from core.core_obras_plus limit 1"); err != nil {
 		g.Warn("core.db em %s nao contem core_obras_plus: %v", path, err)
+		return nil
+	}
+
+	if err = loadCities(); err != nil {
+		g.Warn("nao foi possivel carregar cidades apos attach do core: %v", err)
 	}
 	return nil
 }
 
+// EnsureCoreReady garante core.db anexado e cache de cidades carregado antes de queries Obras+.
+func EnsureCoreReady() {
+	if MainDB == nil {
+		return
+	}
+	if _, err := MainDB.Exec("select 1 from core.core_obras_plus limit 1"); err != nil {
+		_ = AttachCoreDb()
+	}
+	if len(ObrasCities) == 0 {
+		_ = loadCities()
+	}
+}
+
 // coreAttachSQLPath converte caminho absoluto para relativo ao data.db no ATTACH.
-// Caminhos como /app/data/core.db quebram o driver dbio ("invalid uri authority: app").
+// Em Docker: data.db fica em /app/data/main/ e core.db em /app/data/core.db → ../core.db
 func coreAttachSQLPath(absPath string) string {
-	normalized := strings.ReplaceAll(strings.TrimSpace(absPath), "\\", "/")
-	if strings.HasSuffix(normalized, "/app/data/core.db") || normalized == "core.db" {
+	absPath = strings.TrimSpace(absPath)
+	if absPath == "" {
 		return "core.db"
 	}
-	return filepath.Base(absPath)
+
+	abs, err := filepath.Abs(absPath)
+	if err != nil {
+		return filepath.Base(absPath)
+	}
+
+	if mainDataDir != "" {
+		if rel, err := filepath.Rel(mainDataDir, abs); err == nil {
+			rel = filepath.ToSlash(rel)
+			if rel != "" && rel != "." {
+				return rel
+			}
+		}
+	}
+
+	return "../core.db"
 }
 
 func escapeSQLLiteral(value string) string {

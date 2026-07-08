@@ -38,6 +38,12 @@ type RecordObrasPlus struct {
 }
 
 func validateCity(city string) bool {
+	city = strings.TrimSpace(city)
+	if city == "" || !validateFilter(city) {
+		return false
+	}
+
+	store.EnsureCoreReady()
 	_, ok := store.ObrasCities[city]
 	return ok
 }
