@@ -357,6 +357,62 @@ func (r *CampanhaRepo) ExistsContatoEnviado(teamID, obraID, contatoTipo string) 
 	return total > 0, nil
 }
 
+// FindUltimoContatoCampanha retorna telefone/e-mail do último destinatário útil
+// (enviado, pendente ou em fila) para reutilizar em recontato manual.
+func (r *CampanhaRepo) FindUltimoContatoCampanha(teamID, obraID, contatoTipo string) (telefone, email string, err error) {
+	teamID = strings.TrimSpace(teamID)
+	obraID = strings.TrimSpace(obraID)
+	contatoTipo = strings.TrimSpace(contatoTipo)
+
+	if teamID == "" || obraID == "" || contatoTipo == "" {
+		return "", "", nil
+	}
+
+	var row struct {
+		Telefone string `db:"telefone_e164"`
+		Email    string `db:"email"`
+	}
+
+	query := `
+		SELECT cd.telefone_e164, cd.email
+		FROM campanha_destinatarios cd
+		WHERE cd.team_id = {:team_id}
+		  AND cd.obra_id = {:obra_id}
+		  AND cd.contato_tipo = {:contato_tipo}
+		  AND cd.status NOT IN ('FALHOU', 'IGNORADO')
+		  AND (
+		    nullif(trim(cd.telefone_e164), '') IS NOT NULL
+		    OR nullif(trim(cd.email), '') IS NOT NULL
+		  )
+		ORDER BY
+		  CASE cd.status
+		    WHEN 'ENVIADO' THEN 1
+		    WHEN 'EM_FILA' THEN 2
+		    WHEN 'PENDENTE' THEN 3
+		    ELSE 4
+		  END ASC,
+		  cd.updated DESC
+		LIMIT 1
+	`
+
+	err = r.dao.DB().
+		NewQuery(query).
+		Bind(dbx.Params{
+			"team_id":      teamID,
+			"obra_id":      obraID,
+			"contato_tipo": contatoTipo,
+		}).
+		One(&row)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no rows") {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+
+	return strings.TrimSpace(row.Telefone), strings.TrimSpace(row.Email), nil
+}
+
 // UpdateDestinatarioStatus atualiza o status de um destinatário
 func (r *CampanhaRepo) UpdateDestinatarioStatus(dest *models.Record, status, errMsg string) error {
 	if dest == nil {

@@ -134,6 +134,41 @@ func seedServiceCampanha(t *testing.T, dao *daos.Dao, teamID, campanhaID string,
 	pbtest.SeedCampanha(t, dao, teamID, campanhaID, canais)
 }
 
+func TestComplementarContatosDoHistorico_ReutilizaTelefone(t *testing.T) {
+	dao, cleanup := pbtest.NewCampanhaDAO(t)
+	defer cleanup()
+
+	repo := repositories.NewCampanhaRepo(dao)
+	svc := NewCampanhaService(repo, nil, nil, nil)
+
+	teamID := "team_test"
+	pbtest.SeedCampanha(t, dao, teamID, "camp_hist", []string{"WHATSAPP"})
+
+	_, err := repo.CreateDestinatario(map[string]any{
+		"team_id":       teamID,
+		"campanha_id":   "camp_hist",
+		"obra_id":       "obra_lucas",
+		"contato_tipo":  ContatoTipoOwner,
+		"status":        repositories.DestStatusEnviado,
+		"telefone_e164": "5535998877665",
+		"nome_contato":  "Lucas Pelisson",
+		"tentativas":    1,
+	})
+	require.NoError(t, err)
+
+	contato := &ObraContatoCampanha{
+		ObraID:        "obra_lucas",
+		ContatoTipo:   ContatoTipoOwner,
+		NomeContato:   "Lucas Pelisson",
+		TelefonesE164: []string{},
+	}
+
+	svc.complementarContatosDoHistorico(teamID, contato)
+
+	require.Len(t, contato.TelefonesE164, 1)
+	assert.Equal(t, "5535998877665", contato.TelefonesE164[0])
+}
+
 func TestUniqueNonEmpty(t *testing.T) {
 	out := uniqueNonEmpty([]string{"a", "", "a", "b", "b"})
 	assert.Equal(t, []string{"a", "b"}, out)

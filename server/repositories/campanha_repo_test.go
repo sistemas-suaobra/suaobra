@@ -124,3 +124,28 @@ func TestExistsEnviadoByCampanhaTelefone_DedupNaMesmaCampanha(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok)
 }
+
+func TestFindUltimoContatoCampanha_RetornaTelefoneEnviado(t *testing.T) {
+	dao, cleanup := newCampanhaTestDAO(t)
+	defer cleanup()
+
+	repo := NewCampanhaRepo(dao)
+	seedCampanha(t, dao, "team_1", "camp_antiga", []string{"WHATSAPP"})
+
+	_, err := repo.CreateDestinatario(map[string]any{
+		"team_id":       "team_1",
+		"campanha_id":   "camp_antiga",
+		"obra_id":       "obra_lucas",
+		"contato_tipo":  "OWNER",
+		"status":        DestStatusEnviado,
+		"telefone_e164": "5535998877665",
+		"nome_contato":  "Lucas Pelisson",
+		"tentativas":    1,
+	})
+	require.NoError(t, err)
+
+	tel, email, err := repo.FindUltimoContatoCampanha("team_1", "obra_lucas", "OWNER")
+	require.NoError(t, err)
+	assert.Equal(t, "5535998877665", tel)
+	assert.Equal(t, "", email)
+}

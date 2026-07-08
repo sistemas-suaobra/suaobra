@@ -3,6 +3,7 @@ package store
 import (
 	_ "embed"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,15 +75,33 @@ func AttachCoreDb() error {
 		return nil
 	}
 
-	g.Warn("attaching core from %s", path)
-	if _, err = MainDB.Exec(g.F("attach database '%s' as 'core'", path)); err != nil {
-		return err
+	// Caminhos absolutos como /app/data/core.db quebram o driver dbio no ATTACH
+	// ("invalid uri authority: app"). O path relativo ao DB principal resolve no volume Docker.
+	attachPath := coreAttachSQLPath(path)
+	g.Warn("attaching core from %s (sql path: %s)", path, attachPath)
+	if _, err = MainDB.Exec(g.F("attach database '%s' as 'core'", escapeSQLLiteral(attachPath))); err != nil {
+		g.Warn("falha ao anexar core.db (%s): %v — Obras+ ficara indisponivel", path, err)
+		return nil
 	}
 
 	if _, err = MainDB.Exec("select 1 from core.core_obras_plus limit 1"); err != nil {
 		g.Warn("core.db em %s nao contem core_obras_plus: %v", path, err)
 	}
 	return nil
+}
+
+// coreAttachSQLPath converte caminho absoluto para relativo ao data.db no ATTACH.
+// Caminhos como /app/data/core.db quebram o driver dbio ("invalid uri authority: app").
+func coreAttachSQLPath(absPath string) string {
+	normalized := strings.ReplaceAll(strings.TrimSpace(absPath), "\\", "/")
+	if strings.HasSuffix(normalized, "/app/data/core.db") || normalized == "core.db" {
+		return "core.db"
+	}
+	return filepath.Base(absPath)
+}
+
+func escapeSQLLiteral(value string) string {
+	return strings.ReplaceAll(value, "'", "''")
 }
 
 func MainDaoDB() dbx.Builder {

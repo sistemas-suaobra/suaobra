@@ -208,6 +208,14 @@ func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
 			continue
 		}
 
+		s.complementarContatosDoHistorico(teamID, contato)
+		if usaWhatsApp && len(contato.TelefonesE164) == 0 {
+			contato.TelefonesE164 = s.buscarTelefonesPorNomeUF(contato.NomeContato, contato.UF)
+		}
+		if usaEmail && len(contato.Emails) == 0 {
+			contato.Emails = s.buscarEmailsPorNome(contato.NomeContato, contato.Cidade, contato.UF)
+		}
+
 		telefones := make([]string, 0)
 		emails := make([]string, 0)
 
@@ -1072,9 +1080,6 @@ func (s *CampanhaService) buscarTelefones(nome, cidade, uf string) []string {
 	}
 
 	recs := data.RecordsCasted(true)
-	if len(recs) == 0 {
-		return []string{}
-	}
 
 	telefones := make([]string, 0, len(recs))
 	for _, rec := range recs {
@@ -1084,7 +1089,130 @@ func (s *CampanhaService) buscarTelefones(nome, cidade, uf string) []string {
 		}
 	}
 
+	telefones = uniqueNonEmpty(telefones)
+	if len(telefones) > 0 {
+		return telefones
+	}
+
+	return s.buscarTelefonesPorNomeUF(nome, uf)
+}
+
+func (s *CampanhaService) complementarContatosDoHistorico(teamID string, contato *ObraContatoCampanha) {
+	if contato == nil || s.repo == nil {
+		return
+	}
+
+	histTel, histEmail, err := s.repo.FindUltimoContatoCampanha(teamID, contato.ObraID, contato.ContatoTipo)
+	if err != nil {
+		g.Warn("historico de contato da campanha %s/%s: %v", contato.ObraID, contato.ContatoTipo, err)
+		return
+	}
+
+	if len(contato.TelefonesE164) == 0 {
+		if formatted := s.formatPhone(histTel); formatted != "" {
+			contato.TelefonesE164 = []string{formatted}
+		}
+	}
+
+	if len(contato.Emails) == 0 {
+		if email := normalizeEmail(histEmail); email != "" {
+			contato.Emails = []string{email}
+		}
+	}
+}
+
+func (s *CampanhaService) buscarTelefonesPorNomeUF(nome, uf string) []string {
+	nome = strings.TrimSpace(nome)
+	uf = strings.TrimSpace(uf)
+	if nome == "" || uf == "" {
+		return []string{}
+	}
+
+	sql := `
+		WITH prep AS (
+			SELECT
+				telefone,
+				row_number() OVER(PARTITION BY telefone ORDER BY COALESCE(poder_aquisitivo, 1) DESC) AS row_num
+			FROM core.core_obras_plus_phone
+			WHERE nome = {:nome}
+			  AND uf = {:uf}
+		)
+		SELECT telefone
+		FROM prep
+		WHERE row_num = 1
+		ORDER BY telefone DESC
+		LIMIT {:limite}
+	`
+
+	boundSQL := store.BindSQL(sql, map[string]any{
+		"nome":   nome,
+		"uf":     uf,
+		"limite": maxTelefonesPorContato,
+	})
+
+	data, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		return []string{}
+	}
+
+	recs := data.RecordsCasted(true)
+	telefones := make([]string, 0, len(recs))
+	for _, rec := range recs {
+		telefone := s.formatPhone(cast.ToString(rec["telefone"]))
+		if telefone != "" {
+			telefones = append(telefones, telefone)
+		}
+	}
+
 	return uniqueNonEmpty(telefones)
+}
+
+func (s *CampanhaService) buscarEmailsPorNome(nome, cidade, uf string) []string {
+	emails := s.buscarEmails(nome, cidade, uf)
+	if len(emails) > 0 {
+		return emails
+	}
+
+	nome = strings.TrimSpace(nome)
+	if nome == "" {
+		return []string{}
+	}
+
+	sql := `
+		WITH prep AS (
+			SELECT
+				email,
+				row_number() OVER(PARTITION BY email ORDER BY COALESCE(poder_aquisitivo, 1) DESC) AS row_num
+			FROM core.core_obras_plus_email
+			WHERE nome = {:nome}
+		)
+		SELECT email
+		FROM prep
+		WHERE row_num = 1
+		ORDER BY poder_aquisitivo DESC
+		LIMIT {:limite}
+	`
+
+	boundSQL := store.BindSQL(sql, map[string]any{
+		"nome":   nome,
+		"limite": maxEmailsPorContato,
+	})
+
+	data, err := store.MainDB.Query(boundSQL)
+	if err != nil {
+		return []string{}
+	}
+
+	recs := data.RecordsCasted(true)
+	emails = make([]string, 0, len(recs))
+	for _, rec := range recs {
+		email := normalizeEmail(cast.ToString(rec["email"]))
+		if email != "" {
+			emails = append(emails, email)
+		}
+	}
+
+	return uniqueNonEmpty(emails)
 }
 
 func (s *CampanhaService) buscarEmails(nome, cidade, uf string) []string {

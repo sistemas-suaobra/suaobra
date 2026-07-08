@@ -150,9 +150,13 @@ export function useCreateCampaign(params: { teamId: string; userId: string; noti
             console.warn("Falha ao remover campanha sem destinatários", rollbackErr)
           }
 
-          throw new Error(
+          const motivo =
+            String(json?.motivo ?? "").trim() ||
             "Nenhum destinatário válido foi criado para a campanha. Revise os contatos selecionados e tente novamente."
-          )
+          const detalheIgnorados =
+            ignorados > 0 ? ` (${ignorados} contato(s) sem telefone/e-mail para os canais escolhidos.)` : ""
+
+          throw new Error(`${motivo}${detalheIgnorados}`)
         }
 
         notify(

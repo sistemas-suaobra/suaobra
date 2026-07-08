@@ -83,11 +83,16 @@ func AdicionarDestinatariosObrasPlus(c echo.Context) error {
 		return ErrJSON(400, err)
 	}
 
-	return c.JSON(200, g.M(
+	resp := g.M(
 		"success", true,
 		"criados", criados,
 		"ignorados", ignorados,
-	))
+	)
+	if criados == 0 && ignorados > 0 {
+		resp["motivo"] = "Não foi possível obter telefone ou e-mail válido para os canais selecionados. Verifique se o contato possui WhatsApp/e-mail cadastrado ou tente incluir E-mail como canal."
+	}
+
+	return c.JSON(200, resp)
 }
 
 // POST /campanhas/:id/iniciar
