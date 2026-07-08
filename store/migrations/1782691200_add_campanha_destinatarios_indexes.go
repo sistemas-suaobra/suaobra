@@ -1,6 +1,8 @@
 package migrations
 
 import (
+	"strings"
+
 	"github.com/pocketbase/dbx"
 	m "github.com/pocketbase/pocketbase/migrations"
 )
@@ -28,6 +30,12 @@ func init() {
 	m.Register(func(db dbx.Builder) error {
 		for _, q := range upQueries {
 			if _, err := db.NewQuery(q).Execute(); err != nil {
+				// Em alguns bancos locais antigos, a tabela ainda não existe
+				// no momento desta migration. Nesses casos, ignoramos para não
+				// bloquear o boot local.
+				if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+					continue
+				}
 				return err
 			}
 		}

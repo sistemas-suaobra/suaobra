@@ -483,24 +483,45 @@ export default function CampanhasTab() {
   const startLabel = (status: CampaignStatus) =>
     status === "PAUSADA" ? "RETOMAR" : "INICIAR";
 
+  const mainActionForStatus = (status: CampaignStatus) => {
+    if (canPause(status)) {
+      return {
+        label: "PAUSAR",
+        icon: "pi pi-pause",
+        severity: "warning" as const,
+        outlined: true,
+        disabled: false,
+        action: "pause" as const,
+      };
+    }
+
+    return {
+      label: startLabel(status),
+      icon: "pi pi-play",
+      severity: undefined,
+      outlined: false,
+      disabled: !canStart(status),
+      action: "start" as const,
+    };
+  };
+
   const actionsCell = (row: Campaign, _opts: ColumnBodyOptions) => (
     <div className="flex align-items-center gap-2 justify-content-end flex-wrap">
-      {canPause(row.status) ? (
-        <Button
-          label="PAUSAR"
-          icon="pi pi-pause"
-          className="p-button-sm p-button-outlined"
-          severity="warning"
-          onClick={() => pauseCampaign(row.id)}
-        />
-      ) : null}
-      <Button
-        label={startLabel(row.status)}
-        icon="pi pi-play"
-        className="p-button-sm"
-        disabled={!canStart(row.status)}
-        onClick={() => startCampaign(row.id)}
-      />
+      {(() => {
+        const mainAction = mainActionForStatus(row.status);
+        return (
+          <Button
+            label={mainAction.label}
+            icon={mainAction.icon}
+            className={`p-button-sm${mainAction.outlined ? " p-button-outlined" : ""}`}
+            severity={mainAction.severity}
+            disabled={mainAction.disabled}
+            onClick={() =>
+              mainAction.action === "pause" ? pauseCampaign(row.id) : startCampaign(row.id)
+            }
+          />
+        );
+      })()}
       <Button
         icon="pi pi-trash"
         className="p-button-text p-button-rounded p-button-sm"
@@ -624,22 +645,23 @@ export default function CampanhasTab() {
                     </div>
 
                     <div className="flex flex-column gap-2 mt-3">
-                      {canPause(row.status) ? (
-                        <Button
-                          label="PAUSAR"
-                          icon="pi pi-pause"
-                          className="p-button-sm p-button-outlined w-full"
-                          severity="warning"
-                          onClick={() => pauseCampaign(row.id)}
-                        />
-                      ) : null}
-                      <Button
-                        label={startLabel(row.status)}
-                        icon="pi pi-play"
-                        className="p-button-sm w-full"
-                        disabled={!canStart(row.status)}
-                        onClick={() => startCampaign(row.id)}
-                      />
+                      {(() => {
+                        const mainAction = mainActionForStatus(row.status);
+                        return (
+                          <Button
+                            label={mainAction.label}
+                            icon={mainAction.icon}
+                            className={`p-button-sm w-full${mainAction.outlined ? " p-button-outlined" : ""}`}
+                            severity={mainAction.severity}
+                            disabled={mainAction.disabled}
+                            onClick={() =>
+                              mainAction.action === "pause"
+                                ? pauseCampaign(row.id)
+                                : startCampaign(row.id)
+                            }
+                          />
+                        );
+                      })()}
                       <Button
                         label={canDelete(row.status) ? "Excluir" : "Excluir (indisponível)"}
                         icon="pi pi-trash"

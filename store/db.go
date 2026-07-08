@@ -3,6 +3,7 @@ package store
 import (
 	_ "embed"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,7 +28,13 @@ func SetPocketBaseDB(app *pocketbase.PocketBase) (err error) {
 	if MainDB != nil {
 		MainDB.Close()
 	}
-	url := g.F("sqlite://%s/data.db?cache=shared&mode=rwc&_journal_mode=WAL&_synchronous=NORMAL", app.DataDir())
+	dbFilePath := filepath.Join(app.DataDir(), "data.db")
+	if absPath, absErr := filepath.Abs(dbFilePath); absErr == nil {
+		dbFilePath = absPath
+	}
+	dbFilePath = filepath.ToSlash(dbFilePath)
+
+	url := g.F("sqlite:///%s?cache=shared&mode=rwc&_journal_mode=WAL&_synchronous=NORMAL", dbFilePath)
 	MainDB, err = database.NewConn(url)
 	if err != nil {
 		return g.Error(err, "could not init main db")

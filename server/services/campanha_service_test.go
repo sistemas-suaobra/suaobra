@@ -52,44 +52,6 @@ func TestPersonalizarMensagem_SubstituiVariaveis(t *testing.T) {
 	assert.NotContains(t, msg, "{{")
 }
 
-func TestAdicionarDestinatarios_OcultarJaContactados_BloqueiaPendente(t *testing.T) {
-	dao, cleanup := pbtest.NewCampanhaDAO(t)
-	defer cleanup()
-
-	repo := repositories.NewCampanhaRepo(dao)
-	svc := NewCampanhaService(repo, nil, nil, nil)
-
-	teamID := "team_test"
-	camp1ID := "camp_primeira"
-	camp2ID := "camp_segunda"
-	obraID := "obra_dup"
-
-	seedServiceCampanha(t, dao, teamID, camp1ID, []string{"WHATSAPP"})
-	seedServiceCampanha(t, dao, teamID, camp2ID, []string{"WHATSAPP"})
-
-	_, err := repo.CreateDestinatario(map[string]any{
-		"team_id":       teamID,
-		"campanha_id":   camp1ID,
-		"obra_id":       obraID,
-		"contato_tipo":  ContatoTipoOwner,
-		"status":        repositories.DestStatusPendente,
-		"telefone_e164": "5511888888888",
-		"nome_contato":  "Cliente",
-		"tentativas":    0,
-	})
-	require.NoError(t, err)
-
-	criados, ignorados, err := svc.AdicionarDestinatariosObrasPlus(
-		teamID,
-		camp2ID,
-		[]CampanhaDestinatarioInput{{ObraID: obraID, ContatoTipo: ContatoTipoOwner}},
-		true,
-	)
-	require.NoError(t, err)
-	assert.Equal(t, 0, criados)
-	assert.Equal(t, 1, ignorados)
-}
-
 func TestJaFoiContactado_DetectaPendenteEmOutraCampanha(t *testing.T) {
 	dao, cleanup := pbtest.NewCampanhaDAO(t)
 	defer cleanup()

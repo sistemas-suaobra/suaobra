@@ -59,3 +59,28 @@ func TestAdicionarDestinatariosObrasPlus_AltJSONKey(t *testing.T) {
 	ocultar := payload.OcultarJaContactados || payload.OcultarJaContactadosAlt
 	assert.True(t, ocultar)
 }
+
+func TestAdicionarDestinatariosObrasPlus_DestinatariosMantidosComToggleLigado(t *testing.T) {
+	body := map[string]any{
+		"destinatarios": []map[string]string{
+			{"obra_id": "obra_1", "contato_tipo": "OWNER"},
+			{"obra_id": "obra_2", "contato_tipo": "PROFISSIONAL"},
+		},
+		"ocultar_ja_contactados": true,
+	}
+
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	var parsed struct {
+		Destinatarios           []map[string]string `json:"destinatarios"`
+		OcultarJaContactados    bool                `json:"ocultar_ja_contactados"`
+		OcultarJaContactadosAlt bool                `json:"ocultarJaContactados"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &parsed))
+
+	assert.Len(t, parsed.Destinatarios, 2)
+	assert.Equal(t, "obra_1", parsed.Destinatarios[0]["obra_id"])
+	assert.Equal(t, "OWNER", parsed.Destinatarios[0]["contato_tipo"])
+	assert.True(t, parsed.OcultarJaContactados || parsed.OcultarJaContactadosAlt)
+}

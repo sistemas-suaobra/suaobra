@@ -688,7 +688,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             </div>
 
             <div className="text-secondary" style={{ fontSize: 12 }}>
-              Quando ativo, a lista já esconde leads que já receberam contato.
+              Quando ativo, a lista esconde leads já contactados, mas sua seleção manual sempre será respeitada.
             </div>
           </div>
         </div>

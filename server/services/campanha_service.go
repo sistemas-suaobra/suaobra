@@ -161,13 +161,16 @@ func (s *CampanhaService) jaFoiContactado(teamID, obraID, contatoTipo string) (b
 	return s.repo.ExistsContatoEnviado(teamID, obraID, tipo)
 }
 
-// AdicionarDestinatariosObrasPlus cria destinatários direto da base Obras Plus.
-// Agora também respeita a flag "ocultar já contactados".
+// AdicionarDestinatariosObrasPlus cria destinatários a partir da seleção manual
+// feita na tela de campanha. O payload recebido já representa os destinatários
+// escolhidos pelo usuário e deve ser respeitado integralmente.
 func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
 	teamID, campanhaID string,
 	inputs []CampanhaDestinatarioInput,
 	ocultarJaContactados bool,
 ) (int, int, error) {
+	_ = ocultarJaContactados // legado: hoje não filtra seleção manual por histórico
+
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
 		return 0, 0, g.Error(err, "campanha não encontrada")
@@ -192,20 +195,6 @@ func (s *CampanhaService) AdicionarDestinatariosObrasPlus(
 		if obraID == "" || contatoTipo == "" {
 			ignorados++
 			continue
-		}
-
-		// O toggle "Ocultar já contactados" só pula contatos quando LIGADO.
-		// Quando o usuário DESLIGA o toggle e seleciona um contato já contatado,
-		// o envio é intencional ("foi uma escolha que fiz") e NÃO deve ser pulado.
-		if ocultarJaContactados {
-			jaFoi, err := s.jaFoiContactado(teamID, obraID, contatoTipo)
-			if err != nil {
-				return criados, ignorados, g.Error(err, "erro ao verificar histórico de contato")
-			}
-			if jaFoi {
-				ignorados++
-				continue
-			}
 		}
 
 		contato, err := s.BuscarContatoObraPorTipo(obraID, contatoTipo)
@@ -664,7 +653,11 @@ func (s *CampanhaService) ProcessarCampanhaAsync(campanhaID string) {
 						g.Warn("manter_ia: erro ao garantir conversa para %s: %v", telefone, err)
 					}
 				} else if s.conversaRepo != nil {
-					PausarConversaIA(s.conversaRepo, teamID, []string{telefone})
+					candidatos := BuildTelefoneCandidates(telefone)
+					if len(candidatos) == 0 {
+						candidatos = []string{telefone}
+					}
+					PausarConversaIA(s.conversaRepo, teamID, candidatos)
 				}
 			} else {
 				g.Error(sendErr, "Falha WhatsApp para %s (destinatário %s)", telefone, dest.Id)

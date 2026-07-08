@@ -58,6 +58,25 @@ O backend é construído sobre o PocketBase. Ele gerencia autenticação, banco 
    ```
    O frontend estará disponível em `http://localhost:3000` (ou a porta indicada no terminal).
 
+4. (Opcional, recomendado para dev) Defina explicitamente a URL da API no frontend:
+   crie `frontend/.env` com:
+   ```bash
+   PUBLIC_API_BASE_URL=http://127.0.0.1:8090
+   ```
+   Isso evita mismatch de porta quando o backend estiver rodando localmente.
+
+## Teste local rápido (campanha + IA)
+
+1. Suba backend e frontend localmente.
+2. Crie uma campanha com **"Manter IA após resposta"** desativado.
+3. Inicie a campanha e envie uma resposta pelo WhatsApp do lead.
+4. Resultado esperado: a conversa deve ficar `PAUSADA` e a IA **não** deve responder automaticamente.
+
+Para rodar os testes de backend relacionados:
+```bash
+scripts/test-smoke.ps1
+```
+
 ## Executando com Docker
 
 Se preferir rodar toda a aplicação em containers (simulando produção):

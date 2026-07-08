@@ -66,6 +66,9 @@ func AdicionarDestinatariosObrasPlus(c echo.Context) error {
 		return ErrJSON(400, errors.New("O limite de disparos por campanha é de 50 leads"))
 	}
 
+	// Mantemos as duas chaves por compatibilidade de payload.
+	// No fluxo atual de campanha, os destinatários chegam por seleção manual e
+	// não são mais filtrados novamente por histórico de contato nesta etapa.
 	ocultarJaContactados := body.OcultarJaContactados || body.OcultarJaContactadosAlt
 
 	svc := newCampanhaService(req)

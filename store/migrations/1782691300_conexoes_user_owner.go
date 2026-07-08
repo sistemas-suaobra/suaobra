@@ -26,8 +26,6 @@ func init() {
 			if err := dao.SaveCollection(col); err != nil {
 				return err
 			}
-		} else {
-			return err
 		}
 
 		if col, err := dao.FindCollectionByNameOrId("campanhas"); err == nil {
@@ -42,8 +40,6 @@ func init() {
 					return err
 				}
 			}
-		} else {
-			return err
 		}
 
 		return nil

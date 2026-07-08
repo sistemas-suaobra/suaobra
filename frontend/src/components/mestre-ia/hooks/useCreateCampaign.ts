@@ -143,6 +143,18 @@ export function useCreateCampaign(params: { teamId: string; userId: string; noti
         const criados = Number(json?.criados || 0)
         const ignorados = Number(json?.ignorados || 0)
 
+        if (criados <= 0) {
+          try {
+            await pb.collection("campanhas").delete(campanhaRecord.id)
+          } catch (rollbackErr) {
+            console.warn("Falha ao remover campanha sem destinatários", rollbackErr)
+          }
+
+          throw new Error(
+            "Nenhum destinatário válido foi criado para a campanha. Revise os contatos selecionados e tente novamente."
+          )
+        }
+
         notify(
           "success",
           "Campanha criada",
