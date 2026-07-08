@@ -145,7 +145,7 @@ func (r *Request) SqlQuery(sql string) (data iop.Dataset, err error) {
 	// 	recs[i] = rec
 	// }
 
-	store.AttachCoreDb() // FIXME: weird that core.db seems to detach after a while
+	store.EnsureCoreReady() // core.db pode desanexar entre queries SQLite
 
 	sql = store.BindSQL(sql, r.Payload.Map())
 retry:
@@ -207,7 +207,7 @@ func (r *Request) SqlExecute(sql string) (err error) {
 	// 	return g.Error(err, "error executing query")
 	// }
 
-	store.AttachCoreDb() // FIXME: weird that core.db seems to detach after a while
+	store.EnsureCoreReady() // core.db pode desanexar entre queries SQLite
 
 	sql = store.BindSQL(sql, r.Payload.Map())
 	_, err = store.MainDB.Exec(sql)

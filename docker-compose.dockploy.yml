@@ -17,7 +17,11 @@
 # rotas duplicadas para o mesmo host geram 502 (compose :80 vs Dokploy :8091).
 # Caddy escuta na porta 8091 dentro do container; host 8091:8091 e debug por IP.
 #
-# Dados: core.db em ../files/suaobra/data/core.db (volume abaixo).
+# Dados persistentes (volume abaixo):
+#   ../files/suaobra/data/main/     → PocketBase (data.db)
+#   ../files/suaobra/data/core.db   → Obras+ (layout Dokploy)
+#   ../files/suaobra/data/core/core.db → Obras+ (layout Docker legado)
+# O backend tenta os dois caminhos automaticamente.
 
 services:
   backend:

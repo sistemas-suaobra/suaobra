@@ -1,0 +1,252 @@
+---
+description: Contexto completo do SuaObra — arquitetura, módulos, deploy, banco e armadilhas conhecidas
+alwaysApply: true
+---
+
+# SuaObra — Guia do Projeto
+
+Plataforma B2B para equipes de construção: busca de obras (Obras+), CRM (Venda Mais), campanhas WhatsApp/e-mail com IA (Mestre IA), dashboard e clube.
+
+**Stack:** Astro 4 + React + PrimeReact + Nano Stores (frontend) | Go 1.24 + PocketBase + Echo (backend) | SQLite (PocketBase `data.db` + `core.db` read-only) | Docker + Dokploy + Traefik + Caddy.
+
+**Domínios produção:** `app.suaobra.com.br` (frontend) · `api.suaobra.com.br` (backend PocketBase + rotas custom).
+
+---
+
+## Estrutura de pastas
+
+```
+suaobra-app.go          # Entry point — rotas Echo + cron + hooks
+server/                 # Handlers HTTP, services, repositories, templates SQL
+  routes_*.go           # Um arquivo por domínio (campanhas, conexoes, obras_plus, etc.)
+  services/             # Lógica de negócio (campanha, whatsapp, email, IA, gemini)
+  repositories/         # Acesso PocketBase por entidade
+  templates/            # SQL embutido (core/, crm/, dashboard/)
+  clients/wuzapi/       # Cliente HTTP WhatsApp (wuzapi/whatsmeow)
+store/                  # PocketBase DB, migrations, core.db attach
+  db.go                 # MainDB, AttachCoreDb, ObrasCities, EnsureCoreReady
+  migrations/           # Migrações PocketBase (auto + manuais)
+frontend/
+  src/pages/*.astro     # Rotas Astro (uma página por módulo)
+  src/components/       # React por módulo (mestre-ia/, obras-plus/, crm/, dashboard/)
+  src/store/api.ts      # PocketBase client, baseURL, helpers de fetch
+  src/store/cities.ts   # cityMap UF-CIDADE → "NOME DA CIDADE" (usado em queries)
+  Caddyfile             # SPA estático na porta 8091
+docker-compose.dockploy.yml  # Deploy produção Dokploy
+Dockerfile              # Build backend Go
+go-concorrente/         # Ferramenta separada (scraping ZenRows) — não é o app principal
+```
+
+**Binário local:** `go run suaobra-app.go serve` (PocketBase default 8090; Docker usa `--http 0.0.0.0:8080`).
+
+**NÃO commitar:** `frontend/dist/`, `data/`, `core.db`, `.env`, artefatos de build.
+
+---
+
+## Deploy (Dokploy) — ler antes de mexer
+
+Arquivo: `docker-compose.dockploy.yml`.
+
+| Serviço   | Porta container | Roteamento |
+|-----------|-----------------|------------|
+| backend   | 8080            | Labels Traefik no compose (`api.suaobra.com.br`) |
+| frontend  | 8091            | **Somente** aba Domains do Dokploy (Container Port = 8091) |
+
+### Armadilhas que já derrubaram produção
+
+1. **502 no frontend:** NÃO colocar labels Traefik no `frontend` **e** domínio na aba Domains ao mesmo tempo — rotas duplicadas (compose :80 vs Dokploy :8091).
+2. **Caddy:** escuta só `:8091` (`frontend/Caddyfile`). Não voltar para `:80` sem alinhar Dokploy.
+3. **SQLite URL no `store/db.go`:** usar `sqlite://%s/data.db?...` com `app.DataDir()`. **Nunca** `sqlite:///C:/...` ou path absoluto no ATTACH — quebra Linux (`invalid uri authority: app`).
+4. **core.db ATTACH:** procurar em `/app/data/core.db` **e** `/app/data/core/core.db` (layout legado). ATTACH tenta caminho absoluto primeiro (deploy antigo), depois relativo (`../core.db` ou `../core/core.db`). Se `ObrasCities` vazio → **404 em `/query/leads-plus`**.
+5. **Volume:** `../files/suaobra/data:/app/data` — `core.db` em `data/core.db` ou `data/core/core.db`.
+6. **Backend restart loop:** attach falho ou `core.db` ausente/vazio (<4KB) — checar logs `attaching core from`.
+
+Variáveis obrigatórias no Dokploy: `ENV`, `GEMINI_API_KEY`, `MESSENGER_TOKEN`, `MESSENGER_BASE_URL`, `WHATSMEOW_URL`, `WHATSMEOW_APIKEY`, `WHATSMEOW_WEBHOOK_BASE`.
+
+---
+
+## Banco de dados
+
+### PocketBase (`data/main/data.db`)
+- Auth, teams, campanhas, conexões WhatsApp/e-mail, conversas IA, CRM, leads.
+- Migrações em `store/migrations/`; `Automigrate: true` no admin UI.
+- IDs customizados via `store.ID()` no hook `OnModelBeforeCreate`.
+
+### core.db (Obras+)
+- SQLite read-only anexado como schema `core`.
+- Tabelas principais: `core.core_obras_plus`, `core_obras_plus_phone`, `core_obras_plus_email`.
+- Popula `store.ObrasCities` em `loadCities()`.
+- `store.AttachCoreDb()` chamado no boot e antes de queries SQL (`server/request.go` — core pode desanexar).
+- `store.EnsureCoreReady()` antes de `validateCity` em Obras+.
+- Dev: `ENV=development` importa CSV via sling (`store/coredb.go`); prod usa `CORE_DB_PATH` ou default `/app/data/core.db`.
+
+### Collections PocketBase usadas no código
+
+| Collection | Uso |
+|------------|-----|
+| `user` | Auth; `team_id`, `manager` |
+| `team` | `cities` (JSON), `owner_id`, entitlements |
+| `campanhas` | Campanhas Mestre IA (`manter_ia`, canal, status, mensagem) |
+| `campanha_destinatarios` | Destinatários por obra/contato |
+| `campanha_lead_respostas` | Respostas recebidas |
+| `conexoes` | WhatsApp por usuário (`numero_e164`, token wuzapi) |
+| `conexoes_email` | SMTP por team |
+| `conversas_ia` | Estado conversacional por telefone |
+| `agente_ia_intencoes` | Intenções do agente IA |
+| `lead`, `list`, `list_lead`, `list_stage` | CRM Venda Mais |
+| `rudderstack` | Eventos analytics (webhook debug) |
+
+---
+
+## Backend — rotas por módulo
+
+Registro em `suaobra-app.go`. Auth via header `Authorization` (token PocketBase) em `server/request.go` → `NewRequest`.
+
+### Obras+ / Leads (`server/routes_obas_plus.go`)
+- `GET /query/obras-plus` — listagem paginada de obras
+- `GET /query/leads-plus` — alias de obras-plus (usado no modal de campanha)
+- `GET /query/obras-plus-neighborhood` — bairros por cidade
+- `GET /query/obras-plus-export` — export CSV
+- `GET /query/obras-plus-contacts` — telefones/e-mails
+- `GET /query/cities` — cidades do team
+- Query param `city` = nome em maiúsculas sem UF (ex: `CAMPOS DO JORDAO`), validado contra `ObrasCities`.
+- SQL em `server/templates/core/*.sql`.
+
+### Campanhas (`server/routes_campanhas.go` + `services/campanha_service.go`)
+- `POST /campanhas/:id/iniciar|pausar|cancelar`
+- `GET /campanhas/:id/status`
+- `POST /campanhas/:id/destinatarios/obras-plus` — adiciona destinatários (seleção manual respeitada)
+- `POST /campanhas/:id/enriquecer`
+- `PATCH /campanha-destinatarios/marcar-enviado`
+- `POST /campanhas/gerar-mensagem-ia`
+- Delay WhatsApp: 5 min entre envios (`delayEntreEnviosWhatsApp`).
+- `contato_tipo`: `OWNER` | `PROFISSIONAL`.
+- `ocultar_ja_contactados`: filtro na listagem; seleção manual não deve ser bloqueada pelo mesmo filtro.
+- `complementarContatosDoHistorico()` reutiliza telefone/e-mail de campanhas anteriores.
+- `manter_ia` (bool): se false, IA não responde após resposta do lead.
+
+### Conexões WhatsApp/e-mail (`server/routes_conexoes.go`)
+- CRUD conexão WhatsApp, QR, status, disconnect, send-test, fix-webhook.
+- `POST /webhooks/whatsmeow` — webhook wuzapi (mensagens recebidas → IA ou pausa).
+- E-mail: `POST/GET /conexoes/email`, send-test.
+- `SyncWebhookURLs` no boot reconfigura webhooks.
+
+### Agente IA (`server/routes_agente_ia.go`)
+- Intenções CRUD: `/agente-ia/intencoes`
+- Conversas: `/agente-ia/conversas` (listar, obter, atualizar status)
+- Escopo por `team_id`.
+
+### IA conversacional (`server/services/ia_conversacional_service.go`, `ia_policy.go`)
+- `IAAtivaParaTelefone()` — verifica campanha com `manter_ia=true` e destinatário ENVIADO.
+- `BuildTelefoneCandidates()` — normaliza 55/DDD/9º dígito para match.
+- Erro Gemini → mensagem fallback: *"Desculpe, estou com dificuldades técnicas..."*
+- `PausarConversaIA()` quando `manter_ia=false`.
+
+### CRM (`server/routes_crm.go` ou similar)
+- `GET /query/crm/leads|contacts|search`
+- `PATCH /patch/lead-toggle`, `/patch/lead-owner`
+
+### Dashboard
+- `GET /query/dashboard/funnel|history|leads|users|campanhas`
+
+### Messenger (serviço externo legado)
+- `POST /messenger/sync`, `/messenger/queue/*`, `/messenger/existing`, etc.
+- Token: `MESSENGER_TOKEN`.
+
+### Team
+- `GET /team/members`, `POST /team/invite|remove-member|set-manager`
+
+---
+
+## Frontend — páginas e módulos
+
+| Rota Astro | Componente principal | Função |
+|------------|---------------------|--------|
+| `/` | Login | Auth PocketBase |
+| `/dashboard` | DashboardPage | Funil, métricas |
+| `/obras-plus` | ObraPlusPage | Busca obras por cidade/bairro |
+| `/obras-plus-iframe` | iframe embed | Sem login obrigatório |
+| `/venda-mais` | VendaMaisPage | CRM kanban |
+| `/mestre-ia` | MestreIaPage | Campanhas, conexões, IA, leads |
+| `/info-obras` | info obras | Conteúdo informativo |
+| `/clube` | clube | Programa clube |
+| `/verification` | verificação e-mail | |
+
+### API client (`frontend/src/store/api.ts`)
+- `baseURL()`: prod → `https://api.suaobra.com.br`; stage → `api-hml`; local → `:8080` ou `api.suaobra.test`.
+- **Não alterar** lógica de hostname em prod sem testar deploy.
+- `PB()` = PocketBase client; `api().get/post/patch` para rotas custom com token do user.
+
+### Cidades (`frontend/src/store/cities.ts`)
+- Chave team: `SP-CAMPOS_DO_JORDAO` → query API: `CAMPOS DO JORDAO`.
+- Função `makeCity()` converte para nome usado no backend.
+
+### Mestre IA (`frontend/src/components/mestre-ia/`)
+- **CampanhasTab** — lista campanhas, botão único Iniciar/Pausar/Retomar.
+- **CreateCampaignDialog** — modal criar campanha; valida contato por canal.
+- **useCampaignLeadOptions** — fetch `GET /query/leads-plus` com filtros; `itemsPerPage: 200`; estado em `obraRecords` (não só ref — precisa re-render).
+- **useCreateCampaign** — cria `campanhas` + POST destinatários.
+- **ConexaoTab** — WhatsApp QR + e-mail.
+- **AgenteIATab** — intenções e conversas.
+- **LeadsTab** — leads favoritados.
+- Hooks: `useWhatsappConnection`, `useEmailConnection`, `useObrasPlusFilters`.
+
+### Obras+ (`frontend/src/components/obras-plus/`)
+- Mesma API `/query/obras-plus*`; filtros de cidade do team (`team.cities`).
+
+### CRM (`frontend/src/components/crm/`)
+- VendaMaisPage, LeadDialogPanel, StageDialogPanel.
+
+---
+
+## Fluxos críticos (não quebrar)
+
+### Criar campanha com destinatários
+1. Modal abre → `useCampaignLeadOptions` busca `leads-plus?city=...`
+2. Usuário seleciona obras → `POST /campanhas/:id/destinatarios/obras-plus` com `obra_id` + `contato_tipo`
+3. Frontend valida telefone/e-mail conforme canal antes de criar
+4. `IniciarCampanha` → fila de envio com delay
+
+### Resposta WhatsApp inbound
+1. wuzapi → `POST /webhooks/whatsmeow`
+2. `FindDestinatarioEnviadoRecente` + `IAAtivaParaTelefone`
+3. Se `manter_ia=false` → registra resposta, pausa conversa, **sem** IA
+4. Se ativo → `ia_conversacional_service` + Gemini
+
+### Obras+ 404 "cidade inválida"
+1. Verificar `core.db` no volume
+2. Logs: `attaching core from` e `sql path: ../core.db`
+3. `GET /query/cities` ou checar `ObrasCities` populado
+4. Nome da cidade deve bater exatamente com core (maiúsculas, sem acento)
+
+---
+
+## Convenções de código
+
+- **Go:** handlers finos em `routes_*`, lógica em `services/`, SQL em `templates/`.
+- **Erros HTTP:** `server.ErrJSON` / `g.Error`.
+- **Frontend:** componentes funcionais React; hooks para fetch; PrimeReact para UI.
+- **Mudanças mínimas:** não refatorar fora do escopo; seguir padrão existente.
+- **Testes:** `server/services/campanha_service_test.go`, `server/routes_campanhas_test.go`, `scripts/test-smoke.ps1`.
+- **Commits:** só quando o usuário pedir; mensagens em português focadas no "porquê".
+
+---
+
+## Checklist pós-alteração em produção
+
+1. Backend sobe sem restart loop? (`docker logs` — sem `invalid uri authority`)
+2. `core.db` anexado? (log `attaching core`)
+3. `GET /query/leads-plus?city=CAMPOS DO JORDAO&...` → 200
+4. Frontend sem 502? (uma rota Traefik só, porta 8091)
+5. Campanha: destinatários > 0, envio e pausa IA com `manter_ia=false`
+
+---
+
+## Arquivos sensíveis — consultar antes de editar
+
+- `store/db.go` — attach core, URL SQLite
+- `frontend/src/store/api.ts` — baseURL produção
+- `docker-compose.dockploy.yml` + `frontend/Caddyfile` — deploy
+- `server/services/campanha_service.go` — regras de destinatário e envio
+- `server/services/ia_policy.go` — quando IA responde
+- `server/routes_obas_plus.go` — validateCity e queries Obras+
