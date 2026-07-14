@@ -68,6 +68,9 @@ export const loadUserState = async () => {
     if (u.team.cities.includes('DF-*')) {
       u.team.cities = allCities.filter(c => c.id.startsWith('DF-')).map(c => c.id).sort()
     }
+    if (u.team.cities.includes('PR-*')) {
+      u.team.cities = allCities.filter(c => c.id.startsWith('PR-')).map(c => c.id).sort()
+    }
     return u
   })
 
