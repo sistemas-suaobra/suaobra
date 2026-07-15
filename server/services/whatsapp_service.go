@@ -62,9 +62,18 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 		return false, nil, nil, g.Error("error creating wuzapi user: %v", err)
 	}
 
+	cleanupOrphan := func() {
+		if id := strings.TrimSpace(created.Data.ID); id != "" {
+			if delErr := s.wuz.DeleteAdminUser(id); delErr != nil {
+				g.Warn("CreateConnection: falha ao limpar órfão wuzapi id=%s: %v", id, delErr)
+			}
+		}
+	}
+
 	if con == nil {
 		con, err = s.conRepo.CreateWhatsapp(teamID, userID, name)
 		if err != nil {
+			cleanupOrphan()
 			return false, nil, nil, err
 		}
 	}
@@ -84,6 +93,7 @@ func (s *WhatsAppService) CreateConnection(teamID, userID, name, apiKey string) 
 
 	wa, err = s.waRepo.Create(con.Id, fields)
 	if err != nil {
+		cleanupOrphan()
 		return false, con, nil, err
 	}
 
@@ -575,4 +585,180 @@ func maskWAToken(token string) string {
 		return token
 	}
 	return token[:3] + strings.Repeat("*", len(token)-6) + token[len(token)-3:]
+}
+
+// ResolveWARecord encontra conexoes_whatsapp por instancia_id, token do body ou header.
+func (s *WhatsAppService) ResolveWARecord(userID, tokenHeader string) (wa *models.Record, instanciaID string) {
+	userID = strings.TrimSpace(userID)
+	tokenHeader = strings.TrimSpace(tokenHeader)
+
+	if userID != "" {
+		rec, err := s.waRepo.FindByInstanciaID(userID)
+		if err == nil && rec != nil && rec.Id != "" {
+			return rec, strings.TrimSpace(rec.GetString("instancia_id"))
+		}
+
+		rec, err = s.waRepo.FindByToken(userID)
+		if err == nil && rec != nil && rec.Id != "" {
+			return rec, strings.TrimSpace(rec.GetString("instancia_id"))
+		}
+	}
+
+	if tokenHeader != "" && tokenHeader != userID {
+		rec, err := s.waRepo.FindByToken(tokenHeader)
+		if err == nil && rec != nil && rec.Id != "" {
+			return rec, strings.TrimSpace(rec.GetString("instancia_id"))
+		}
+	}
+
+	return nil, ""
+}
+
+// HandleConnectedEvent marca a sessão como conectada e re-sincroniza webhook/events no wuzapi.
+func (s *WhatsAppService) HandleConnectedEvent(userID, tokenHeader, jid string) error {
+	wa, instanciaID := s.ResolveWARecord(userID, tokenHeader)
+	if wa == nil || wa.Id == "" {
+		g.Warn("WhatsAppService.HandleConnectedEvent: registro não encontrado userID=%q", userID)
+		return nil
+	}
+
+	if err := s.waRepo.UpdateConnected(wa, strings.TrimSpace(jid)); err != nil {
+		return err
+	}
+	g.Info("WhatsAppService.HandleConnectedEvent: OK jid=%q waId=%s", jid, wa.Id)
+
+	if instanciaID != "" {
+		go s.ensureWebhookAndEvents(instanciaID)
+	}
+	return nil
+}
+
+func (s *WhatsAppService) ensureWebhookAndEvents(instanciaID string) {
+	instanciaID = strings.TrimSpace(instanciaID)
+	if instanciaID == "" {
+		return
+	}
+
+	cfg := config.NewWhatsMeowConfig()
+	webhookURL := cfg.WebhookURL()
+	if webhookURL == "" {
+		return
+	}
+
+	if err := s.wuz.UpdateAdminUser(instanciaID, map[string]any{
+		"webhook": webhookURL,
+		"events":  "All",
+	}); err != nil {
+		g.Warn("WhatsAppService.ensureWebhookAndEvents: falha instancia=%s: %v", instanciaID, err)
+		return
+	}
+	g.Info("WhatsAppService.ensureWebhookAndEvents: OK instancia=%s webhook=%s", instanciaID, webhookURL)
+}
+
+// FixWebhookForUser atualiza webhook/events da conexão ativa do usuário no wuzapi e no DB.
+func (s *WhatsAppService) FixWebhookForUser(teamID, userID string) (webhookURL string, err error) {
+	cfg := config.NewWhatsMeowConfig()
+	webhookURL = cfg.WebhookURL()
+	if webhookURL == "" {
+		return "", g.Error("WHATSMEOW_WEBHOOK_BASE não configurado no servidor")
+	}
+
+	con, err := s.conRepo.FindActiveWhatsappForUser(teamID, userID)
+	if err != nil || con == nil || con.Id == "" {
+		return "", g.Error("nenhuma conexão WhatsApp ativa encontrada")
+	}
+
+	wa, err := s.waRepo.FindByConexao(con.Id)
+	if err != nil || wa == nil || wa.Id == "" {
+		return "", g.Error("dados do WhatsApp não encontrados")
+	}
+
+	instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
+	if instanciaID == "" {
+		return "", g.Error("instancia_id não configurado para esta conexão")
+	}
+
+	if err := s.wuz.UpdateAdminUser(instanciaID, map[string]any{
+		"webhook": webhookURL,
+		"events":  "All",
+	}); err != nil {
+		return "", err
+	}
+
+	if saveErr := s.waRepo.UpdateWebhookAndEvents(wa, webhookURL, "All"); saveErr != nil {
+		g.Warn("FixWebhookForUser: falha ao salvar local instancia=%s: %v", instanciaID, saveErr)
+	}
+
+	g.Info("FixWebhookForUser: webhook=%s instancia=%s", webhookURL, instanciaID)
+	return webhookURL, nil
+}
+
+// SyncWebhookURLs força webhook+Events=All em todas as instâncias locais e órfãs relevantes.
+func (s *WhatsAppService) SyncWebhookURLs() {
+	cfg := config.NewWhatsMeowConfig()
+	webhookURL := cfg.WebhookURL()
+	if webhookURL == "" {
+		g.Warn("SyncWebhookURLs: WHATSMEOW_WEBHOOK_BASE não configurado, pulando sync")
+		return
+	}
+
+	records, err := s.waRepo.FindAll()
+	if err != nil {
+		g.Warn("SyncWebhookURLs: erro ao buscar conexões locais: %v", err)
+	}
+
+	knownInstanciaIDs := map[string]bool{}
+
+	for _, wa := range records {
+		instanciaID := strings.TrimSpace(wa.GetString("instancia_id"))
+		if instanciaID == "" {
+			continue
+		}
+		knownInstanciaIDs[instanciaID] = true
+
+		g.Info("SyncWebhookURLs: forçando sync instancia=%s webhook=%q events=All", instanciaID, webhookURL)
+
+		if err := s.wuz.UpdateAdminUser(instanciaID, map[string]any{
+			"webhook": webhookURL,
+			"events":  "All",
+		}); err != nil {
+			g.Warn("SyncWebhookURLs: falha ao atualizar instancia=%s: %v", instanciaID, err)
+			continue
+		}
+
+		if saveErr := s.waRepo.UpdateWebhookAndEvents(wa, webhookURL, "All"); saveErr != nil {
+			g.Warn("SyncWebhookURLs: falha ao salvar local instancia=%s: %v", instanciaID, saveErr)
+		} else {
+			g.Info("SyncWebhookURLs: sync OK instancia=%s", instanciaID)
+		}
+	}
+
+	allUsers, listErr := s.wuz.ListAllAdminUsers()
+	if listErr != nil {
+		g.Warn("SyncWebhookURLs: falha ao listar todos os users wuzapi: %v", listErr)
+		return
+	}
+
+	for _, user := range allUsers {
+		if knownInstanciaIDs[user.ID] {
+			continue
+		}
+
+		if user.Webhook == "" || user.Webhook == webhookURL ||
+			strings.Contains(user.Webhook, "suaobra") ||
+			strings.Contains(user.Webhook, "ngrok") {
+
+			g.Info("SyncWebhookURLs: sync instância órfã id=%s name=%s connected=%v events=%q webhook=%q",
+				user.ID, user.Name, user.Connected, user.Events, user.Webhook)
+
+			if err := s.wuz.UpdateAdminUser(user.ID, map[string]any{
+				"webhook": webhookURL,
+				"events":  "All",
+			}); err != nil {
+				g.Warn("SyncWebhookURLs: falha ao sync órfã id=%s: %v", user.ID, err)
+			}
+		}
+	}
+
+	g.Info("SyncWebhookURLs: sync completo — %d instâncias locais, %d total no wuzapi", len(records), len(allUsers))
 }

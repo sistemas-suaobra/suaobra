@@ -35,12 +35,14 @@ export const api = () => {
       return new PocketBaseCollection(collection)
     },
 
-    get: async (url: string, data: ObjectString, loggedIn = true) => {
+    get: async (url: string, data?: ObjectString | null, loggedIn = true) => {
       let response = new Response()
       try {
         isWaiting.set(true)
         if (loggedIn && !user.get().token) await loadUserOrLogout()
-        let resp = await fetch(`${url}?${serialize(data)}`, {
+        // serialize() não aceita null/undefined — callers sem query params podem omitir data.
+        const query: ObjectString = data ?? {}
+        let resp = await fetch(`${url}?${serialize(query)}`, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',

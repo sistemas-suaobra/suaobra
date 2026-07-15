@@ -116,7 +116,20 @@ export function useWhatsappConnection(notify: NotifyFn) {
     setWaQrError("");
 
     try {
-      const qr = await fetchQrOnce();
+      let qr = await fetchQrOnce();
+
+      // Sessão pode ter caído — re-connect e tenta de novo antes de falhar.
+      if (!qr) {
+        const connectUrl = `${baseURL()}/conexoes/whatsapp/connect`;
+        await requestWithLog<WhatsMeowConnectResp>({
+          label: "Reconectar Sessão WhatsApp (Atualizar QR)",
+          method: "POST",
+          url: connectUrl,
+          body: {},
+        });
+        await sleep(900);
+        qr = await fetchQrOnce();
+      }
 
       if (!qr) {
         setWaQr("");

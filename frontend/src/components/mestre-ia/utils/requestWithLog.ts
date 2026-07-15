@@ -20,7 +20,7 @@ export async function requestWithLog<T = any>(opts: ReqOpts) {
     const client = api();
 
     let resp: any;
-    if (method === "GET") resp = await client.get(url);
+    if (method === "GET") resp = await client.get(url, body ?? {});
     else resp = await client.post(url, body ?? {});
 
     const status = resp?.status ?? resp?.response?.status ?? undefined;

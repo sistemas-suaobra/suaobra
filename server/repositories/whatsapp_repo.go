@@ -120,6 +120,16 @@ func (r *WhatsAppRepo) ClearConnected(wa *models.Record) error {
 	return r.dao.SaveRecord(wa)
 }
 
+// UpdateWebhookAndEvents persiste webhook/events após sync no wuzapi.
+func (r *WhatsAppRepo) UpdateWebhookAndEvents(wa *models.Record, webhook, events string) error {
+	if wa == nil || wa.Id == "" {
+		return nil
+	}
+	wa.Set("webhook", webhook)
+	wa.Set("events", events)
+	return r.dao.SaveRecord(wa)
+}
+
 // FindByToken localiza um registro de conexoes_whatsapp pelo token do usuário (numero_e164).
 func (r *WhatsAppRepo) FindByToken(token string) (*models.Record, error) {
 	wa, err := r.dao.FindFirstRecordByFilter(

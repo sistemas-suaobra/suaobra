@@ -4,6 +4,7 @@ import { Tag } from "primereact/tag";
 import { InputText } from "primereact/inputtext";
 import { InputTextarea } from "primereact/inputtextarea";
 import { WhatsAppQrDialog } from "./WhatsAppQrDialog";
+import { MestreIaTransitionLoader } from "../MestreIaTransitionLoader";
 import { formatWhatsappJid } from "../utils/whatsappJid";
 import { baseURL } from "../../../store/api";
 import { user } from "../../../store/store";
