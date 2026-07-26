@@ -9,6 +9,6 @@ left join list_lead ll on l.id = ll.lead_id
 left join list_stage ls on ls.id = ll.stage_id
 where {where_clause}
   and (
-    strftime('%Y-%m', date(l.favorited_at)) = strftime('%Y-%m', date({:month}))
-    or strftime('%Y-%m', date(l.visited_at)) = strftime('%Y-%m', date({:month}))
+    (l.favorited_at >= {:month} and l.favorited_at < date({:month}, '+1 month'))
+    or (l.visited_at >= {:month} and l.visited_at < date({:month}, '+1 month'))
   )

@@ -1,6 +1,10 @@
 select count(1) cnt
 from core.core_obras_plus cop
 
+left join main.lead l
+  on cop.id = l.obra_id
+  and l.team_id = '{teamId}'
+
 left join main.obra_note n
   on cop.id = n.obra_id
   

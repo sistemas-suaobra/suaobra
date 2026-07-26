@@ -12,6 +12,10 @@ with recursive generate_dates(value) as (
   from main.lead
   where coalesce(nullif(visited_at, ''), nullif(favorited_at, '')) is not null
     and {where_clause_visits}
+    and (
+      (visited_at >= {:start_date} and visited_at < {:end_date})
+      or (favorited_at >= {:start_date} and favorited_at < {:end_date})
+    )
   group by 1
 )
 
@@ -22,6 +26,8 @@ with recursive generate_dates(value) as (
   from main.lead
   where nullif(favorited_at, '') is not null
     and {where_clause_leads}
+    and favorited_at >= {:start_date}
+    and favorited_at < {:end_date}
   group by 1
 )
 

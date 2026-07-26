@@ -23,6 +23,7 @@ var MainDao *daos.Dao
 var MainDB database.Connection
 var mainDataDir string
 var resolvedCoreDbPath string
+var coreIndexesEnsured bool
 
 func SetPocketBaseDB(app *pocketbase.PocketBase) (err error) {
 	MainDao = app.Dao()
@@ -162,6 +163,7 @@ func AttachCoreDb() error {
 		}
 		if coreIsAttached() {
 			g.Info("core.db anexado com sucesso: file=%s sql=%s", corePath, attachPath)
+			ensureCoreIndexes()
 			if err = loadCities(); err != nil {
 				g.Warn("nao foi possivel carregar cidades apos attach do core: %v", err)
 			}
@@ -184,8 +186,40 @@ func EnsureCoreReady() {
 	if !coreIsAttached() {
 		_ = AttachCoreDb()
 	}
+	if coreIsAttached() {
+		ensureCoreIndexes()
+	}
 	if len(ObrasCities) == 0 && coreIsAttached() {
 		_ = loadCities()
+	}
+}
+
+// ensureCoreIndexes cria índices no core.db anexado (idempotente).
+// O import ETL nem sempre cria índices; sem (city) / (city, size) o Obras+
+// faz full scan em core_obras_plus a cada listagem.
+func ensureCoreIndexes() {
+	if MainDB == nil || !coreIsAttached() || coreIndexesEnsured {
+		return
+	}
+
+	queries := []string{
+		"CREATE INDEX IF NOT EXISTS idx_core_obras_plus_city ON core.core_obras_plus (city)",
+		"CREATE INDEX IF NOT EXISTS idx_core_obras_plus_city_size ON core.core_obras_plus (city, size)",
+		"CREATE INDEX IF NOT EXISTS idx_core_obras_plus_city_listing ON core.core_obras_plus (city, first_listing_date, start_date)",
+		"CREATE INDEX IF NOT EXISTS idx_core_obras_plus_phone_nome ON core.core_obras_plus_phone (nome)",
+		"CREATE INDEX IF NOT EXISTS idx_core_obras_plus_email_nome ON core.core_obras_plus_email (nome)",
+	}
+
+	ok := true
+	for _, q := range queries {
+		if _, err := MainDB.Exec(q); err != nil {
+			ok = false
+			g.Warn("falha ao criar indice no core.db (%s): %v", q, err)
+		}
+	}
+	if ok {
+		coreIndexesEnsured = true
+		g.Info("indices do core.db verificados/criados")
 	}
 }
 

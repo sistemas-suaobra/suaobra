@@ -121,28 +121,30 @@ func makeStatusCond(statuses []string) string {
 		whereArr = append(whereArr, "( nullif(cop.has_owner_email, '') or nullif(cop.has_professional_email, '') )")
 	}
 
+	// Usa colunas do LEFT JOIN em main.lead (alias l) — evita IN/NOT IN que
+	// materializam a tabela lead do time a cada request (full scan / anti-join caro).
 	if slices.Contains(statuses, StatusVisitada) {
-		whereArr = append(whereArr, "( cop.id in ( select obra_id from main.lead where team_id = '{teamId}' and nullif(visited_at, '') is not null ) )")
+		whereArr = append(whereArr, "( l.visited_at > '' )")
 	}
 
 	if slices.Contains(statuses, StatusNaoVisitada) {
-		whereArr = append(whereArr, "( cop.id not in ( select obra_id from main.lead where team_id = '{teamId}' and nullif(visited_at, '') is not null ) )")
+		whereArr = append(whereArr, "( coalesce(l.visited_at, '') = '' )")
 	}
 
 	if slices.Contains(statuses, StatusContactado) {
-		whereArr = append(whereArr, "( cop.id in ( select obra_id from main.lead where team_id = '{teamId}' and ( nullif(owner_contacted_at, '') is not null or nullif(owner_contact_pending_at, '') is not null or nullif(professional_contacted_at, '') is not null or nullif(professional_contact_pending_at, '') is not null ) ) )")
+		whereArr = append(whereArr, "( l.owner_contacted_at > '' or l.owner_contact_pending_at > '' or l.professional_contacted_at > '' or l.professional_contact_pending_at > '' )")
 	}
 
 	if slices.Contains(statuses, StatusNaoContactado) {
-		whereArr = append(whereArr, "( cop.id not in ( select obra_id from main.lead where team_id = '{teamId}' and ( nullif(owner_contact_pending_at, '') is not null or nullif(professional_contact_pending_at, '') is not null ) ) )")
+		whereArr = append(whereArr, "( coalesce(l.owner_contact_pending_at, '') = '' and coalesce(l.professional_contact_pending_at, '') = '' )")
 	}
 
 	if slices.Contains(statuses, StatusContactoPendente) {
-		whereArr = append(whereArr, "( cop.id in ( select obra_id from main.lead where team_id = '{teamId}' and ( (nullif(owner_contact_pending_at, '') is not null and nullif(owner_contacted_at, '') is null ) or (nullif(professional_contact_pending_at, '') is not null and nullif(professional_contacted_at, '') is null ) ) ) )")
+		whereArr = append(whereArr, "( (l.owner_contact_pending_at > '' and coalesce(l.owner_contacted_at, '') = '') or (l.professional_contact_pending_at > '' and coalesce(l.professional_contacted_at, '') = '') )")
 	}
 
 	if slices.Contains(statuses, StatusFavorita) {
-		whereArr = append(whereArr, "( cop.id in ( select obra_id from main.lead where team_id = '{teamId}' and nullif(favorited_at, '') is not null ) )")
+		whereArr = append(whereArr, "( l.favorited_at > '' )")
 	}
 
 	if slices.Contains(statuses, StatusComObservacao) {
@@ -150,10 +152,10 @@ func makeStatusCond(statuses []string) string {
 	}
 
 	if slices.Contains(statuses, StatusExcluida) {
-		whereArr = append(whereArr, "( cop.id in ( select obra_id from main.lead where team_id = '{teamId}' and nullif(excluded_at, '') is not null ) )")
+		whereArr = append(whereArr, "( l.excluded_at > '' )")
 	} else {
 		// exclude by default
-		whereArr = append(whereArr, "( cop.id not in ( select obra_id from main.lead where team_id = '{teamId}' and nullif(excluded_at, '') is not null ) )")
+		whereArr = append(whereArr, "( coalesce(l.excluded_at, '') = '' )")
 	}
 
 	if len(whereArr) == 0 {
@@ -335,7 +337,7 @@ func QueryObrasPlus(c echo.Context) (err error) {
 		"sizeMin", sizeMin,
 		"sizeMax", sizeMax,
 		"neighborhoodCond", makeNeighborhoodCond(neighborhoods),
-		"statusCond", g.R(makeStatusCond(statuses), "teamId", user.Team.ID),
+		"statusCond", makeStatusCond(statuses),
 		"filterCond", makeFilterCond(filter),
 		"dateFilterCond", makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo),
 		"itemPerPage", itemPerPage,

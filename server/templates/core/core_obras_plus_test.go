@@ -42,8 +42,9 @@ func TestCoreObrasPlusSQL_ContactFilter_BlocksActiveStatuses(t *testing.T) {
 	assert.NotContains(t, sql, "contato_tipo = 'OWNER' and status = 'ENVIADO'")
 	assert.NotContains(t, sql, "contato_tipo = 'PROFISSIONAL' and status = 'ENVIADO'")
 
-	// Deve excluir apenas falhas e ignorados
+	// Deve excluir apenas falhas e ignorados (lookup pós-paginação via EXISTS)
 	assert.Contains(t, sql, "status not in ('FALHOU', 'IGNORADO')")
+	assert.Contains(t, strings.ToLower(sql), "exists")
 }
 
 func TestCoreObrasPlusSQL_ContactFilter_PerRecipientType(t *testing.T) {
