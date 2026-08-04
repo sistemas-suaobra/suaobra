@@ -22,6 +22,11 @@ import {
   buildLeadPropertiesUpdatePayload,
   normalizeEditorHtmlValue,
 } from "./leadObservations";
+import {
+  computeReminderAt,
+  applyReminderFieldsToPayload,
+  type ReminderTimeUnit,
+} from "./leadReminders";
 
 export interface LeadDialogParams {
   show?: boolean;
@@ -46,10 +51,10 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
     city: { label: 'Cidade', type: 'dropdown', options: {options: allCities.map(c => c.id), filter: true}},
   }
 
-  type TimeUnit = 'Horas'|'Dias'|'Semanas'|'Meses'
+  type TimeUnit = ReminderTimeUnit
   const schedule_fields : PrimeFields = {
     unit: { label: 'Unidade de tempo', type: 'dropdown', options: {options: ['Horas','Dias','Semanas','Meses']}},
-    number: { label: 'Número de unidade', type: 'number', options: { showButtons: true, step: 1}},
+    number: { label: 'Número de unidade', type: 'number', options: { showButtons: true, step: 1, min: 1}},
     date_str: { label: 'Hora do lembrete', type: 'value', options: { style: {color: 'blue'} }},
   }
   const schedule_fields_readonly : PrimeFields = {
@@ -77,7 +82,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
   }
   const schedulePanel = {
     ref: React.useRef(null),
-    state: useHookstate({unit: 'Dias' as TimeUnit, number: 0, date_str: ''})
+    state: useHookstate({unit: 'Dias' as TimeUnit, number: 1, date_str: ''})
   }
 
   // Add team members variable
@@ -99,7 +104,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       buildObraProps()
       
       // reset schedule
-      schedulePanel.state.set({unit: 'Dias', number: 0, date_str: ''})
+      schedulePanel.state.set({unit: 'Dias', number: 1, date_str: ''})
       
       // Fetch team members if user is a manager
       if (userS?.is_manager?.get()) {
@@ -238,9 +243,13 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       // Usa a ref (não o state que pode ter sido zerado pelo unmount do Editor)
       lead.lead_properties.observations.set(observationsRef.current || '')
 
-      const propertiesPayload = buildLeadPropertiesUpdatePayload(
-        jsonClone(lead.lead_properties.get()) as Record<string, unknown>,
-        lead.get().obra_properties_payload as unknown as Record<string, unknown>,
+      const propertiesPayload = applyReminderFieldsToPayload(
+        buildLeadPropertiesUpdatePayload(
+          jsonClone(lead.lead_properties.get()) as Record<string, unknown>,
+          lead.get().obra_properties_payload as unknown as Record<string, unknown>,
+        ),
+        lead.lead_properties.alert_at.get(),
+        lead.lead_properties.alerted.get(),
       )
       propertiesPayload.observations = observationsRef.current || ''
 
@@ -301,16 +310,10 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
   }
 
   const computeAlertAt = () => {
-    let alert_at = new Date().getTime()
-    let num  = schedulePanel.state.number.get()
-    let unit = schedulePanel.state.unit.get()
-    if(!num || `${num}` === '' || num < 0) return undefined
-
-    if(unit === 'Horas') alert_at = alert_at + (num * 1000 * 3600 )
-    if(unit === 'Dias') alert_at = alert_at + (num * 1000 * 3600 * 24 )
-    if(unit === 'Semanas') alert_at = alert_at + (num * 1000 * 3600 * 24 * 7 )
-    if(unit === 'Meses') alert_at = alert_at + (num * 1000 * 3600 * 24 * 30 )
-    return new Date(alert_at)
+    return computeReminderAt(
+      schedulePanel.state.unit.get() as ReminderTimeUnit,
+      schedulePanel.state.number.get(),
+    )
   }
   ///////////////////////////  JSX  ///////////////////////////
 
@@ -430,6 +433,8 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       onShow={() => {
         if(lead.lead_properties.has_alert.get())
           schedulePanel.state.date_str.set(lead.lead_properties.alert_date_str.get())
+        else
+          schedulePanel.state.date_str.set(computeAlertAt()?.toLocaleString('pt-BR') || '-')
       }}
     >
       <PrimeForm
@@ -449,14 +454,26 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
                   <Button
                     label='Salvar'
                     size="small"
+                    loading={saving.get()}
                     onClick={async () => {
-                      // hide
-                      schedulePanel.ref.current.hide()
-
                       let alert_at = computeAlertAt()
+                      if (!alert_at) {
+                        error.set('Informe um número de unidades maior que zero para o lembrete')
+                        return
+                      }
 
-                      lead.lead_properties.alert_at.set(alert_at?.getTime())
+                      lead.lead_properties.alert_at.set(alert_at.getTime())
                       lead.lead_properties.alerted.set(false)
+                      schedulePanel.state.date_str.set(alert_at.toLocaleString('pt-BR'))
+
+                      // Persistir imediatamente (antes só gravava ao fechar o Dialog)
+                      const ok = await saveLead()
+                      if (!ok) {
+                        error.set(error.get() || 'Não foi possível salvar o lembrete')
+                        return
+                      }
+                      error.set('')
+                      schedulePanel.ref.current.hide()
                     }}
                   />
 
@@ -478,16 +495,19 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
                 severity='danger'
                 icon='pi pi-trash'
                 size="small"
+                loading={saving.get()}
                 onClick={async () => {         
-                  // hide
-                  schedulePanel.ref.current.hide()
-
                   lead.lead_properties.alert_at.set(undefined)
                   lead.lead_properties.alerted.set(undefined)
-      
-                  // reset schedule
-                  schedulePanel.state.set({unit: 'Dias', number: 0, date_str: ''})
+                  schedulePanel.state.set({unit: 'Dias', number: 1, date_str: ''})
 
+                  const ok = await saveLead()
+                  if (!ok) {
+                    error.set(error.get() || 'Não foi possível remover o lembrete')
+                    return
+                  }
+                  error.set('')
+                  schedulePanel.ref.current.hide()
                 }}
               />
         }

@@ -1,3 +1,6 @@
+-- Lembretes vencidos ainda não notificados por e-mail.
+-- alerted pode vir como JSON false/true ou 0/1; usamos ->> (texto) para comparar de forma estável.
+
 -- 1. Get the email for the specific lead owner
 select
   lead.id as lead_id,
@@ -9,7 +12,7 @@ select
   coalesce(lead.properties -> 'obra' ->> 'owner', cop.owner) as owner,
   coalesce(lead.properties -> 'obra' ->> 'professional', cop.professional) as professional,
   (lead.properties -> 'alert_at') / 1000 as alert_at,
-  coalesce(lead.properties -> 'alerted', false) as alerted
+  coalesce(lead.properties ->> 'alerted', 'false') as alerted
 
 from main.lead
 join main.user on user.id = lead.owner_id
@@ -17,7 +20,7 @@ left join core.core_obras_plus cop on cop.id = lead.obra_id
 
 where 1=1
   and (lead.properties -> 'alert_at') is not null
-  and coalesce(lead.properties -> 'alerted', 'false') = 'false'
+  and lower(coalesce(lead.properties ->> 'alerted', 'false')) in ('false', '0', '')
   and datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') <= datetime()
 
 UNION ALL
@@ -33,7 +36,7 @@ select
   coalesce(lead.properties -> 'obra' ->> 'owner', cop.owner) as owner,
   coalesce(lead.properties -> 'obra' ->> 'professional', cop.professional) as professional,
   (lead.properties -> 'alert_at') / 1000 as alert_at,
-  coalesce(lead.properties -> 'alerted', false) as alerted
+  coalesce(lead.properties ->> 'alerted', 'false') as alerted
 
 from main.lead
 join main.user on user.team_id = lead.team_id and user.manager = true
@@ -42,7 +45,7 @@ left join core.core_obras_plus cop on cop.id = lead.obra_id
 where 1=1
   and (lead.owner_id is null or lead.owner_id = '')
   and (lead.properties -> 'alert_at') is not null
-  and coalesce(lead.properties -> 'alerted', 'false') = 'false'
+  and lower(coalesce(lead.properties ->> 'alerted', 'false')) in ('false', '0', '')
   and datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') <= datetime()
 
 UNION ALL
@@ -58,7 +61,7 @@ select
   coalesce(lead.properties -> 'obra' ->> 'owner', cop.owner) as owner,
   coalesce(lead.properties -> 'obra' ->> 'professional', cop.professional) as professional,
   (lead.properties -> 'alert_at') / 1000 as alert_at,
-  coalesce(lead.properties -> 'alerted', false) as alerted
+  coalesce(lead.properties ->> 'alerted', 'false') as alerted
 
 from main.lead
 join main.user on user.team_id = lead.team_id
@@ -67,7 +70,7 @@ left join core.core_obras_plus cop on cop.id = lead.obra_id
 where 1=1
   and (lead.owner_id is null or lead.owner_id = '')
   and (lead.properties -> 'alert_at') is not null
-  and coalesce(lead.properties -> 'alerted', 'false') = 'false'
+  and lower(coalesce(lead.properties ->> 'alerted', 'false')) in ('false', '0', '')
   and datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') <= datetime()
   and lead.team_id not in (
     select distinct team_id from main.user where manager = true

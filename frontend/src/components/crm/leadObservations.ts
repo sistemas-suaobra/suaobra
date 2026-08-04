@@ -48,6 +48,19 @@ export function buildLeadPropertiesUpdatePayload(
   payload.starred_contacts = Array.isArray(payload.starred_contacts) ? payload.starred_contacts : []
   payload.contacts = Array.isArray(payload.contacts) ? payload.contacts : []
 
+  // Preservar lembrete (alert_at/alerted) — JSON.stringify já copia, mas
+  // garantimos número/bool válidos para o cron e a UI de notificação.
+  if (payload.alert_at != null && Number.isFinite(Number(payload.alert_at))) {
+    payload.alert_at = Number(payload.alert_at)
+  } else {
+    delete payload.alert_at
+  }
+  if (payload.alerted != null) {
+    payload.alerted = Boolean(payload.alerted)
+  } else {
+    delete payload.alerted
+  }
+
   return payload
 }
 

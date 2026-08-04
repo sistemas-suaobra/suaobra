@@ -13,6 +13,11 @@ import { StageDialogPanel, type StageDialogParams } from './StageDialogPanel';
 import { LeadDialogPanel, deleteLead, type LeadDialogParams } from './LeadDialogPanel';
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { doToast, filterAndMatched, jsonClone, parseFilterString, uuidv4 } from '../../utils/methods';
+import {
+  filterUnnotifiedReminders,
+  findDueReminders,
+  reminderToastDetail,
+} from './leadReminders';
 import { SelectButton } from 'primereact/selectbutton';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
@@ -52,6 +57,8 @@ export default function VendaMaisPage(props: Props) {
   const $user = useStore(user)
   const selectedViewMode = useHookstate<'kanban' | 'table'>($user?.state?.venda_mais_mode || 'kanban')
   const toast = React.useRef<Toast>(null)
+  const notifiedReminderIds = React.useRef<Set<string>>(new Set())
+  const dueReminderCount = useHookstate(0)
 
   ///////////////////////////  EFFECTS  ///////////////////////////
   React.useEffect(() => {
@@ -61,6 +68,29 @@ export default function VendaMaisPage(props: Props) {
       name: window.document.title,
     })
   }, []);
+
+  const notifyDueReminders = React.useCallback(() => {
+    const due = findDueReminders(leads.get())
+    dueReminderCount.set(due.length)
+    const fresh = filterUnnotifiedReminders(due, notifiedReminderIds.current)
+    for (const lead of fresh) {
+      const id = lead.lead_id || lead.list_lead_id || ''
+      if (!id) continue
+      notifiedReminderIds.current.add(id)
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Lembrete de retorno',
+        detail: reminderToastDetail(lead),
+        sticky: true,
+      })
+    }
+  }, [leads])
+
+  React.useEffect(() => {
+    notifyDueReminders()
+    const timer = window.setInterval(notifyDueReminders, 30_000)
+    return () => window.clearInterval(timer)
+  }, [notifyDueReminders, refreshVendaMaisPage])
 
   React.useEffect(() => {
     let cities = userS?.team?.cities?.get()
@@ -254,6 +284,8 @@ export default function VendaMaisPage(props: Props) {
       new_leads = new_leads.concat((jsonClone(stage.leads) as any[]).map(l => new Lead(l)))
     }
     if(new_leads.length) leads.set(new_leads)
+    // Notifica na plataforma lembretes já vencidos (clock vermelho + toast)
+    window.setTimeout(() => notifyDueReminders(), 0)
   }
 
   const getStageLeads = async (stage_id: string) => {
@@ -450,6 +482,21 @@ export default function VendaMaisPage(props: Props) {
   <div>
     <Toast ref={toast} />
     <SearchDialog search={search}/>
+
+    {
+      dueReminderCount.get() > 0 ?
+      <div className="mx-2 mb-3 p-3 border-round" style={{background: '#fff3cd', border: '1px solid #ffecb5'}}>
+        <i className="pi pi-clock mr-2" style={{color: '#856404'}} />
+        <strong style={{color: '#856404'}}>
+          {dueReminderCount.get() === 1
+            ? 'Você tem 1 lembrete de retorno vencido'
+            : `Você tem ${dueReminderCount.get()} lembretes de retorno vencidos`}
+        </strong>
+        <span style={{color: '#856404'}}> — o card fica com o relógio vermelho no kanban.</span>
+      </div>
+      :
+      null
+    }
 
     {
       warn.get()?

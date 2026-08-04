@@ -12,6 +12,7 @@ import (
 )
 
 func NotifyReminders(app *pocketbase.PocketBase) {
+	store.EnsureCoreReady()
 
 	selectSQL, _ := templates.ReadFile("templates/crm/crm_reminders.sql")
 
@@ -41,7 +42,7 @@ func NotifyReminders(app *pocketbase.PocketBase) {
 		set properties = json_patch(properties, '{"alerted": true}')
 		where id = {:id}`
 		updateSQL = store.BindSQL(updateSQL, g.M("id", rec["lead_id"]))
-		_, err = store.MainDB.Query(updateSQL)
+		_, err = store.MainDB.Exec(updateSQL)
 		g.LogError(err, "could not set alerted for email reminder")
 	}
 }
