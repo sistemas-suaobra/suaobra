@@ -18,6 +18,10 @@ import { Button } from "primereact/button";
 import PrimeForm, { EditableText, type PrimeFields } from "../../utils/PrimeForm";
 import { allCities } from "../../store/cities";
 import { OverlayPanel } from "primereact/overlaypanel";
+import {
+  buildLeadPropertiesUpdatePayload,
+  normalizeEditorHtmlValue,
+} from "./leadObservations";
 
 export interface LeadDialogParams {
   show?: boolean;
@@ -79,11 +83,16 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
   // Add team members variable
   const teamMembers = useVariable<{id: string, email: string, name?: string}[]>([])
   const selectedOwnerId = useHookstate('')
+  // Ref à prova de race: o Editor emite htmlValue=null ao desmontar (fechar Dialog),
+  // o que apagava a observação no state imediatamente antes do saveLead no onHide.
+  const observationsRef = React.useRef(lead.lead_properties.observations.get() || '')
+  const saving = useHookstate(false)
 
   ///////////////////////////  EFFECTS  ///////////////////////////
 
   React.useEffect(() => {
     if(show.get()) {
+      observationsRef.current = lead.lead_properties.observations.get() || ''
       getContacts()
 
       // build obra properties
@@ -203,59 +212,88 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       )
   }
 
-  const saveLead = async () => {
-
-    if (deleted.get()) {
-      let resp = await deleteLead(lead.list_lead_id.get(), lead.lead_id.get())
-      if(resp.error) error.set(resp.error)
-      return resp.success
-    }
-
-    let lead_properties = new LeadProperties(jsonClone(lead.lead_properties.get()))
-    if(lead.is_opportunity.get()) setFromCustomCity()
-    lead_properties.obra = lead.get().obra_properties_payload
-
-    let promise_list_lead = api().collection('list_lead')
-      .update(lead.list_lead_id.get(), {stage_id: lead.stage_id.get()})
-
-    let promise_lead = api().collection('lead')
-      .update(lead.lead_id.get(), {properties: lead_properties})
-
-    // Update owner ID if changed and user is manager
-    let promise_owner_result = { success: true, error: '', data: null }
-    if (userS?.is_manager?.get() && selectedOwnerId.get() && selectedOwnerId.get() !== '') {
-      const resp_owner = await api().patch(makeURL('/patch/lead-owner'), {
-        lead_id: lead.lead_id.get(),
-        owner_id: selectedOwnerId.get()
-      })
-      promise_owner_result = {
-        success: !resp_owner.error,
-        error: resp_owner.error,
-        data: await resp_owner.json()
-      }
-    }
-
-    let resp_list_lead = await promise_list_lead
-    let resp_lead = await promise_lead
-    error.set(resp_lead.error || resp_list_lead.error || promise_owner_result.error)
-
-    let resp_lead_record = await resp_lead.record()
-    lead.set(
-      l => {
-        l.lead_properties = new LeadProperties(resp_lead_record.properties)
-        l.sync_obra_properties()
-        return l
-      }
+  const applyObservationsFromEditor = (htmlValue: string | null | undefined) => {
+    const next = normalizeEditorHtmlValue(
+      { htmlValue },
+      observationsRef.current,
     )
+    if (next === undefined) return
+    observationsRef.current = next
+    lead.lead_properties.observations.set(next)
+  }
 
-    // Update owner info if owner was changed
-    if (promise_owner_result.success && promise_owner_result.data?.owner_email) {
-      lead.owner_email.set(promise_owner_result.data.owner_email)
-      lead.owner_name.set(promise_owner_result.data.owner_name)
+  const saveLead = async () => {
+    if (saving.get()) return false
+    saving.set(true)
+
+    try {
+      if (deleted.get()) {
+        let resp = await deleteLead(lead.list_lead_id.get(), lead.lead_id.get())
+        if(resp.error) error.set(resp.error)
+        return resp.success
+      }
+
+      if(lead.is_opportunity.get()) setFromCustomCity()
+
+      // Usa a ref (não o state que pode ter sido zerado pelo unmount do Editor)
+      lead.lead_properties.observations.set(observationsRef.current || '')
+
+      const propertiesPayload = buildLeadPropertiesUpdatePayload(
+        jsonClone(lead.lead_properties.get()) as Record<string, unknown>,
+        lead.get().obra_properties_payload as unknown as Record<string, unknown>,
+      )
+      propertiesPayload.observations = observationsRef.current || ''
+
+      let promise_list_lead = api().collection('list_lead')
+        .update(lead.list_lead_id.get(), {stage_id: lead.stage_id.get()})
+
+      let promise_lead = api().collection('lead')
+        .update(lead.lead_id.get(), {properties: propertiesPayload})
+
+      // Update owner ID if changed and user is manager
+      let promise_owner_result = { success: true, error: '', data: null as any }
+      if (userS?.is_manager?.get() && selectedOwnerId.get() && selectedOwnerId.get() !== '') {
+        const resp_owner = await api().patch(makeURL('/patch/lead-owner'), {
+          lead_id: lead.lead_id.get(),
+          owner_id: selectedOwnerId.get()
+        })
+        promise_owner_result = {
+          success: !resp_owner.error,
+          error: resp_owner.error,
+          data: await resp_owner.json()
+        }
+      }
+
+      let resp_list_lead = await promise_list_lead
+      let resp_lead = await promise_lead
+      error.set(resp_lead.error || resp_list_lead.error || promise_owner_result.error)
+
+      if (!resp_lead.error) {
+        let resp_lead_record = await resp_lead.record()
+        const savedProps = resp_lead_record?.properties
+        if (savedProps) {
+          observationsRef.current = (savedProps.observations as string) || observationsRef.current || ''
+          lead.set(
+            l => {
+              l.lead_properties = new LeadProperties(savedProps)
+              l.sync_obra_properties()
+              return l
+            }
+          )
+        }
+      }
+
+      // Update owner info if owner was changed
+      if (promise_owner_result.success && promise_owner_result.data?.owner_email) {
+        lead.owner_email.set(promise_owner_result.data.owner_email)
+        lead.owner_name.set(promise_owner_result.data.owner_name)
+      }
+
+      if(!error.get()) return true
+      return false
+    } finally {
+      saving.set(false)
     }
-
-    if(!error.get()) return true
-    return false
   }
 
   const inputTransform = (val: string) => {
@@ -647,14 +685,28 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
                 </div>
               </div>
 
-              <div className="mb-2 flex flex-wrap">
-                <strong>Observações:</strong> 
+              <div className="mb-2 flex flex-wrap align-items-center justify-content-between gap-2">
+                <strong>Observações:</strong>
+                <Button
+                  label="Salvar observação"
+                  icon="pi pi-save"
+                  size="small"
+                  severity="success"
+                  loading={saving.get()}
+                  onClick={async () => {
+                    const ok = await saveLead()
+                    if (!ok && !error.get()) error.set('Não foi possível salvar a observação')
+                  }}
+                />
               </div>
               <Editor
-                value={lead.lead_properties.observations.get()}
-                onTextChange={(e) => lead.lead_properties.observations.set(e.htmlValue)}
+                value={lead.lead_properties.observations.get() || ''}
+                onTextChange={(e) => applyObservationsFromEditor(e.htmlValue)}
                 style={{ height: '200px' }}
               />
+              <small className="text-color-secondary">
+                A observação também é salva automaticamente ao fechar este painel.
+              </small>
             </TabPanel>
             
             <TabPanel header="Telefones">
