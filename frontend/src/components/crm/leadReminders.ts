@@ -65,8 +65,11 @@ export function isReminderDue(
   alertAt: number | null | undefined,
   alerted: boolean | null | undefined,
   nowMs: number = Date.now(),
+  opts?: { ignoreAlerted?: boolean },
 ): boolean {
-  if (alerted) return false
+  // alerted=true = e-mail do cron já enviado; a UI da plataforma notifica
+  // independentemente (toast/banner) usando ignoreAlerted.
+  if (!opts?.ignoreAlerted && alerted) return false
   if (alertAt == null || !Number.isFinite(Number(alertAt))) return false
   return Number(alertAt) <= nowMs
 }
@@ -74,9 +77,15 @@ export function isReminderDue(
 export function findDueReminders(
   leads: ReminderLeadLike[],
   nowMs: number = Date.now(),
+  opts?: { ignoreAlerted?: boolean },
 ): ReminderLeadLike[] {
   return (leads || []).filter((lead) =>
-    isReminderDue(lead.lead_properties?.alert_at, lead.lead_properties?.alerted, nowMs),
+    isReminderDue(
+      lead.lead_properties?.alert_at,
+      lead.lead_properties?.alerted,
+      nowMs,
+      opts,
+    ),
   )
 }
 

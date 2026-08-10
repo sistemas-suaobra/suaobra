@@ -59,6 +59,10 @@ export default function VendaMaisPage(props: Props) {
   const toast = React.useRef<Toast>(null)
   const notifiedReminderIds = React.useRef<Set<string>>(new Set())
   const dueReminderCount = useHookstate(0)
+  const stagesRef = React.useRef(stages)
+  stagesRef.current = stages
+  const leadsRef = React.useRef(leads)
+  leadsRef.current = leads
 
   ///////////////////////////  EFFECTS  ///////////////////////////
   React.useEffect(() => {
@@ -70,7 +74,20 @@ export default function VendaMaisPage(props: Props) {
   }, []);
 
   const notifyDueReminders = React.useCallback(() => {
-    const due = findDueReminders(leads.get())
+    // Fonte de verdade: leads nos stages (kanban). O array `leads` pode ficar
+    // vazio no modo kanban e aí o toast/banner nunca disparava.
+    const fromStages: Lead[] = []
+    for (const stage of stagesRef.current.get()) {
+      const stageLeads = (stage as any)?.leads
+      if (!Array.isArray(stageLeads) || stageLeads.length === 0) continue
+      for (const raw of stageLeads) {
+        fromStages.push(raw instanceof Lead ? raw : new Lead(jsonClone(raw)))
+      }
+    }
+    if (fromStages.length) leadsRef.current.set(fromStages)
+
+    const source = fromStages.length ? fromStages : leadsRef.current.get()
+    const due = findDueReminders(source, Date.now(), { ignoreAlerted: true })
     dueReminderCount.set(due.length)
     const fresh = filterUnnotifiedReminders(due, notifiedReminderIds.current)
     for (const lead of fresh) {
@@ -82,13 +99,14 @@ export default function VendaMaisPage(props: Props) {
         summary: 'Lembrete de retorno',
         detail: reminderToastDetail(lead),
         sticky: true,
+        life: 0,
       })
     }
-  }, [leads])
+  }, [dueReminderCount])
 
   React.useEffect(() => {
     notifyDueReminders()
-    const timer = window.setInterval(notifyDueReminders, 30_000)
+    const timer = window.setInterval(notifyDueReminders, 15_000)
     return () => window.clearInterval(timer)
   }, [notifyDueReminders, refreshVendaMaisPage])
 
@@ -275,6 +293,13 @@ export default function VendaMaisPage(props: Props) {
     }
     stageOptions.set(new_stages)
     stages.set(new_stages)
+    // Mantém lista plana sincronizada para lembretes (toast/banner)
+    const flat: Lead[] = []
+    for (const stage of new_stages) {
+      if (stage.leads?.length) flat.push(...stage.leads)
+    }
+    if (flat.length) leads.set(flat)
+    window.setTimeout(() => notifyDueReminders(), 0)
   }
 
   const syncLeads = async () => {
@@ -480,7 +505,7 @@ export default function VendaMaisPage(props: Props) {
   
   return (
   <div>
-    <Toast ref={toast} />
+    <Toast ref={toast} position="top-right" baseZIndex={20000} />
     <SearchDialog search={search}/>
 
     {

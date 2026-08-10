@@ -180,7 +180,7 @@ func main() {
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		scheduler := cron.New()
 
-		scheduler.Add("notify-reminder", "*/5 * * * *", func() {
+		scheduler.Add("notify-reminder", "* * * * *", func() {
 			server.NotifyReminders(app)
 		})
 

@@ -67,6 +67,10 @@ describe('isReminderDue / findDueReminders', () => {
     expect(isReminderDue(undefined, false, now)).toBe(false)
   })
 
+  it('com ignoreAlerted, notifica na UI mesmo após e-mail', () => {
+    expect(isReminderDue(now - 1, true, now, { ignoreAlerted: true })).toBe(true)
+  })
+
   it('lista leads com lembrete vencido', () => {
     const due = findDueReminders(
       [
@@ -75,6 +79,18 @@ describe('isReminderDue / findDueReminders', () => {
         { lead_id: 'c', title: 'C', lead_properties: { alert_at: now - 10, alerted: true } },
       ],
       now,
+    )
+    expect(due.map((l) => l.lead_id)).toEqual(['a'])
+  })
+
+  it('lista vencidos na UI incluindo já alerted por e-mail', () => {
+    const due = findDueReminders(
+      [
+        { lead_id: 'a', title: 'A', lead_properties: { alert_at: now - 10, alerted: true } },
+        { lead_id: 'b', title: 'B', lead_properties: { alert_at: now + 10, alerted: false } },
+      ],
+      now,
+      { ignoreAlerted: true },
     )
     expect(due.map((l) => l.lead_id)).toEqual(['a'])
   })
