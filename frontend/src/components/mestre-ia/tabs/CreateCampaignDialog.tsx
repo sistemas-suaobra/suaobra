@@ -101,47 +101,6 @@ function getPlaceholderByFilter(filter: RecipientFilter) {
   return "Selecione destinatários para esta campanha"
 }
 
-function recipientHasAnyContact(
-  option: Pick<RecipientOption, "hasPhone" | "hasEmail">
-): boolean {
-  return option.hasPhone || option.hasEmail
-}
-
-function recipientMatchesChannels(
-  option: Pick<RecipientOption, "hasPhone" | "hasEmail">,
-  channelWa: boolean,
-  channelEmail: boolean
-): boolean {
-  if (!option.hasPhone && !option.hasEmail) return false
-  if (channelWa && !channelEmail) return option.hasPhone
-  if (channelEmail && !channelWa) return option.hasEmail
-  return option.hasPhone || option.hasEmail
-}
-
-function describeRecipientContactGap(
-  option: Pick<RecipientOption, "nomeContato" | "hasPhone" | "hasEmail">,
-  channelWa: boolean,
-  channelEmail: boolean
-): string {
-  if (!option.hasPhone && !option.hasEmail) {
-    return `${option.nomeContato} (sem telefone e sem e-mail)`
-  }
-  if (channelWa && channelEmail) {
-    if (!option.hasPhone && !option.hasEmail) {
-      return `${option.nomeContato} (sem telefone e sem e-mail)`
-    }
-    if (!option.hasPhone) return `${option.nomeContato} (sem telefone)`
-    if (!option.hasEmail) return `${option.nomeContato} (sem e-mail)`
-  }
-  if (channelWa && !option.hasPhone) {
-    return `${option.nomeContato} (sem telefone para WhatsApp)`
-  }
-  if (channelEmail && !option.hasEmail) {
-    return `${option.nomeContato} (sem e-mail)`
-  }
-  return option.nomeContato
-}
-
 export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
   const {
     visible,
@@ -398,15 +357,13 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
 
   React.useEffect(() => {
     setSelectedRecipients((prev) => {
-      const next = prev.filter((value) => {
-        const item = recipientOptionMap.get(value)
-        if (!item) return false
-        return recipientMatchesChannels(item, channelWa, channelEmail)
-      })
+      // Mantém seleção manual; só remove IDs que sumiram da lista carregada.
+      // Compatibilidade de canal/contato é resolvida no backend na criação.
+      const next = prev.filter((value) => recipientOptionMap.has(value))
       if (next.length > 50) return next.slice(0, 50)
       return next
     })
-  }, [recipientOptionMap, channelWa, channelEmail])
+  }, [recipientOptionMap])
 
   const recipientStats = React.useMemo(() => {
     let owners = 0
@@ -592,45 +549,9 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             return
           }
 
-          const semContato = selectedRecipients
-            .map((value) => recipientOptionMap.get(value))
-            .filter((item): item is RecipientOption => !!item)
-            .filter((item) => !recipientHasAnyContact(item))
-
-          if (semContato.length) {
-            const nomes = semContato
-              .map((item) => `${item.nomeContato} (sem telefone e sem e-mail)`)
-              .join("; ")
-
-            notify(
-              "warn",
-              "Destinatários sem contato",
-              `Remova da seleção: ${nomes}. Essas pessoas não têm telefone nem e-mail cadastrado.`
-            )
-            return
-          }
-
-          const incompativelCanal = selectedRecipients
-            .map((value) => recipientOptionMap.get(value))
-            .filter((item): item is RecipientOption => !!item)
-            .filter(
-              (item) =>
-                recipientHasAnyContact(item) &&
-                !recipientMatchesChannels(item, channelWa, channelEmail)
-            )
-
-          if (incompativelCanal.length) {
-            const nomes = incompativelCanal
-              .map((item) => describeRecipientContactGap(item, channelWa, channelEmail))
-              .join("; ")
-
-            notify(
-              "warn",
-              "Destinatários sem contato",
-              `Remova da seleção: ${nomes}. Eles não têm telefone/e-mail para os canais marcados.`
-            )
-            return
-          }
+          // Não bloqueia aqui por has_phone/has_email: o backend resolve contato
+          // real (core + histórico de campanhas). Quem ficar sem telefone/e-mail
+          // para os canais escolhidos é ignorado na API.
 
           const { cidadeStr, bairroStr } = getCidadeBairroStr()
 
@@ -851,6 +772,10 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
                 Selecionados: {selectedRecipientStats.total} • Proprietários:{" "}
                 {selectedRecipientStats.owners} • Profissionais:{" "}
                 {selectedRecipientStats.professionals}
+                <span style={{ display: "block", marginTop: 4 }}>
+                  Preferência: escolha contatos com telefone/e-mail. Quem estiver
+                  sem contato para o canal será ignorado na criação.
+                </span>
               </>
             )}
           </div>

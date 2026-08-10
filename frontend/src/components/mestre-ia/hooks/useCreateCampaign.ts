@@ -152,9 +152,11 @@ export function useCreateCampaign(params: { teamId: string; userId: string; noti
 
           const motivo =
             String(json?.motivo ?? "").trim() ||
-            "Nenhum destinatário válido foi criado para a campanha. Revise os contatos selecionados e tente novamente."
+            "Nenhum destinatário válido foi criado para a campanha."
           const detalheIgnorados =
-            ignorados > 0 ? ` (${ignorados} contato(s) sem telefone/e-mail para os canais escolhidos.)` : ""
+            ignorados > 0
+              ? ` ${ignorados} contato(s) ficaram sem telefone/e-mail para os canais escolhidos.`
+              : " Revise se os leads selecionados têm telefone (WhatsApp) ou e-mail cadastrado."
 
           throw new Error(`${motivo}${detalheIgnorados}`)
         }
