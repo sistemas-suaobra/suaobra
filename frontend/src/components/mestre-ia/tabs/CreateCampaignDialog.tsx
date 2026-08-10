@@ -254,7 +254,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
       "Olá, {{primeiroNome}}, tudo bem? Podemos conversar sobre sua obra no {{bairro}} em {{cidade}}?"
     )
     setObjetivo("")
-    setOcultarJaContactados(false)
+    setOcultarJaContactados(true)
     cursorRef.current = { start: 0, end: 0 }
     textareaElRef.current = null
   }, [visible])

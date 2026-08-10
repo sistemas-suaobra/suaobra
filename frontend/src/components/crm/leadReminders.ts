@@ -22,8 +22,8 @@ const UNIT_MS: Record<ReminderTimeUnit, number> = {
 }
 
 /**
- * Calcula o timestamp do lembrete.
- * Número deve ser >= 1 — com 0 a UI antiga gravava undefined e o lembrete sumia.
+ * Calcula o timestamp do lembrete a partir de unidade relativa.
+ * Mantido por compatibilidade; a UI atual usa data personalizada.
  */
 export function computeReminderAt(
   unit: ReminderTimeUnit,
@@ -35,6 +35,30 @@ export function computeReminderAt(
   const step = UNIT_MS[unit]
   if (!step) return undefined
   return new Date(nowMs + n * step)
+}
+
+/** Normaliza e valida a data personalizada do lembrete. */
+export function resolveReminderDate(
+  value: Date | string | number | null | undefined,
+  opts?: { requireFuture?: boolean; nowMs?: number },
+): Date | undefined {
+  if (value == null || value === '') return undefined
+
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) return undefined
+
+  const nowMs = opts?.nowMs ?? Date.now()
+  if (opts?.requireFuture !== false && date.getTime() <= nowMs) return undefined
+
+  return date
+}
+
+/** Data padrão ao abrir o agendamento (amanhã, mesma hora, segundos zerados). */
+export function defaultReminderDate(nowMs: number = Date.now()): Date {
+  const d = new Date(nowMs)
+  d.setDate(d.getDate() + 1)
+  d.setSeconds(0, 0)
+  return d
 }
 
 export function isReminderDue(

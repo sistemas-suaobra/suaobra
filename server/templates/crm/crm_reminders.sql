@@ -1,4 +1,6 @@
 -- Lembretes vencidos ainda não notificados por e-mail.
+-- alert_at em lead.properties é timestamp ABSOLUTO em milissegundos
+-- (data/hora personalizada escolhida no Venda Mais), não unidade relativa.
 -- alerted pode vir como JSON false/true ou 0/1; usamos ->> (texto) para comparar de forma estável.
 
 -- 1. Get the email for the specific lead owner
@@ -20,6 +22,7 @@ left join core.core_obras_plus cop on cop.id = lead.obra_id
 
 where 1=1
   and (lead.properties -> 'alert_at') is not null
+  and cast((lead.properties -> 'alert_at') as real) > 0
   and lower(coalesce(lead.properties ->> 'alerted', 'false')) in ('false', '0', '')
   and datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') <= datetime()
 
@@ -45,6 +48,7 @@ left join core.core_obras_plus cop on cop.id = lead.obra_id
 where 1=1
   and (lead.owner_id is null or lead.owner_id = '')
   and (lead.properties -> 'alert_at') is not null
+  and cast((lead.properties -> 'alert_at') as real) > 0
   and lower(coalesce(lead.properties ->> 'alerted', 'false')) in ('false', '0', '')
   and datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') <= datetime()
 
@@ -70,6 +74,7 @@ left join core.core_obras_plus cop on cop.id = lead.obra_id
 where 1=1
   and (lead.owner_id is null or lead.owner_id = '')
   and (lead.properties -> 'alert_at') is not null
+  and cast((lead.properties -> 'alert_at') as real) > 0
   and lower(coalesce(lead.properties ->> 'alerted', 'false')) in ('false', '0', '')
   and datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') <= datetime()
   and lead.team_id not in (

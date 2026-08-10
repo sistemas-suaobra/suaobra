@@ -67,9 +67,13 @@ export default function PrimeForm(props: PrimeFormProps) {
         id={id}
         className="w-full"
         placeholder={placeholder}
-        value={ get(key) as string }
-        onChange={(e) => set(key, e.target.value)}
-        dateFormat={options.dateFormat}
+        value={ get(key) as Date }
+        onChange={(e) => set(key, e.value)}
+        dateFormat={options.dateFormat || 'dd/mm/yy'}
+        showIcon={options.showIcon}
+        minDate={options.minDate}
+        maxDate={options.maxDate}
+        appendTo={options.appendTo}
         tooltip={options.tooltip}
         tooltipOptions={options.tooltipOptions}
       />
@@ -79,9 +83,15 @@ export default function PrimeForm(props: PrimeFormProps) {
         id={id}
         className="w-full"
         placeholder={placeholder}
-        value={ get(key) as string }
-        onChange={(e) => set(key, e.target.value)}
-        dateFormat={options.dateFormat}
+        value={ get(key) as Date }
+        onChange={(e) => set(key, e.value)}
+        dateFormat={options.dateFormat || 'dd/mm/yy'}
+        showTime={options.showTime !== false}
+        hourFormat={options.hourFormat || '24'}
+        showIcon={options.showIcon !== false}
+        minDate={options.minDate}
+        maxDate={options.maxDate}
+        appendTo={options.appendTo}
         tooltip={options.tooltip}
         tooltipOptions={options.tooltipOptions}
       />

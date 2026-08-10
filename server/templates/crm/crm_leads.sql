@@ -22,7 +22,7 @@ select
   row_number() over (
     order by
       case
-        -- when alert is in past
+        -- lembrete vencido (alert_at absoluto em ms, data personalizada)
         when datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch') < datetime()
           then (lead.properties -> 'alert_at')
       end asc,

@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   applyReminderFieldsToPayload,
   computeReminderAt,
+  defaultReminderDate,
   filterUnnotifiedReminders,
   findDueReminders,
   isReminderDue,
   reminderToastDetail,
+  resolveReminderDate,
 } from './leadReminders'
 
 describe('computeReminderAt', () => {
@@ -24,6 +26,34 @@ describe('computeReminderAt', () => {
     expect(computeReminderAt('Dias', 1, now)?.getTime()).toBe(now + 24 * 3600 * 1000)
     expect(computeReminderAt('Horas', 2, now)?.getTime()).toBe(now + 2 * 3600 * 1000)
     expect(computeReminderAt('Semanas', 1, now)?.getTime()).toBe(now + 7 * 24 * 3600 * 1000)
+  })
+})
+
+describe('resolveReminderDate', () => {
+  const now = Date.parse('2026-08-03T23:00:00.000Z')
+
+  it('aceita data futura personalizada', () => {
+    const future = new Date(now + 60_000)
+    expect(resolveReminderDate(future, { nowMs: now })?.getTime()).toBe(future.getTime())
+  })
+
+  it('rejeita data passada por padrão', () => {
+    expect(resolveReminderDate(new Date(now - 1), { nowMs: now })).toBeUndefined()
+  })
+
+  it('rejeita valor inválido', () => {
+    expect(resolveReminderDate('nao-e-data', { nowMs: now })).toBeUndefined()
+    expect(resolveReminderDate(null, { nowMs: now })).toBeUndefined()
+  })
+})
+
+describe('defaultReminderDate', () => {
+  it('usa amanhã com segundos zerados', () => {
+    const now = Date.parse('2026-08-03T15:30:45.123Z')
+    const d = defaultReminderDate(now)
+    expect(d.getDate()).toBe(new Date(now).getDate() + 1)
+    expect(d.getSeconds()).toBe(0)
+    expect(d.getMilliseconds()).toBe(0)
   })
 })
 

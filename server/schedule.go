@@ -47,11 +47,33 @@ func NotifyReminders(app *pocketbase.PocketBase) {
 	}
 }
 
+// formatReminderAtBR formata alert_at (unix seconds da query) em horário de Brasília.
+// alert_at em lead.properties é timestamp absoluto em ms (data personalizada no frontend).
+func formatReminderAtBR(alertAtUnixSec any) string {
+	sec := cast.ToInt64(alertAtUnixSec)
+	if sec <= 0 {
+		return ""
+	}
+
+	loc, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		loc = time.FixedZone("BRT", -3*3600)
+	}
+
+	return time.Unix(sec, 0).In(loc).Format("02/01/2006 15:04")
+}
+
 func EmailReminder(app *pocketbase.PocketBase, rec map[string]any) error {
 	link := g.F("https://app.suaobra.com.br/venda-mais/?lead=%s", rec["lead_id"])
 	title := g.F("%s - %s, %s", rec["owner"], rec["city"], rec["state"])
+	scheduledAt := formatReminderAtBR(rec["alert_at"])
 
-	g.Info("EmailReminder to '%s' for `%s` (Lead ID: %s)", rec["email"], title, rec["lead_id"])
+	g.Info("EmailReminder to '%s' for `%s` (Lead ID: %s, alert_at=%s)", rec["email"], title, rec["lead_id"], scheduledAt)
+
+	scheduledLine := ""
+	if scheduledAt != "" {
+		scheduledLine = g.F("<p><strong>Data do lembrete</strong>: %s</p>", scheduledAt)
+	}
 
 	message := &mailer.Message{
 		From: mail.Address{
@@ -64,10 +86,11 @@ func EmailReminder(app *pocketbase.PocketBase, rec map[string]any) error {
 		Subject: g.F("SuaObra - Retorno Agendado: %s", title),
 		HTML: g.Rm(`
 		<p>Olá,</p>
-		<p>Apenas para informar que você definiu um lembrete para entrar em contato com o lead.</p>
+		<p>Chegou a hora do lembrete que você agendou para entrar em contato com o lead.</p>
+		{scheduled_line}
 		<p><strong>Proprietário</strong>: {owner}</p>
 		<p><strong>Profissional</strong>: {professional}</p>
-		<p><strong>Enderco</strong>: {address}</p>
+		<p><strong>Endereço</strong>: {address}</p>
 		<p><strong>Link</strong>: <a href="{link}">Clique Aqui</a></p>
 
 		<p>
@@ -76,6 +99,7 @@ func EmailReminder(app *pocketbase.PocketBase, rec map[string]any) error {
 		</p>`,
 
 			g.M(
+				"scheduled_line", scheduledLine,
 				"owner", rec["owner"],
 				"professional", rec["professional"],
 				"address", rec["address"],

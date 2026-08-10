@@ -72,7 +72,7 @@ export default function LeadsTab() {
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
   const [refresh, setRefresh] = React.useState(0);
 
-  const [ocultarJaContactados, setOcultarJaContactados] = React.useState(false);
+  const [ocultarJaContactados, setOcultarJaContactados] = React.useState(true);
 
   const notify = (severity: "success" | "info" | "warn" | "error", summary: string, detail: string) => {
     toast.current?.show({ severity, summary, detail, life: 3000 });

@@ -23,9 +23,9 @@ import {
   normalizeEditorHtmlValue,
 } from "./leadObservations";
 import {
-  computeReminderAt,
   applyReminderFieldsToPayload,
-  type ReminderTimeUnit,
+  defaultReminderDate,
+  resolveReminderDate,
 } from "./leadReminders";
 
 export interface LeadDialogParams {
@@ -51,11 +51,18 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
     city: { label: 'Cidade', type: 'dropdown', options: {options: allCities.map(c => c.id), filter: true}},
   }
 
-  type TimeUnit = ReminderTimeUnit
   const schedule_fields : PrimeFields = {
-    unit: { label: 'Unidade de tempo', type: 'dropdown', options: {options: ['Horas','Dias','Semanas','Meses']}},
-    number: { label: 'Número de unidade', type: 'number', options: { showButtons: true, step: 1, min: 1}},
-    date_str: { label: 'Hora do lembrete', type: 'value', options: { style: {color: 'blue'} }},
+    alert_date: {
+      label: 'Data do lembrete',
+      type: 'timestamp',
+      options: {
+        showTime: true,
+        hourFormat: '24',
+        dateFormat: 'dd/mm/yy',
+        showIcon: true,
+        minDate: new Date(),
+      },
+    },
   }
   const schedule_fields_readonly : PrimeFields = {
     date_str: { label: 'Hora do lembrete', type: 'value', options: { style: {color: 'blue'} }},
@@ -82,7 +89,10 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
   }
   const schedulePanel = {
     ref: React.useRef(null),
-    state: useHookstate({unit: 'Dias' as TimeUnit, number: 1, date_str: ''})
+    state: useHookstate({
+      alert_date: defaultReminderDate() as Date | null,
+      date_str: '',
+    })
   }
 
   // Add team members variable
@@ -104,7 +114,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       buildObraProps()
       
       // reset schedule
-      schedulePanel.state.set({unit: 'Dias', number: 1, date_str: ''})
+      schedulePanel.state.set({ alert_date: defaultReminderDate(), date_str: '' })
       
       // Fetch team members if user is a manager
       if (userS?.is_manager?.get()) {
@@ -310,10 +320,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
   }
 
   const computeAlertAt = () => {
-    return computeReminderAt(
-      schedulePanel.state.unit.get() as ReminderTimeUnit,
-      schedulePanel.state.number.get(),
-    )
+    return resolveReminderDate(schedulePanel.state.alert_date.get() as Date | null)
   }
   ///////////////////////////  JSX  ///////////////////////////
 
@@ -429,12 +436,23 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
   const ScheduleOverlay = (
     <OverlayPanel
       ref={schedulePanel.ref}
-      style={{width: '300px'}}
+      style={{ width: '340px' }}
       onShow={() => {
-        if(lead.lead_properties.has_alert.get())
-          schedulePanel.state.date_str.set(lead.lead_properties.alert_date_str.get())
-        else
-          schedulePanel.state.date_str.set(computeAlertAt()?.toLocaleString('pt-BR') || '-')
+        if (lead.lead_properties.has_alert.get()) {
+          const existing = lead.lead_properties.alert_at.get()
+          const existingDate =
+            existing != null && Number.isFinite(Number(existing))
+              ? new Date(Number(existing))
+              : null
+          schedulePanel.state.alert_date.set(existingDate)
+          schedulePanel.state.date_str.set(
+            lead.lead_properties.alert_date_str.get() ||
+              existingDate?.toLocaleString('pt-BR') ||
+              '-',
+          )
+        } else if (!schedulePanel.state.alert_date.get()) {
+          schedulePanel.state.alert_date.set(defaultReminderDate())
+        }
       }}
     >
       <PrimeForm
@@ -442,7 +460,6 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
         getter={(key:string) => schedulePanel.state[key]?.get()}
         setter={(key:string, value: any) => { 
           schedulePanel.state[key].set(value)
-          schedulePanel.state.date_str.set(computeAlertAt()?.toLocaleString('pt-BR') || '-')
         }}
         defaults={{size: 12}}
         buttons={() => {
@@ -458,7 +475,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
                     onClick={async () => {
                       let alert_at = computeAlertAt()
                       if (!alert_at) {
-                        error.set('Informe um número de unidades maior que zero para o lembrete')
+                        error.set('Selecione uma data e hora futuras para o lembrete')
                         return
                       }
 
@@ -499,7 +516,7 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
                 onClick={async () => {         
                   lead.lead_properties.alert_at.set(undefined)
                   lead.lead_properties.alerted.set(undefined)
-                  schedulePanel.state.set({unit: 'Dias', number: 1, date_str: ''})
+                  schedulePanel.state.set({ alert_date: defaultReminderDate(), date_str: '' })
 
                   const ok = await saveLead()
                   if (!ok) {
@@ -539,7 +556,9 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
               tooltip='Agende um lembrete para entrar em contato com o cliente'
               tooltipOptions={{position: 'top'}}
               onClick={(e) => { 
-                schedulePanel.state.date_str.set(computeAlertAt()?.toLocaleString('pt-BR') || '-')
+                if (!lead.lead_properties.has_alert.get() && !schedulePanel.state.alert_date.get()) {
+                  schedulePanel.state.alert_date.set(defaultReminderDate())
+                }
                 schedulePanel.ref.current.toggle(e)
               }}
               outlined={!lead.lead_properties.has_alert.get()}
