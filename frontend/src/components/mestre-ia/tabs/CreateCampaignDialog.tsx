@@ -299,9 +299,9 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             address,
             hasPhone: ownerHasPhone,
             hasEmail: ownerHasEmail,
-            label: `${ownerName} (Proprietário)${location ? ` — ${location}` : ""}${
-              address ? ` • ${address}` : ""
-            } • ${channels}`,
+            // Label curto: o painel do MultiSelect usa isso p/ min-width;
+            // detalhes ficam no itemTemplate.
+            label: [ownerName, location, address, channels].filter(Boolean).join(" "),
           }
 
           list.push(option)
@@ -331,9 +331,9 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             address,
             hasPhone: professionalHasPhone,
             hasEmail: professionalHasEmail,
-            label: `${professionalName} (Profissional)${
-              location ? ` — ${location}` : ""
-            }${address ? ` • ${address}` : ""} • ${channels}`,
+            label: [professionalName, location, address, channels]
+              .filter(Boolean)
+              .join(" "),
           }
 
           list.push(option)
@@ -478,9 +478,21 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     const location = formatLocation(option.bairro, option.cidade, option.uf)
 
     return (
-      <div className="flex flex-column gap-1 py-1">
-        <div className="flex align-items-center gap-2 flex-wrap">
-          <span style={{ fontWeight: 600 }}>{option.nomeContato}</span>
+      <div className="flex flex-column gap-1 py-1" style={{ minWidth: 0, maxWidth: "100%" }}>
+        <div className="flex align-items-center gap-2 flex-wrap" style={{ minWidth: 0 }}>
+          <span
+            style={{
+              fontWeight: 600,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+              maxWidth: "100%",
+            }}
+            title={option.nomeContato}
+          >
+            {option.nomeContato}
+          </span>
           <Tag
             value={getRecipientTypeLabel(option.contatoTipo)}
             severity={option.contatoTipo === "OWNER" ? "info" : "success"}
@@ -490,7 +502,16 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           </span>
         </div>
 
-        <div className="text-secondary" style={{ fontSize: 12 }}>
+        <div
+          className="text-secondary"
+          style={{
+            fontSize: 12,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+          title={[location, option.address].filter(Boolean).join(" • ")}
+        >
           {location}
           {option.address ? ` • ${option.address}` : ""}
         </div>
@@ -594,6 +615,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
       breakpoints={{ "1100px": "94vw", "768px": "96vw", "560px": "100vw" }}
       style={{ width: "92vw", maxWidth: "980px" }}
       contentStyle={{ paddingBottom: "1rem" }}
+      className="create-campaign-dialog"
       footer={footer}
     >
       <div className="formgrid grid">
@@ -739,30 +761,40 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
             </div>
           </div>
 
-          <MultiSelect
-            value={selectedRecipients}
-            options={filteredRecipientOptions}
-            disabled={loadingLeads}
-            onChange={(e) => {
-              const val = (e.value || []) as string[]
-              if (val.length > 50) {
-                notify("warn", "Limite excedido", "Você pode selecionar no máximo 50 leads por disparo.")
-                setSelectedRecipients(val.slice(0, 50))
-              } else {
-                setSelectedRecipients(val)
-              }
-            }}
-            placeholder={getPlaceholderByFilter(recipientFilter)}
-            className="w-full"
-            filter
-            maxSelectedLabels={3}
-            optionLabel="label"
-            optionValue="value"
-            itemTemplate={recipientItemTemplate}
-            selectedItemTemplate={selectedRecipientTemplate}
-            emptyFilterMessage="Nenhum destinatário encontrado."
-            display="chip"
-          />
+          <div className="campaign-recipients-multiselect w-full">
+            <MultiSelect
+              value={selectedRecipients}
+              options={filteredRecipientOptions}
+              disabled={loadingLeads}
+              onChange={(e) => {
+                const val = (e.value || []) as string[]
+                if (val.length > 50) {
+                  notify(
+                    "warn",
+                    "Limite excedido",
+                    "Você pode selecionar no máximo 50 leads por disparo."
+                  )
+                  setSelectedRecipients(val.slice(0, 50))
+                } else {
+                  setSelectedRecipients(val)
+                }
+              }}
+              placeholder={getPlaceholderByFilter(recipientFilter)}
+              className="w-full"
+              filter
+              maxSelectedLabels={3}
+              optionLabel="label"
+              optionValue="value"
+              itemTemplate={recipientItemTemplate}
+              selectedItemTemplate={selectedRecipientTemplate}
+              emptyFilterMessage="Nenhum destinatário encontrado."
+              display="chip"
+              appendTo="self"
+              scrollHeight="280px"
+              panelClassName="campaign-recipients-panel"
+              panelStyle={{ width: "100%", maxWidth: "100%", minWidth: "100%" }}
+            />
+          </div>
 
           <div className="text-secondary" style={{ fontSize: 12, marginTop: 8 }}>
             {fetchError ? (
@@ -942,6 +974,54 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
       </div>
 
       <style>{`
+        .create-campaign-dialog.p-dialog {
+          max-height: 92vh;
+        }
+
+        .create-campaign-dialog .p-dialog-content {
+          overflow-x: hidden;
+          overflow-y: auto;
+        }
+
+        .campaign-recipients-multiselect {
+          position: relative;
+          width: 100%;
+          z-index: 2;
+        }
+
+        .campaign-recipients-multiselect .p-multiselect {
+          position: relative;
+          width: 100%;
+        }
+
+        /* Painel alinhado ao campo (appendTo=self), sem “vazar” para a esquerda da tela */
+        .campaign-recipients-multiselect .p-multiselect-panel,
+        .p-multiselect-panel.campaign-recipients-panel {
+          left: 0 !important;
+          right: auto !important;
+          top: calc(100% + 4px) !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+          box-sizing: border-box;
+          z-index: 30;
+        }
+
+        .campaign-recipients-panel .p-multiselect-items {
+          padding: 0.25rem 0;
+        }
+
+        .campaign-recipients-panel .p-multiselect-item {
+          white-space: normal;
+          align-items: flex-start;
+          max-width: 100%;
+        }
+
+        .campaign-recipients-panel .p-checkbox {
+          margin-top: 0.2rem;
+          flex-shrink: 0;
+        }
+
         .wa-preview-phone {
           background: #111b21;
           border: 1px solid rgba(0, 0, 0, 0.25);
