@@ -78,23 +78,53 @@ export default function PrimeForm(props: PrimeFormProps) {
         tooltipOptions={options.tooltipOptions}
       />
 
-    if(type === 'timestamp')
-      return <Calendar
-        id={id}
-        className="w-full"
-        placeholder={placeholder}
-        value={ get(key) as Date }
-        onChange={(e) => set(key, e.value)}
-        dateFormat={options.dateFormat || 'dd/mm/yy'}
-        showTime={options.showTime !== false}
-        hourFormat={options.hourFormat || '24'}
-        showIcon={options.showIcon !== false}
-        minDate={options.minDate}
-        maxDate={options.maxDate}
-        appendTo={options.appendTo}
-        tooltip={options.tooltip}
-        tooltipOptions={options.tooltipOptions}
-      />
+    if(type === 'timestamp') {
+      const value = (get(key) as Date | null) || null
+      const timeStr = value instanceof Date && Number.isFinite(value.getTime())
+        ? `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
+        : ''
+
+      const mergeDateAndTime = (datePart: Date | null | undefined, hhmm: string) => {
+        const base = datePart instanceof Date && Number.isFinite(datePart.getTime())
+          ? new Date(datePart)
+          : new Date()
+        const [hoursRaw, minutesRaw] = String(hhmm || '').split(':')
+        const hours = Number(hoursRaw)
+        const minutes = Number(minutesRaw)
+        base.setHours(Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0, 0, 0)
+        return base
+      }
+
+      return (
+        <div className="flex flex-column gap-2 w-full">
+          <Calendar
+            id={id}
+            className="w-full"
+            placeholder={placeholder}
+            value={value}
+            onChange={(e) => set(key, mergeDateAndTime(e.value as Date, timeStr || '09:00'))}
+            dateFormat={options.dateFormat || 'dd/mm/yy'}
+            showIcon={options.showIcon !== false}
+            minDate={options.minDate}
+            maxDate={options.maxDate}
+            appendTo={options.appendTo}
+            tooltip={options.tooltip}
+            tooltipOptions={options.tooltipOptions}
+          />
+          <label htmlFor={`${id}-time`} className="text-sm" style={{ marginBottom: 0 }}>
+            Horário
+          </label>
+          <input
+            id={`${id}-time`}
+            type="time"
+            className="p-inputtext p-component w-full"
+            value={timeStr}
+            onChange={(e) => set(key, mergeDateAndTime(value, e.target.value))}
+            step={60}
+          />
+        </div>
+      )
+    }
 
     if(type === 'number')
       return <InputNumber

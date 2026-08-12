@@ -71,6 +71,8 @@ func main() {
 		e.Router.GET("/query/crm/leads", server.QueryCrmLeads)
 		e.Router.GET("/query/crm/contacts", server.QueryCrmContacts)
 		e.Router.GET("/query/crm/search", server.QueryCrmSearch)
+		e.Router.GET("/query/crm/reminders-due", server.QueryCrmRemindersDue)
+		e.Router.POST("/crm/reminders/ack", server.AckCrmReminder)
 
 		e.Router.GET("/export/:table", server.ExportTable)
 

@@ -40,6 +40,16 @@ func TestCrmRemindersSQL_RequiresPositiveAbsoluteAlertAt(t *testing.T) {
 	assert.Contains(t, sql, "datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch')")
 }
 
+func TestCrmRemindersDueSQL_UsesAbsoluteAlertAt(t *testing.T) {
+	raw, err := templates.ReadFile("templates/crm/crm_reminders_due.sql")
+	require.NoError(t, err)
+	sql := strings.ToLower(string(raw))
+
+	assert.Contains(t, sql, "{user_filter}")
+	assert.Contains(t, sql, "cast((lead.properties -> 'alert_at') as real) > 0")
+	assert.Contains(t, sql, "datetime((lead.properties -> 'alert_at') / 1000, 'unixepoch')")
+}
+
 func TestFormatReminderAtBR(t *testing.T) {
 	// 2026-08-17 18:32:18 -03 = 2026-08-17 21:32:18 UTC
 	sec := time.Date(2026, 8, 17, 21, 32, 18, 0, time.UTC).Unix()

@@ -14,6 +14,14 @@ export type ReminderLeadLike = {
   }
 }
 
+export type DueReminderRecord = {
+  lead_id?: string
+  owner?: string
+  city?: string
+  state?: string
+  alert_at?: number | string | null
+}
+
 const UNIT_MS: Record<ReminderTimeUnit, number> = {
   Horas: 1000 * 3600,
   Dias: 1000 * 3600 * 24,
@@ -102,6 +110,21 @@ export function filterUnnotifiedReminders(
 
 export function reminderToastDetail(lead: ReminderLeadLike): string {
   const title = (lead.title || 'Lead').trim() || 'Lead'
+  return `Hora de retornar contato: ${title}`
+}
+
+export function reminderBannerText(rec: DueReminderRecord | ReminderLeadLike | null | undefined): string {
+  if (!rec) return 'Hora de retornar o contato com o lead.'
+
+  const like = rec as ReminderLeadLike
+  if (like.title) return reminderToastDetail(like)
+
+  const due = rec as DueReminderRecord
+  const owner = String(due.owner || '').trim()
+  const city = String(due.city || '').trim()
+  const state = String(due.state || '').trim()
+  const place = [city, state].filter(Boolean).join(', ')
+  const title = [owner, place].filter(Boolean).join(' - ') || 'Lead'
   return `Hora de retornar contato: ${title}`
 }
 

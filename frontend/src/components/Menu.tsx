@@ -1,6 +1,7 @@
 import * as React from "react";
 import { SelectButton } from "primereact/selectbutton";
 import { isLoaded } from "../store/store.js";
+import ReminderBanner from "./crm/ReminderBanner";
 
 interface Props {}
 
@@ -55,6 +56,8 @@ export default function Menu(props: Props) {
           <img src="/google_gemini_google.png" alt="Powered by Gemini" style={{ height: "28px" }} />
         </div>
       </div>
+
+      <ReminderBanner />
 
       <style>{`
         /* desktop: não mexe em nada */

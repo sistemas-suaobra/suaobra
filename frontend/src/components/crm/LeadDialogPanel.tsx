@@ -56,8 +56,6 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
       label: 'Data do lembrete',
       type: 'timestamp',
       options: {
-        showTime: true,
-        hourFormat: '24',
         dateFormat: 'dd/mm/yy',
         showIcon: true,
         minDate: new Date(),
@@ -548,19 +546,6 @@ export function LeadDialogPanel(props: { state: State<LeadDialogParams> }) {
           dismissableMask
         >
           <span style={{color: 'red'}}> {error.get()} </span>
-          {
-            lead.lead_properties.has_alert.get() && lead.lead_properties.alert_reached.get() ?
-            <div
-              className="mb-3 p-3 border-round"
-              style={{ background: '#fff3cd', border: '1px solid #ffecb5', color: '#856404' }}
-            >
-              <i className="pi pi-clock mr-2" />
-              <strong>Lembrete vencido:</strong>{' '}
-              {lead.lead_properties.alert_date_str.get()} — hora de retornar o contato.
-            </div>
-            :
-            null
-          }
           <span className="cursor-pointer" style={{position: 'absolute', top:90, right:30, zIndex:9999}}>
             <Button
               icon="pi pi-clock"

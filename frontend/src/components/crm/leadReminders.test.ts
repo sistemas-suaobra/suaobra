@@ -6,6 +6,7 @@ import {
   filterUnnotifiedReminders,
   findDueReminders,
   isReminderDue,
+  reminderBannerText,
   reminderToastDetail,
   resolveReminderDate,
 } from './leadReminders'
@@ -122,10 +123,13 @@ describe('applyReminderFieldsToPayload', () => {
   })
 })
 
-describe('reminderToastDetail', () => {
-  it('monta mensagem clara para toast na plataforma', () => {
+describe('reminderToastDetail / reminderBannerText', () => {
+  it('monta mensagem clara para o aviso', () => {
     expect(reminderToastDetail({ title: 'RAFAEL MENDES - VOTORANTIM, SP' })).toContain(
       'RAFAEL MENDES - VOTORANTIM, SP',
     )
+    expect(
+      reminderBannerText({ owner: 'RAFAEL MENDES', city: 'VOTORANTIM', state: 'SP' }),
+    ).toContain('RAFAEL MENDES - VOTORANTIM, SP')
   })
 })

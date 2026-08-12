@@ -52,6 +52,53 @@ func QueryCrmContacts(c echo.Context) error {
 	return req.SqlQueryResponse(string(sql))
 }
 
+func QueryCrmRemindersDue(c echo.Context) error {
+	req := NewRequest(c)
+	sqlB, _ := templates.ReadFile("templates/crm/crm_reminders_due.sql")
+	sql := string(sqlB)
+
+	if req.IsManager() {
+		sql = g.R(sql, "user_filter", "1=1")
+	} else {
+		sql = g.R(sql, "user_filter", "lead.owner_id = {:user_id}")
+	}
+
+	return req.SqlQueryResponse(sql)
+}
+
+// AckCrmReminder remove alert_at/alerted do lead: o aviso já foi exibido
+// e o lembrete não fica salvo para sempre.
+func AckCrmReminder(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+
+	if err := req.ValidatePayload("lead_id"); err != nil {
+		return ErrJSON(400, err, "missing required parameters")
+	}
+
+	sql := `
+		update "main"."lead"
+		set properties = json_remove(coalesce(properties, '{}'), '$.alert_at', '$.alerted')
+		where id = {:lead_id}
+		  and team_id = {:team_id}
+		  and {user_filter}
+	`
+
+	if req.IsManager() {
+		sql = g.R(sql, "user_filter", "1=1")
+	} else {
+		sql = g.R(sql, "user_filter", "owner_id = {:user_id}")
+	}
+
+	if err := req.SqlExecute(sql); err != nil {
+		return ErrJSON(500, err, "could not ack reminder")
+	}
+
+	return c.JSON(200, g.M("success", true))
+}
+
 func QueryCrmSearch(c echo.Context) error {
 	req := NewRequest(c)
 	sql, _ := templates.ReadFile("templates/crm/crm_search.sql")
