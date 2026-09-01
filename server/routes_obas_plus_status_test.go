@@ -15,6 +15,32 @@ func TestMakeStatusCond_UsesJoinedLeadNotSubquery(t *testing.T) {
 	assert.NotContains(t, strings.ToLower(cond), " not in (")
 }
 
+func TestMakeStatusCond_EmAndamento(t *testing.T) {
+	cond := strings.ToLower(makeStatusCond([]string{"em-andamento"}))
+
+	assert.Contains(t, cond, "execucao")
+	assert.Contains(t, cond, "date(cop.start_date) <= date('now')")
+	assert.Contains(t, cond, "date(cop.end_date) >= date('now')")
+	assert.NotContains(t, cond, "current_date")
+}
+
+func TestMakeOrderSQL(t *testing.T) {
+	desc, ok := makeOrderSQL("first_listing_date-desc,start_date-desc")
+	assert.True(t, ok)
+	assert.Equal(t, "first_listing_date DESC, start_date DESC, obra_number DESC", desc)
+
+	asc, ok := makeOrderSQL("first_listing_date-asc,start_date-asc")
+	assert.True(t, ok)
+	assert.Equal(t, "first_listing_date ASC, start_date ASC, obra_number ASC", asc)
+
+	sizeDesc, ok := makeOrderSQL("size-desc")
+	assert.True(t, ok)
+	assert.Equal(t, "size DESC, obra_number DESC", sizeDesc)
+
+	_, ok = makeOrderSQL("first_listing_date-desc")
+	assert.False(t, ok)
+}
+
 func TestMakeStatusCond_VisitadaFavorita(t *testing.T) {
 	visitada := makeStatusCond([]string{"ja-visitada"})
 	assert.Contains(t, visitada, "l.visited_at > ''")

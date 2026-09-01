@@ -38,6 +38,7 @@ caubr-api/
 caubr-api-service/
 caubr-api-v2/
 contatos/
+CONTATOS/
 archive/
 
 # Go binaries and large files

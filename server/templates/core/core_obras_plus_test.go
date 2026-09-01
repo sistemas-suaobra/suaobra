@@ -59,3 +59,14 @@ func TestCoreObrasPlusSQL_ContactFilter_PerRecipientType(t *testing.T) {
 	require.Greater(t, profIdx, -1)
 	assert.NotEqual(t, ownerIdx, profIdx)
 }
+
+func TestCoreObrasPlusSQL_OuterQueryKeepsOrder(t *testing.T) {
+	raw, err := os.ReadFile(sqlTemplatePath(t))
+	require.NoError(t, err)
+
+	sql := strings.ToLower(string(raw))
+	fromPage := strings.LastIndex(sql, "from page")
+	require.Greater(t, fromPage, -1)
+	assert.Contains(t, sql[fromPage:], "order by {order}")
+	assert.Contains(t, sql, "cop.first_listing_date")
+}

@@ -498,7 +498,7 @@ export default function ObraPlusPage(props: Props) {
         </div>
 
         <div className="field md:col-6 col-12">
-          <label htmlFor="search-filter">Filtro de Pesquisa</label>
+          <label htmlFor="search-filter">Pesquisa</label>
           <div className="p-inputgroup">
             <InputText
               id='search-filter'
@@ -570,7 +570,7 @@ export default function ObraPlusPage(props: Props) {
             }}
             tooltip={
               [
-                'EM ANDAMENTO:     Mostrar as obras já iniciadas',
+                'EM ANDAMENTO:     Mostrar obras de execução já iniciadas (não finalizadas)',
                 'COM TELEFONE:     Mostrar as obras com telefone',
                 'COM EMAIL:        Mostrar as obras com email',
                 'COM OBSERVAÇÃO:   Mostrar as obras com observação',
@@ -685,7 +685,7 @@ export default function ObraPlusPage(props: Props) {
         </div>
 
         <div className="field md:col-3 col-6">
-          <label htmlFor="end-date-from">Data de Fim (De)</label>
+          <label htmlFor="end-date-from">Previsao de termino (de)</label>
           <div className="p-inputgroup">
             <Calendar
               id='end-date-from'
@@ -714,7 +714,7 @@ export default function ObraPlusPage(props: Props) {
         </div>
 
         <div className="field md:col-3 col-6">
-          <label htmlFor="end-date-to">Data de Fim (Até)</label>
+          <label htmlFor="end-date-to">Previsao de termino (ate)</label>
           <div className="p-inputgroup">
             <Calendar
               id='end-date-to'
@@ -867,7 +867,12 @@ const parseDate = (date: string, add_days = 0) => {
   return `${d.getUTCDate().toString().padStart(2, '0')}/${(d.getUTCMonth() + 1).toString().padStart(2, '0')}/${d.getUTCFullYear()}`
 }
 
-const calculateObraStage = (startDateStr: string, endDateStr: string): string => {
+const isProjetoObra = (type: string): boolean =>
+  (type || '').trim().toUpperCase().startsWith('1 - PROJETO')
+
+const calculateObraStage = (startDateStr: string, endDateStr: string, type = ''): string => {
+  if (isProjetoObra(type)) return ''
+
   const startDate = new Date(Date.parse(startDateStr))
   const endDate = new Date(Date.parse(endDateStr))
   const currentDate = new Date()
@@ -1108,8 +1113,12 @@ const RecordCard = (props: RecordCardParams) => {
           <p className="mt-2"> {record.size.toLocaleString('pt-br')} M²</p>
 
           <br />
-          <p className="my-0"><strong>Etapa</strong></p>
-          <p className="mt-2"> {calculateObraStage(record.start_date, record.end_date)} </p>
+          {!isProjetoObra(record.type) && (
+            <>
+              <p className="my-0"><strong>Etapa</strong></p>
+              <p className="mt-2"> {calculateObraStage(record.start_date, record.end_date, record.type)} </p>
+            </>
+          )}
         </div>
 
         {/* Column 3 */}

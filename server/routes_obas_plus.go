@@ -102,7 +102,12 @@ func makeStatusCond(statuses []string) string {
 	whereArr := []string{}
 
 	if slices.Contains(statuses, StatusAndamento) {
-		whereArr = append(whereArr, "(current_date >= start_date and current_date <= end_date )")
+		// Execução já iniciada e ainda não finalizada (date() ignora horário).
+		whereArr = append(whereArr, `(
+			(cop.type like '%EXECUCAO%' or cop.type like '%EXECUÇÃO%')
+			and date(cop.start_date) <= date('now')
+			and date(cop.end_date) >= date('now')
+		)`)
 	}
 
 	if slices.Contains(statuses, StatusComTelefone) {
@@ -162,6 +167,23 @@ func makeStatusCond(statuses []string) string {
 		return "1=1"
 	}
 	return "(" + strings.Join(whereArr, " and ") + ")"
+}
+
+// makeOrderSQL traduz o código de ordenação do frontend em SQL estável.
+// obra_number desempatam o mesmo dia de listagem (RRT maior = mais novo).
+func makeOrderSQL(order string) (string, bool) {
+	switch order {
+	case "first_listing_date-desc,start_date-desc":
+		return "first_listing_date DESC, start_date DESC, obra_number DESC", true
+	case "first_listing_date-asc,start_date-asc":
+		return "first_listing_date ASC, start_date ASC, obra_number ASC", true
+	case "size-desc":
+		return "size DESC, obra_number DESC", true
+	case "size-asc":
+		return "size ASC, obra_number ASC", true
+	default:
+		return "", false
+	}
 }
 
 func makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo string) string {
@@ -304,15 +326,10 @@ func QueryObrasPlus(c echo.Context) (err error) {
 		itemPerPage = 10
 	}
 
-	allowedOrderStr := []any{
-		"first_listing_date-desc,start_date-desc",
-		"first_listing_date-asc,start_date-asc",
-		"size-desc",
-		"size-asc",
-	}
+	orderSQL, ok := makeOrderSQL(order)
 	if found := validateCity(city); !found {
 		return ErrJSON(404, g.Error("invalid city %s", city))
-	} else if !g.In(order, allowedOrderStr...) {
+	} else if !ok {
 		return ErrJSON(404, g.Error("invalid order"))
 	} else if !validateFilter(filter) {
 		return ErrJSON(404, g.Error("invalid filter"))
@@ -333,7 +350,7 @@ func QueryObrasPlus(c echo.Context) (err error) {
 
 	m := g.M(
 		"city", city,
-		"order", strings.ReplaceAll(order, "-", " "),
+		"order", orderSQL,
 		"sizeMin", sizeMin,
 		"sizeMax", sizeMax,
 		"neighborhoodCond", makeNeighborhoodCond(neighborhoods),

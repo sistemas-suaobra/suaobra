@@ -126,4 +126,5 @@ left join phones_agg pao on obras.owner = pao.nome
 left join phones_agg pap on obras.professional = pap.nome
 left join emails_agg eao on obras.owner = eao.nome
 left join emails_agg eap on obras.professional = eap.nome
+order by {order}
 limit {itemPerPage}

@@ -10,6 +10,7 @@ with page as (
     cop.state,
     cop.start_date,
     cop.end_date,
+    cop.first_listing_date,
     cop.type,
     cop.activity,
     cop.size,
@@ -61,3 +62,4 @@ select
       and status not in ('FALHOU', 'IGNORADO')
   ) as professional_enviado_em
 from page
+order by {order}
