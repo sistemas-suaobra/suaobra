@@ -174,6 +174,7 @@ export default function ObraPlusPage(props: Props) {
   const latestRequestIdRef = React.useRef(0);
 
   const batchOverlayPanel = React.useRef(null);
+  const exportToast = React.useRef<Toast>(null);
 
   ///////////////////////////  EFFECTS  ///////////////////////////
   React.useEffect(() => {
@@ -395,6 +396,7 @@ export default function ObraPlusPage(props: Props) {
       isWaiting.set(true)
       let resp = await api().get(`${baseURL()}/query/obras-plus-export`, payload)
       if (resp.error) throw new Error(resp.error)
+      if (!resp.response.ok) throw new Error(resp.error || 'Não foi possível exportar os leads.')
       let blob = await resp.response.blob()
 
       var a = document.createElement('a');
@@ -403,9 +405,15 @@ export default function ObraPlusPage(props: Props) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-    } catch (error) {
+    } catch (error: any) {
       console.log(error)
       recs = []
+      doToast(exportToast, {
+        severity: 'error',
+        summary: 'Exportação bloqueada',
+        detail: error?.message || 'Não foi possível exportar os leads.',
+        life: 6000,
+      })
     } finally {
       isWaiting.set(false)
       window.rudderAnalytics?.track(
@@ -831,7 +839,7 @@ export default function ObraPlusPage(props: Props) {
                     allowExport > 0 ?
                       <Button
                         label="Exportar Leads"
-                        tooltip={`Exportar os primeiros ${allowExport} resultados`}
+                        tooltip={`Exportar até ${allowExport} resultados (máx. 500 leads por dia)`}
                         tooltipOptions={{ position: 'top' }}
                         icon='pi pi-file-excel'
                         onClick={() => getExcelExport(allowExport)}
@@ -857,6 +865,7 @@ export default function ObraPlusPage(props: Props) {
 
       <ContactModal />
       <MessengerBatchDialog records={batchContacts} visible={messengerBatchDialogVisible} />
+      <Toast ref={exportToast} />
 
       <div className="card">
         <Paginator

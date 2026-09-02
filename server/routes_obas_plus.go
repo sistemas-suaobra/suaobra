@@ -382,6 +382,17 @@ func QueryObrasPlus(c echo.Context) (err error) {
 			g.M("coreObrasPlusSQL", string(coreObrasPlusSQL)),
 		)
 		offset = 0
+
+		if user.Team.ID != "" {
+			allowed, err := capObrasExportRows(user.Team.ID, itemPerPage, time.Now())
+			if err != nil {
+				return ErrJSON(500, err, "erro ao verificar limite de exportação")
+			}
+			if allowed <= 0 {
+				return ErrJSON(429, g.Error("limite diário de exportação atingido (máximo %d leads por dia)", maxObrasExportLeadsPerDay))
+			}
+			itemPerPage = allowed
+		}
 	}
 
 	m := g.M(
@@ -452,6 +463,13 @@ func QueryObrasPlusExport(c echo.Context) error {
 			return err
 		}
 		data = c.Get("data").(iop.Dataset)
+	}
+
+	req := NewRequest(c)
+	if user, err := getUser(c, req.UserID()); err == nil {
+		if err := recordObrasExport(user.Team.ID, user.ID, len(data.Rows), time.Now()); err != nil {
+			g.Warn("falha ao registrar exportação obras+: %v", err)
+		}
 	}
 
 	// translate columns

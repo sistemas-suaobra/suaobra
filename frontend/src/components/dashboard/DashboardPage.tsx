@@ -1,11 +1,9 @@
 import { Dropdown } from "primereact/dropdown";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Chart } from 'primereact/chart';
-import { Chip } from 'primereact/chip';
 import { api, makeURL } from "../../store/api";
 import { useVariable, type ObjectAny } from "../../utils/interfaces";
-import { Lead, User, UserProperties, loadUserState, user, userS } from "../../store/store";
-import { makeLeadTooltip } from "../crm/VendaMaisPage";
+import { UserProperties, loadUserState, user } from "../../store/store";
 import { Carousel } from 'primereact/carousel';
 import { GetQuotes, type MotivationalQuote } from "../../store/quotes";
 import { VerifyPanel, InfoInputPanel, type LoginUserState } from "../login/LoginPage";
@@ -102,6 +100,13 @@ export default function DashboardPage(props: Props) {
     }
   ]
 
+  const books: File[] = [
+    {
+      title: 'Prospecção Fanática — Jeb Blount',
+      url: '/pdfs/prospeccao-fanatica-jeb-blount.pdf',
+    },
+  ]
+
   const files: File[] = [
     {
       title: 'Treinamento básico PROSPECÇÃO DE OBRAS',
@@ -135,7 +140,6 @@ export default function DashboardPage(props: Props) {
   const [userOptions, setUserOptions] = useState<UserData[]>([])
   const quotes = useVariable(GetQuotes())
 
-  const [leads, setLeads] = useState<Lead[]>([]);
   const [histData, setHistData] = useState<HistoryEntry[]>([]);
   const [funnel, setFunnel] = useState<Funnel>({} as Funnel);
   const [chartData, setChartData] = useState<ChartData>({ data: {}, options: {} });
@@ -190,7 +194,6 @@ export default function DashboardPage(props: Props) {
     if (!localUserS.id.get()) return
     getHistory()
     getFunnel()
-    getLatestLeads()
   }, [localUserS, selectedPeriod, selectedUser]);
 
   useEffect(() => {
@@ -229,21 +232,6 @@ export default function DashboardPage(props: Props) {
       console.log("Selected user not found in refreshed options, resetting to 'all'");
       setSelectedUser(makeUserOption('all'));
     }
-  }
-
-  const getLatestLeads = async () => {
-    // For non-managers, always force user_id to be the current user
-    const userId = !localUserS.is_manager?.get()
-      ? localUserS.id.get()
-      : (selectedUser.code === 'all' ? null : selectedUser.code);
-
-    let resp = await api().get(makeURL('/query/dashboard/leads'), {
-      month: selectedPeriod.code,
-      user_id: userId
-    })
-    if (resp.error) return
-    let leads = (await resp.records() as any[]).map(v => new Lead(v))
-    if (leads) setLeads(leads)
   }
 
   const getFunnel = async () => {
@@ -377,22 +365,6 @@ export default function DashboardPage(props: Props) {
       </div>
     </span>
 
-  }
-
-  const leadChip = (lead: Lead) => {
-    const id = lead.obra_id
-    return <span key={id}>
-      {makeLeadTooltip(lead)}
-
-      <Chip
-        id={id}
-        onClick={() => window.location.assign('venda-mais')}
-        icon="pi pi-home"
-        label={lead.title}
-        style={{ cursor: 'pointer' }}
-        className="ml-2 mt-2"
-      />
-    </span>
   }
 
   const quoteTemplate = (item: MotivationalQuote) => {
@@ -552,13 +524,21 @@ export default function DashboardPage(props: Props) {
 
       <div className="mx-2 my-4 border-bottom-0" />
 
-      <div className="mx-2 bg-white border-round-3xl px-5 pb-3">
-        <div className='pt-2'>
-          <h2>Últimas Obras Convertidas em Leads</h2>
+      <div className="mx-2 bg-white border-round-3xl px-5 pb-3 col-12">
+        <div className="flex col-12">
+          <h2>Livros para ajudar na prospecção</h2>
         </div>
-        {
-          leads?.map(lead => leadChip(lead))
-        }
+
+        <div className="grid w-full">
+          {
+            books.map((book, index) => {
+              return <div key={index} className="flex align-items-center lg:col-4 md:col-6 col-12">
+                <div><i className="pi pi-book" style={{ fontSize: '2.5rem' }}></i></div>
+                <div> <a href={book.url} target="_blank" rel="noopener noreferrer">{book.title}</a></div>
+              </div>
+            })
+          }
+        </div>
       </div>
 
       <div className="mx-2 bg-white border-round-3xl px-5 pb-3 mt-4">
