@@ -41,6 +41,29 @@ func TestMakeOrderSQL(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestMakeEtapaCond(t *testing.T) {
+	todos := makeEtapaCond([]string{"todos"})
+	assert.Equal(t, "1=1", todos)
+
+	inicio := strings.ToLower(makeEtapaCond([]string{"inicio"}))
+	assert.Contains(t, inicio, "not like '%projeto%'")
+	assert.Contains(t, inicio, "date('now') < date(cop.start_date)")
+	assert.Contains(t, inicio, "<= 0.33")
+
+	estrutura := makeEtapaCond([]string{"estrutura"})
+	assert.Contains(t, estrutura, "> 0.33")
+	assert.Contains(t, estrutura, "<= 0.66")
+
+	acabamento := makeEtapaCond([]string{"acabamento"})
+	assert.Contains(t, acabamento, "> 0.66")
+
+	finalizada := makeEtapaCond([]string{"finalizada"})
+	assert.Contains(t, finalizada, "date('now') > date(cop.end_date)")
+
+	multi := makeEtapaCond([]string{"inicio", "estrutura"})
+	assert.Contains(t, multi, " or ")
+}
+
 func TestMakeStatusCond_VisitadaFavorita(t *testing.T) {
 	visitada := makeStatusCond([]string{"ja-visitada"})
 	assert.Contains(t, visitada, "l.visited_at > ''")

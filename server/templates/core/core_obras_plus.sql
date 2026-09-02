@@ -38,6 +38,7 @@ with page as (
     and cop.size >= {sizeMin}
     and cop.size <= {sizeMax}
     and {statusCond}
+    and {etapaCond}
     and {neighborhoodCond}
     and {filterCond}
     and {dateFilterCond}

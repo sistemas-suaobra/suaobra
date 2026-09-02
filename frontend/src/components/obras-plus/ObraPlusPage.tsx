@@ -130,6 +130,14 @@ export default function ObraPlusPage(props: Props) {
     // {label: 'Excluídas', code: 'excluida'},
   ];
 
+  const etapas = [
+    { label: 'Todas', code: 'todos' },
+    { label: 'Início', code: 'inicio' },
+    { label: 'Estrutura', code: 'estrutura' },
+    { label: 'Acabamento', code: 'acabamento' },
+    { label: 'Finalizada', code: 'finalizada' },
+  ];
+
   ///////////////////////////  HOOKS  ///////////////////////////
   const $obrasPlusCity = useStore(obrasPlusCity)
   const $obrasPlusNeighborhood = useStore(obrasPlusNeighborhood)
@@ -142,6 +150,7 @@ export default function ObraPlusPage(props: Props) {
   const [filterValue, setFilterValue] = React.useState('')
   const [selectedOrder, setSelectedOrder] = React.useState(orders[0].code)
   const [selectedStatuses, setSelectedStatuses] = React.useState([statuses[0].code])
+  const [selectedEtapas, setSelectedEtapas] = React.useState([etapas[0].code])
   const [startDateFrom, setStartDateFrom] = React.useState<Date | null>(null)
   const [startDateTo, setStartDateTo] = React.useState<Date | null>(null)
   const [endDateFrom, setEndDateFrom] = React.useState<Date | null>(null)
@@ -190,7 +199,7 @@ export default function ObraPlusPage(props: Props) {
       }
     )
 
-  }, [selectedCity, selectedNeighborhood, selectedSize, selectedOrder, selectedStatuses, offset, rowsPerPage, refresh, locked, citiesOptions, startDateFrom, startDateTo, endDateFrom, endDateTo])
+  }, [selectedCity, selectedNeighborhood, selectedSize, selectedOrder, selectedStatuses, selectedEtapas, offset, rowsPerPage, refresh, locked, citiesOptions, startDateFrom, startDateTo, endDateFrom, endDateTo])
 
   /*
   In the useEffect hook, we increment the neighborhoodRequestId and update the latestRequestIdRef before making the API call.
@@ -281,6 +290,7 @@ export default function ObraPlusPage(props: Props) {
     setStartDateTo(null)
     setEndDateFrom(null)
     setEndDateTo(null)
+    setSelectedEtapas([etapas[0].code])
     doRefresh()
   }
 
@@ -293,6 +303,7 @@ export default function ObraPlusPage(props: Props) {
       order: selectedOrder,
       filter: filterValue,
       statuses: statuses.join(','),
+      etapas: selectedEtapas.join(','),
       sizeMin: selectedSize.split('-')[0],
       sizeMax: selectedSize.split('-')[1],
       offset: offset.toString(),
@@ -367,6 +378,7 @@ export default function ObraPlusPage(props: Props) {
       order: selectedOrder,
       filter: filterValue,
       statuses: selectedStatuses.join(','),
+      etapas: selectedEtapas.join(','),
       sizeMin: selectedSize.split('-')[0],
       sizeMax: selectedSize.split('-')[1],
       offset: offset.toString(),
@@ -607,6 +619,29 @@ export default function ObraPlusPage(props: Props) {
             optionLabel="label"
             optionValue="code"
             placeholder="Selecione um tamanho"
+            className="w-full"
+          />
+        </div>
+
+        <div className="field md:col-3 col-6">
+          <label htmlFor="etapa-dropdown">Etapa</label>
+          <MultiSelect
+            id='etapa-dropdown'
+            value={selectedEtapas}
+            onChange={(e) => {
+              if (e.value.includes('todos') && selectedEtapas.length > 0 && !selectedEtapas.includes('todos'))
+                e.value = ['todos']
+              else if (e.value.includes('todos') && e.value.length > 1)
+                e.value = e.value.filter(v => v !== 'todos')
+              else if (e.value.length === 0)
+                e.value = ['todos']
+              setSelectedEtapas(e.value)
+            }}
+            options={etapas}
+            optionLabel="label"
+            optionValue="code"
+            display="chip"
+            placeholder="Selecione a etapa"
             className="w-full"
           />
         </div>

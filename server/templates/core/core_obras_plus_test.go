@@ -69,4 +69,5 @@ func TestCoreObrasPlusSQL_OuterQueryKeepsOrder(t *testing.T) {
 	require.Greater(t, fromPage, -1)
 	assert.Contains(t, sql[fromPage:], "order by {order}")
 	assert.Contains(t, sql, "cop.first_listing_date")
+	assert.Contains(t, sql, "{etapacond}")
 }

@@ -13,6 +13,7 @@ where 1=1
   and size >= {sizeMin}
   and size <= {sizeMax}
   and {statusCond}
+  and {etapaCond}
   and {neighborhoodCond}
   and {filterCond}
   and {dateFilterCond}

@@ -169,6 +169,41 @@ func makeStatusCond(statuses []string) string {
 	return "(" + strings.Join(whereArr, " and ") + ")"
 }
 
+func obraEtapaExprs() (notProjeto, hasDates, pct string) {
+	notProjeto = `(upper(trim(cop.type)) not like '1 - PROJETO%' and upper(trim(cop.type)) not like '%PROJETO%')`
+	hasDates = `(cop.start_date > '' and cop.end_date > '' and julianday(cop.end_date) > julianday(cop.start_date))`
+	pct = `(cast(julianday('now') - julianday(cop.start_date) as real) / nullif(cast(julianday(cop.end_date) - julianday(cop.start_date) as real), 0))`
+	return
+}
+
+func makeEtapaCond(etapas []string) string {
+	if len(etapas) == 0 || slices.Contains(etapas, "todos") {
+		return "1=1"
+	}
+
+	notProjeto, hasDates, pct := obraEtapaExprs()
+	inPeriod := `(date('now') >= date(cop.start_date) and date('now') <= date(cop.end_date))`
+
+	conds := []string{}
+	for _, etapa := range etapas {
+		switch strings.ToLower(strings.TrimSpace(etapa)) {
+		case "inicio":
+			conds = append(conds, g.F(`(%s and %s and (date('now') < date(cop.start_date) or (%s and %s <= 0.33)))`, notProjeto, hasDates, inPeriod, pct))
+		case "estrutura":
+			conds = append(conds, g.F(`(%s and %s and %s and %s > 0.33 and %s <= 0.66)`, notProjeto, hasDates, inPeriod, pct, pct))
+		case "acabamento":
+			conds = append(conds, g.F(`(%s and %s and %s and %s > 0.66)`, notProjeto, hasDates, inPeriod, pct))
+		case "finalizada":
+			conds = append(conds, g.F(`(%s and %s and date('now') > date(cop.end_date))`, notProjeto, hasDates))
+		}
+	}
+
+	if len(conds) == 0 {
+		return "1=1"
+	}
+	return "(" + strings.Join(conds, " or ") + ")"
+}
+
 // makeOrderSQL traduz o código de ordenação do frontend em SQL estável.
 // obra_number desempatam o mesmo dia de listagem (RRT maior = mais novo).
 func makeOrderSQL(order string) (string, bool) {
@@ -296,6 +331,7 @@ func QueryObrasPlus(c echo.Context) (err error) {
 	neighborhoods := strings.Split(c.QueryParam("bairro"), "|")
 	order := c.QueryParam("order")
 	statuses := strings.Split(c.QueryParam("statuses"), ",")
+	etapas := strings.Split(c.QueryParam("etapas"), ",")
 	export := cast.ToBool(c.QueryParam("export"))
 	filter := strings.TrimSpace(c.QueryParam("filter"))
 	offset := cast.ToInt(c.QueryParam("offset"))
@@ -355,6 +391,7 @@ func QueryObrasPlus(c echo.Context) (err error) {
 		"sizeMax", sizeMax,
 		"neighborhoodCond", makeNeighborhoodCond(neighborhoods),
 		"statusCond", makeStatusCond(statuses),
+		"etapaCond", makeEtapaCond(etapas),
 		"filterCond", makeFilterCond(filter),
 		"dateFilterCond", makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo),
 		"itemPerPage", itemPerPage,
