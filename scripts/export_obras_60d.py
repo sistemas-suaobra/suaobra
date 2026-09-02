@@ -46,8 +46,21 @@ def parse_date(value: str | None) -> date | None:
         return None
 
 
+def normalize_obra_text(value: str | None) -> str:
+    import unicodedata
+
+    text = (value or "").strip().upper()
+    return "".join(
+        ch for ch in unicodedata.normalize("NFD", text)
+        if unicodedata.category(ch) != "Mn"
+    )
+
+
 def is_projeto_obra(type_val: str) -> bool:
-    return (type_val or "").strip().upper().startswith("1 - PROJETO")
+    normalized = normalize_obra_text(type_val)
+    if not normalized:
+        return False
+    return normalized.startswith("1 - PROJETO") or "PROJETO" in normalized
 
 
 def calculate_obra_stage(start_raw: str, end_raw: str, as_of: date, type_val: str = "") -> str:

@@ -867,8 +867,18 @@ const parseDate = (date: string, add_days = 0) => {
   return `${d.getUTCDate().toString().padStart(2, '0')}/${(d.getUTCMonth() + 1).toString().padStart(2, '0')}/${d.getUTCFullYear()}`
 }
 
-const isProjetoObra = (type: string): boolean =>
-  (type || '').trim().toUpperCase().startsWith('1 - PROJETO')
+const normalizeObraText = (value: string): string =>
+  (value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+const isProjetoObra = (type: string): boolean => {
+  const normalized = normalizeObraText(type)
+  if (!normalized) return false
+  return normalized.startsWith('1 - PROJETO') || normalized.includes('PROJETO')
+}
 
 const calculateObraStage = (startDateStr: string, endDateStr: string, type = ''): string => {
   if (isProjetoObra(type)) return ''
