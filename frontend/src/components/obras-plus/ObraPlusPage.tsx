@@ -498,7 +498,7 @@ export default function ObraPlusPage(props: Props) {
         </div>
 
         <div className="field md:col-6 col-12">
-          <label htmlFor="search-filter">Pesquisa</label>
+          <label htmlFor="search-filter">Palavra Chave</label>
           <div className="p-inputgroup">
             <InputText
               id='search-filter'
