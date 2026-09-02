@@ -4,6 +4,16 @@ import { obrasPlusCity, loadUserState } from "../../../store/store"
 import { makeCity, type City } from "../../../store/cities.js"
 import { api, baseURL } from "../../../store/api"
 
+const sizeOptions = [
+  { label: "Todos", code: "0-9999999" },
+  { label: "Até 100m²", code: "0-100" },
+  { label: "De 100m² até 250m²", code: "100-250" },
+  { label: "De 250m² até 500m²", code: "250-500" },
+  { label: "De 500m² até 1.000m²", code: "500-1000" },
+  { label: "De 1.000m² até 5.000m²", code: "1000-5000" },
+  { label: "Acima de 5.000m²", code: "5000-9999999" },
+]
+
 export function useObrasPlusFilters(visible: boolean) {
   const $obrasPlusCity = useStore(obrasPlusCity)
 
@@ -14,6 +24,7 @@ export function useObrasPlusFilters(visible: boolean) {
   const [neighborhoodsOptions, setNeighborhoodsOptions] = React.useState<any[]>([])
 
   const [filterValue, setFilterValue] = React.useState("")
+  const [selectedSize, setSelectedSize] = React.useState(sizeOptions[0].code)
   const [startDateFrom, setStartDateFrom] = React.useState("")
   const [startDateTo, setStartDateTo] = React.useState("")
   const [endDateFrom, setEndDateFrom] = React.useState("")
@@ -22,6 +33,7 @@ export function useObrasPlusFilters(visible: boolean) {
   const resetFilters = React.useCallback(() => {
     setSelectedNeighborhood([])
     setFilterValue("")
+    setSelectedSize(sizeOptions[0].code)
     setStartDateFrom("")
     setStartDateTo("")
     setEndDateFrom("")
@@ -84,6 +96,9 @@ export function useObrasPlusFilters(visible: boolean) {
     neighborhoodsOptions,
     filterValue,
     setFilterValue,
+    sizeOptions,
+    selectedSize,
+    setSelectedSize,
     startDateFrom,
     setStartDateFrom,
     startDateTo,

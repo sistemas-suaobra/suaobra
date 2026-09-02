@@ -41,6 +41,7 @@ export function useCampaignLeadOptions(params: {
   selectedCity: any
   selectedNeighborhood: any[]
   filterValue: string
+  selectedSize: string
   startDateFrom: string
   startDateTo: string
   endDateFrom: string
@@ -53,6 +54,7 @@ export function useCampaignLeadOptions(params: {
     selectedCity,
     selectedNeighborhood,
     filterValue,
+    selectedSize,
     startDateFrom,
     startDateTo,
     endDateFrom,
@@ -83,8 +85,8 @@ export function useCampaignLeadOptions(params: {
           bairro: pickBairros(selectedNeighborhood),
           order: "first_listing_date-desc,start_date-desc",
           filter: filterValue,
-          sizeMin: "0",
-          sizeMax: "9999999",
+          sizeMin: selectedSize.split("-")[0],
+          sizeMax: selectedSize.split("-")[1],
           offset: "0",
           itemsPerPage: "200",
           enriched: "false",
@@ -162,6 +164,7 @@ export function useCampaignLeadOptions(params: {
     selectedCity,
     selectedNeighborhood,
     filterValue,
+    selectedSize,
     startDateFrom,
     startDateTo,
     endDateFrom,

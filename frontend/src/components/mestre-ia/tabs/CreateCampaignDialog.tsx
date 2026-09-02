@@ -215,6 +215,9 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     neighborhoodsOptions,
     filterValue,
     setFilterValue,
+    sizeOptions,
+    selectedSize,
+    setSelectedSize,
     startDateFrom,
     setStartDateFrom,
     startDateTo,
@@ -232,6 +235,7 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
     selectedCity,
     selectedNeighborhood,
     filterValue,
+    selectedSize,
     startDateFrom,
     startDateTo,
     endDateFrom,
@@ -650,7 +654,20 @@ export default function CreateCampaignDialog(props: CreateCampaignDialogProps) {
           />
         </div>
 
-        <div className="field col-12 md:col-6 xl:col-6 mb-0">
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
+          <label>Tamanho M²</label>
+          <Dropdown
+            className="w-full"
+            value={selectedSize}
+            options={sizeOptions}
+            onChange={(e) => setSelectedSize(e.value)}
+            optionLabel="label"
+            optionValue="code"
+            placeholder="Selecione um tamanho"
+          />
+        </div>
+
+        <div className="field col-12 md:col-6 xl:col-3 mb-0">
           <label>Palavra Chave</label>
           <div className="p-inputgroup w-full">
             <InputText
