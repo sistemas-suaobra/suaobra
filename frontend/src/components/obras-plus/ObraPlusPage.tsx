@@ -669,119 +669,57 @@ export default function ObraPlusPage(props: Props) {
           />
         </div>
 
-        <div className="field md:col-3 col-6">
-          <label htmlFor="start-date-from">Data de Início (De)</label>
-          <div className="p-inputgroup">
+        <div className="field md:col-6 col-12">
+          <label htmlFor="start-date-from">Início da obra</label>
+          <div className="date-range-field">
             <Calendar
-              id='start-date-from'
+              id="start-date-from"
               value={startDateFrom}
-              onChange={(e) => {
-                setStartDateFrom(e.value as Date | null)
-              }}
-              placeholder="Selecione uma data"
+              onChange={(e) => setStartDateFrom(e.value as Date | null)}
+              placeholder="dd/mm/aaaa"
               dateFormat="dd/mm/yy"
               showIcon
-              className="w-full"
               tooltip="Filtrar obras que iniciaram a partir desta data"
               tooltipOptions={{ position: 'top' }}
             />
-            {startDateFrom && (
-              <Button
-                icon="pi pi-times"
-                className="p-button-text p-button-sm"
-                tooltip="Limpar"
-                onClick={() => {
-                  setStartDateFrom(null)
-                }}
-              />
-            )}
-          </div>
-        </div>
-
-        <div className="field md:col-3 col-6">
-          <label htmlFor="start-date-to">Data de Início (Até)</label>
-          <div className="p-inputgroup">
+            <span className="date-range-field__sep">até</span>
             <Calendar
-              id='start-date-to'
+              id="start-date-to"
               value={startDateTo}
-              onChange={(e) => {
-                setStartDateTo(e.value as Date | null)
-              }}
-              placeholder="Selecione uma data"
+              onChange={(e) => setStartDateTo(e.value as Date | null)}
+              placeholder="dd/mm/aaaa"
               dateFormat="dd/mm/yy"
               showIcon
-              className="w-full"
               tooltip="Filtrar obras que iniciaram até esta data"
               tooltipOptions={{ position: 'top' }}
             />
-            {startDateTo && (
-              <Button
-                icon="pi pi-times"
-                className="p-button-text p-button-sm"
-                tooltip="Limpar"
-                onClick={() => {
-                  setStartDateTo(null)
-                }}
-              />
-            )}
           </div>
         </div>
 
-        <div className="field md:col-3 col-6">
-          <label htmlFor="end-date-from">Previsao de termino (de)</label>
-          <div className="p-inputgroup">
+        <div className="field md:col-6 col-12">
+          <label htmlFor="end-date-from">Previsão de término</label>
+          <div className="date-range-field">
             <Calendar
-              id='end-date-from'
+              id="end-date-from"
               value={endDateFrom}
-              onChange={(e) => {
-                setEndDateFrom(e.value as Date | null)
-              }}
-              placeholder="Selecione uma data"
+              onChange={(e) => setEndDateFrom(e.value as Date | null)}
+              placeholder="dd/mm/aaaa"
               dateFormat="dd/mm/yy"
               showIcon
-              className="w-full"
               tooltip="Filtrar obras que terminam a partir desta data"
               tooltipOptions={{ position: 'top' }}
             />
-            {endDateFrom && (
-              <Button
-                icon="pi pi-times"
-                className="p-button-text p-button-sm"
-                tooltip="Limpar"
-                onClick={() => {
-                  setEndDateFrom(null)
-                }}
-              />
-            )}
-          </div>
-        </div>
-
-        <div className="field md:col-3 col-6">
-          <label htmlFor="end-date-to">Previsao de termino (ate)</label>
-          <div className="p-inputgroup">
+            <span className="date-range-field__sep">até</span>
             <Calendar
-              id='end-date-to'
+              id="end-date-to"
               value={endDateTo}
-              onChange={(e) => {
-                setEndDateTo(e.value as Date | null)
-              }}
-              placeholder="Selecione uma data"
+              onChange={(e) => setEndDateTo(e.value as Date | null)}
+              placeholder="dd/mm/aaaa"
               dateFormat="dd/mm/yy"
               showIcon
-              className="w-full"
               tooltip="Filtrar obras que terminam até esta data"
               tooltipOptions={{ position: 'top' }}
             />
-            {endDateTo && (
-              <Button
-                icon="pi pi-times"
-                className="p-button-text p-button-sm"
-                tooltip="Limpar"
-                onClick={() => {
-                  setEndDateTo(null)
-                }}
-              />
-            )}
           </div>
         </div>
       </div>

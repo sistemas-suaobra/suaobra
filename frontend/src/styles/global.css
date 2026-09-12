@@ -33,6 +33,66 @@ div.stage-lead > div > div > div {
   padding-bottom: 0 !important;
 }
 
+/* Obras+: intervalo de datas (Início / Previsão de término) */
+.date-range-field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0 0.35rem;
+  gap: 0;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+}
+
+.date-range-field:focus-within {
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+.date-range-field__sep {
+  flex-shrink: 0;
+  padding: 0 0.4rem;
+  color: #9ca3af;
+  font-size: 0.95rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.date-range-field .p-calendar {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.date-range-field .p-calendar .p-inputtext {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding-left: 0.5rem;
+  padding-right: 0.25rem;
+}
+
+.date-range-field .p-calendar .p-datepicker-trigger {
+  flex-shrink: 0;
+  width: 2.25rem;
+  background: transparent !important;
+  border: none !important;
+  color: #212529 !important;
+  box-shadow: none !important;
+}
+
+.date-range-field .p-calendar .p-datepicker-trigger:enabled:hover,
+.date-range-field .p-calendar .p-datepicker-trigger:enabled:focus {
+  background: transparent !important;
+  color: #212529 !important;
+}
+
 .lead-card {
   padding-top: 0;
   min-height: 75;
