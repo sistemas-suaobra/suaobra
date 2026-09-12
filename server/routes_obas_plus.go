@@ -492,6 +492,15 @@ func QueryObrasPlusExport(c echo.Context) error {
 		if err := recordObrasExportItems(user.Team.ID, user.ID, obraIDs, now); err != nil {
 			g.Warn("falha ao registrar obras exportadas: %v", err)
 		}
+
+		exportedCount := len(data.Rows)
+		app := req.App
+		teamID := user.Team.ID
+		teamName := user.Team.Name
+		exporterEmail := user.Email
+		go func() {
+			maybeAlertExportDailyLimit(app, teamID, teamName, exporterEmail, exportedCount, now)
+		}()
 	}
 
 	// translate columns
