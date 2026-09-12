@@ -467,8 +467,30 @@ func QueryObrasPlusExport(c echo.Context) error {
 
 	req := NewRequest(c)
 	if user, err := getUser(c, req.UserID()); err == nil {
-		if err := recordObrasExport(user.Team.ID, user.ID, len(data.Rows), time.Now()); err != nil {
+		now := time.Now()
+		if err := recordObrasExport(user.Team.ID, user.ID, len(data.Rows), now); err != nil {
 			g.Warn("falha ao registrar exportação obras+: %v", err)
+		}
+
+		obraIDs := make([]string, 0, len(data.Rows))
+		obraIDIdx := -1
+		for i, col := range data.Columns {
+			if strings.EqualFold(col.Name, "obra_id") {
+				obraIDIdx = i
+				break
+			}
+		}
+		if obraIDIdx >= 0 {
+			for _, row := range data.Rows {
+				if obraIDIdx < len(row) {
+					if id := strings.TrimSpace(cast.ToString(row[obraIDIdx])); id != "" {
+						obraIDs = append(obraIDs, id)
+					}
+				}
+			}
+		}
+		if err := recordObrasExportItems(user.Team.ID, user.ID, obraIDs, now); err != nil {
+			g.Warn("falha ao registrar obras exportadas: %v", err)
 		}
 	}
 

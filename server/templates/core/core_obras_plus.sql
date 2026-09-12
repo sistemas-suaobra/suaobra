@@ -26,13 +26,17 @@ with page as (
     l.professional_contact_pending_at,
     l.owner_contacted_at,
     l.professional_contacted_at,
-    n.id is not null as has_note
+    n.id is not null as has_note,
+    e.exported_at
   from core.core_obras_plus cop
   left join main.lead l
     on cop.id = l.obra_id
     and l.team_id = '{teamId}'
   left join main.obra_note n
     on cop.id = n.obra_id
+  left join main.obras_export_item e
+    on cop.id = e.obra_id
+    and e.team_id = '{teamId}'
   where 1=1
     and cop.city = '{city}'
     and cop.size >= {sizeMin}

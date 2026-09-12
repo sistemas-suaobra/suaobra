@@ -90,3 +90,35 @@ func recordObrasExport(teamID, userID string, rowsCount int, now time.Time) erro
 
 	return nil
 }
+
+// recordObrasExportItems marca obras já exportadas pela equipe (primeira vez).
+// INSERT OR IGNORE preserva a data da primeira exportação.
+func recordObrasExportItems(teamID, userID string, obraIDs []string, now time.Time) error {
+	if teamID == "" || len(obraIDs) == 0 {
+		return nil
+	}
+
+	exportedAt := now.UTC().Format(time.RFC3339)
+	for _, obraID := range obraIDs {
+		obraID = strings.TrimSpace(obraID)
+		if obraID == "" {
+			continue
+		}
+		_, err := store.MainDB.Exec(
+			`INSERT OR IGNORE INTO obras_export_item (id, team_id, obra_id, user_id, exported_at) VALUES (?, ?, ?, ?, ?)`,
+			store.ID("obras_export_item", ""),
+			teamID,
+			obraID,
+			userID,
+			exportedAt,
+		)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "no such table") {
+				return nil
+			}
+			return g.Error(err, "erro ao registrar obra exportada")
+		}
+	}
+
+	return nil
+}

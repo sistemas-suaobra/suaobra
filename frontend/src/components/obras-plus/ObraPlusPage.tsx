@@ -72,6 +72,7 @@ export interface ResultRecord {
   owner_contacted_at: string;
   professional_contacted_at: string;
   has_note: boolean;
+  exported_at?: string;
 }
 
 export interface ResultNeighborhoodRecord {
@@ -1021,13 +1022,19 @@ const RecordCard = (props: RecordCardParams) => {
   }
 
   ///////////////////////////  JSX  ///////////////////////////
+  const isExported = !!record.exported_at
+  const cardStripColor = isExported
+    ? '#fbbf24' // âmbar: obra já exportada (destaque vs lilás de visitada)
+    : (record.visited_at ? '#c8c9f7' : 'white')
+
   return <>
     <div
       style={{
         paddingRight: '10px',
-        backgroundColor: record.visited_at ? "#c8c9f7" : "white"
+        backgroundColor: cardStripColor,
       }}
-      className="border-round-3xl"
+      className={`border-round-3xl${isExported ? ' obra-card--exported' : ''}`}
+      title={isExported ? 'Esta obra já foi exportada pela sua equipe' : undefined}
     >
       <div
         key={record.obra_number}
@@ -1036,8 +1043,18 @@ const RecordCard = (props: RecordCardParams) => {
           position: 'relative',
           borderTopRightRadius: '0',
           borderBottomRightRadius: '0',
+          ...(isExported ? { backgroundColor: '#fffbeb', paddingTop: '2.25rem' } : {}),
         }}
       >
+        {isExported && (
+          <span
+            className="obra-exported-badge"
+            title="Obra já exportada pela sua equipe"
+          >
+            <i className="pi pi-file-excel" style={{ fontSize: '0.85rem' }} />
+            Exportada
+          </span>
+        )}
 
         {/* Column 1 */}
         <div className="field md:col-4 col-12">
