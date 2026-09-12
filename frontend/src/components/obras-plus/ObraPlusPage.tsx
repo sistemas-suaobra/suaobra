@@ -1043,7 +1043,7 @@ const RecordCard = (props: RecordCardParams) => {
           position: 'relative',
           borderTopRightRadius: '0',
           borderBottomRightRadius: '0',
-          ...(isExported ? { backgroundColor: '#fffbeb', paddingTop: '2.25rem' } : {}),
+          ...(isExported ? { backgroundColor: '#fffbeb', paddingTop: '2.75rem' } : {}),
         }}
       >
         {isExported && (
@@ -1051,7 +1051,7 @@ const RecordCard = (props: RecordCardParams) => {
             className="obra-exported-badge"
             title="Obra já exportada pela sua equipe"
           >
-            <i className="pi pi-file-excel" style={{ fontSize: '0.85rem' }} />
+            <i className="pi pi-file-excel" style={{ fontSize: '0.85rem', color: '#fff' }} />
             Exportada
           </span>
         )}

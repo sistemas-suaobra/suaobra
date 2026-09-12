@@ -106,20 +106,24 @@ div.stage-lead > div > div > div {
 
 .obra-exported-badge {
   position: absolute;
-  top: 0.65rem;
-  left: 0.85rem;
+  top: 0.5rem;
+  left: 1rem;
   z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.2rem 0.55rem;
+  padding: 0.25rem 0.65rem;
   border-radius: 999px;
   background: #f59e0b;
-  color: #1f2937;
+  color: #fff;
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.2;
+}
+
+.obra-exported-badge .pi {
+  color: #fff;
 } 
 
 #stage-scroller > div.p-datascroller-content {
