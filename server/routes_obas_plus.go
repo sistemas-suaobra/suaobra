@@ -300,6 +300,17 @@ func QueryObrasPlusContacts(c echo.Context) error {
 	}
 
 	records := dataPhone.RecordsCasted(true)
+	filtered := make([]map[string]any, 0, len(records))
+	for _, rec := range records {
+		tel := cast.ToString(rec["telephone"])
+		if tel == "" {
+			tel = cast.ToString(rec["telefone"])
+		}
+		if phoneDDDMatchesUF(tel, uf) {
+			filtered = append(filtered, rec)
+		}
+	}
+	records = filtered
 	records = append(records, dataEmail.RecordsCasted(true)...)
 
 	return c.JSON(200, g.M("records", records))

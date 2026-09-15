@@ -1,4 +1,4 @@
--- Recorte: first_listing_date entre 2026-06-16 e 2026-08-15 (60 dias a partir de 15/08/2026).
+-- Recorte: first_listing_date entre 2026-07-17 e 2026-09-15 (60 dias a partir de 15/09/2026).
 -- Somente leitura no core.db (TEMP tables + SELECT). Não altera produção.
 
 PRAGMA temp_store = FILE;
@@ -22,8 +22,8 @@ SELECT
   unidade,
   first_listing_date
 FROM core_obras_plus
-WHERE first_listing_date >= '2026-06-16'
-  AND first_listing_date <= '2026-08-15';
+WHERE first_listing_date >= '2026-07-17'
+  AND first_listing_date <= '2026-09-15';
 
 CREATE INDEX idx_tmp_obras_owner ON obras(owner);
 CREATE INDEX idx_tmp_obras_prof ON obras(professional);
