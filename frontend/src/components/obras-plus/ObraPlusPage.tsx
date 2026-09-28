@@ -456,9 +456,12 @@ export default function ObraPlusPage(props: Props) {
   }
   ///////////////////////////  JSX  ///////////////////////////
 
-  const Loader = <div className="flex justify-content-center" style={{ position: "relative", paddingTop: '40px', paddingBottom: '120px' }} >
-    <div className="result-loader"></div>
-  </div>
+  const Loader = (
+    <div className="page-loader-screen" role="status" aria-live="polite" aria-label="Carregando" style={{ minHeight: 280 }}>
+      <img src="/robo-transic.png" alt="" className="page-loader-robo" width={176} height={240} />
+      <p className="page-loader-caption">Carregando…</p>
+    </div>
+  )
 
   if (locked) {
     return <div className="text-center">

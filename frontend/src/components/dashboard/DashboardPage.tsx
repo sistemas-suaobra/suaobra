@@ -56,7 +56,7 @@ interface UserData {
 
 export default function DashboardPage(props: Props) {
   ///////////////////////////  VARIABLES  ///////////////////////////
-  interface File { title: string; url: string }
+  interface File { title: string; url: string; cover?: string }
   const videos: File[] = [
     {
       title: 'Como fazer seu primeiro acesso',
@@ -104,6 +104,7 @@ export default function DashboardPage(props: Props) {
     {
       title: 'Prospecção Fanática — Jeb Blount',
       url: '/pdfs/prospeccao-fanatica-jeb-blount.pdf',
+      cover: '/pdfs/prospeccao-fanatica-capa.png',
     },
   ]
 
@@ -532,9 +533,22 @@ export default function DashboardPage(props: Props) {
         <div className="grid w-full">
           {
             books.map((book, index) => {
-              return <div key={index} className="flex align-items-center lg:col-4 md:col-6 col-12">
-                <div><i className="pi pi-book" style={{ fontSize: '2.5rem' }}></i></div>
-                <div> <a href={book.url} target="_blank" rel="noopener noreferrer">{book.title}</a></div>
+              return <div key={index} className="lg:col-4 md:col-6 col-12">
+                <a
+                  href={book.url}
+                  download="Prospeccao-Fanatica-Jeb-Blount.pdf"
+                  className="inline-flex flex-column align-items-center text-center no-underline"
+                  title={`Baixar ${book.title}`}
+                >
+                  <img
+                    src={book.cover}
+                    alt={book.title}
+                    width={160}
+                    height={210}
+                    style={{ width: 160, height: 'auto', objectFit: 'contain' }}
+                  />
+                  <span className="mt-2">{book.title}</span>
+                </a>
               </div>
             })
           }

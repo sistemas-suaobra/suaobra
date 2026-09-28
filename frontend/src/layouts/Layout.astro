@@ -90,10 +90,16 @@ isWaiting.subscribe(waiting => {
   
   { iframe || login ? <></> : <NavBar client:load/>}
 
-  <!-- Loader with https://www.cssportal.com/css-loader-generator/ -->
-  <div id="loader" class="flex min-w-screen h-16rem justify-center align-content-center" style="position: relative;" >
-    <div class="page-loader" style="text-align: center"></div>
-  </div>
+  {login ? (
+    <div id="loader" class="flex min-w-screen h-16rem justify-center align-content-center" style="position: relative;">
+      <div class="page-loader" style="text-align: center"></div>
+    </div>
+  ) : (
+    <div id="loader" class="page-loader-screen" role="status" aria-live="polite" aria-label="Carregando">
+      <img src="/robo-transic.png" alt="" class="page-loader-robo" width="176" height="240" />
+      <p class="page-loader-caption">Carregando…</p>
+    </div>
+  )}
 
   <!-- Loader with https://www.cssportal.com/css-loader-generator/ -->
   <div id="waiter" class="" hidden>
