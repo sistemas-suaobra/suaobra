@@ -54,6 +54,52 @@ func QueryDashboardHistory(c echo.Context) error {
 	return req.SqlQueryResponse(sql)
 }
 
+func dashboardOwnerFilter(req *Request, column string) string {
+	userID := req.Payload.String("user_id")
+	if userID != "" && userID != "null" && userID != "undefined" {
+		return column + " = {:user_id}"
+	}
+	return "1=1"
+}
+
+func queryDashboardList(req *Request, file, ownerColumn string) ([]map[string]any, error) {
+	sqlBytes, err := templates.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	sql := string(sqlBytes)
+	if ownerColumn != "" {
+		sql = g.R(sql, "user_filter", dashboardOwnerFilter(req, ownerColumn))
+	}
+	return req.SqlQueryRecords(sql)
+}
+
+func QueryDashboardHome(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error)
+	}
+
+	reminders, err := queryDashboardList(&req, "templates/dashboard/dashboard_reminders.sql", "lead.owner_id")
+	if err != nil {
+		return ErrJSON(500, err, "error querying reminders")
+	}
+	unassigned, err := queryDashboardList(&req, "templates/dashboard/dashboard_unassigned.sql", "")
+	if err != nil {
+		return ErrJSON(500, err, "error querying unassigned")
+	}
+	moves, err := queryDashboardList(&req, "templates/dashboard/dashboard_moves.sql", "lead.owner_id")
+	if err != nil {
+		return ErrJSON(500, err, "error querying moves")
+	}
+
+	return c.JSON(200, g.M(
+		"reminders", reminders,
+		"unassigned", unassigned,
+		"moves", moves,
+	))
+}
+
 func QueryDashboardLeads(c echo.Context) error {
 	req := NewRequest(c)
 	sqlBytes, _ := templates.ReadFile("templates/dashboard/dashboard_leads.sql")
