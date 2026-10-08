@@ -5,6 +5,11 @@ select
   lead.obra_id,
   user.email as owner_email,
   coalesce(nullif(nullif(user.properties, ''), 'null') ->> 'name', user.name) as owner_name,
+  coalesce(
+    nullif(nullif(mover.properties, ''), 'null') ->> 'name',
+    nullif(mover.name, ''),
+    nullif(last_move.actor_email, '')
+  ) as moved_by_name,
   cop.address,
   cop.bairro,
   cop.city,
@@ -33,6 +38,16 @@ inner join main.list on list.id = list_lead.list_id
 inner join main.lead on lead.id = list_lead.lead_id
 inner join main.list_stage on list_stage.id = list_lead.stage_id
 left join main.user on user.id = lead.owner_id
+left join main.lead_activity last_move on last_move.id = (
+  select activity.id
+  from main.lead_activity activity
+  where activity.lead_id = lead.id
+    and activity.type = 'history'
+    and ifnull(activity.actor_email, '') != ''
+  order by activity.created desc
+  limit 1
+)
+left join main.user mover on mover.email = last_move.actor_email
 left join core.core_obras_plus cop on cop.id = lead.obra_id
 
 where list.team_id = {:team_id}
