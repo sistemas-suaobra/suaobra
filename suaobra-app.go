@@ -106,6 +106,7 @@ func main() {
 		// Campanhas
 		e.Router.POST("/campanhas/:id/iniciar", server.IniciarCampanha)
 		e.Router.GET("/campanhas/:id/status", server.StatusCampanha)
+		e.Router.GET("/campanhas/:id/destinatarios", server.ListarDestinatariosCampanha)
 		e.Router.POST("/campanhas/:id/pausar", server.PausarCampanha)
 		e.Router.POST("/campanhas/:id/cancelar", server.CancelarCampanha)
 		e.Router.POST("/campanhas/:id/destinatarios/obras-plus", server.AdicionarDestinatariosObrasPlus)

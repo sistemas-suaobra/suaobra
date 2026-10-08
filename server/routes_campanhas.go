@@ -200,6 +200,28 @@ func MarcarDestinatariosEnviados(c echo.Context) error {
 	return c.JSON(200, g.M("success", true))
 }
 
+// GET /campanhas/:id/destinatarios
+func ListarDestinatariosCampanha(c echo.Context) error {
+	req := NewRequest(c)
+	campanhaID := c.PathParam("id")
+
+	user, err := getUser(c, req.UserID())
+	if err != nil || user.ID == "" {
+		return ErrJSON(401, g.Error("unauthorized"))
+	}
+
+	records, err := newCampanhaService(req).ListarDestinatarios(user.Team.ID, campanhaID)
+	if err != nil {
+		return ErrJSON(400, err)
+	}
+
+	items := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		items = append(items, record.PublicExport())
+	}
+	return c.JSON(200, g.M("items", items))
+}
+
 // GET /campanhas/:id/status
 func StatusCampanha(c echo.Context) error {
 	req := NewRequest(c)

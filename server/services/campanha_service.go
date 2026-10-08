@@ -1337,6 +1337,17 @@ func (s *CampanhaService) CancelarCampanha(teamID, campanhaID string) error {
 	return s.repo.UpdateStatus(campanha, repositories.CampanhaStatusCancelada)
 }
 
+func (s *CampanhaService) ListarDestinatarios(teamID, campanhaID string) ([]*models.Record, error) {
+	campanha, err := s.repo.FindByID(campanhaID)
+	if err != nil {
+		return nil, g.Error(err, "campanha não encontrada")
+	}
+	if campanha.GetString("team_id") != teamID {
+		return nil, g.Error("não autorizado")
+	}
+	return s.repo.FindDestinatariosByCampanha(campanhaID)
+}
+
 func (s *CampanhaService) GetStatus(teamID, campanhaID string) (*models.Record, map[string]any, error) {
 	campanha, err := s.repo.FindByID(campanhaID)
 	if err != nil {
