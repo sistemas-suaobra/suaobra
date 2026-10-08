@@ -187,6 +187,8 @@ func makeEtapaCond(etapas []string) string {
 	conds := []string{}
 	for _, etapa := range etapas {
 		switch strings.ToLower(strings.TrimSpace(etapa)) {
+		case "planejamento":
+			conds = append(conds, g.F(`(%s and %s and date('now') < date(cop.start_date))`, notProjeto, hasDates))
 		case "inicio":
 			conds = append(conds, g.F(`(%s and %s and (date('now') < date(cop.start_date) or (%s and %s <= 0.33)))`, notProjeto, hasDates, inPeriod, pct))
 		case "estrutura":

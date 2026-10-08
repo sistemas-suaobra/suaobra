@@ -15,6 +15,13 @@ func TestMakeStatusCond_UsesJoinedLeadNotSubquery(t *testing.T) {
 	assert.NotContains(t, strings.ToLower(cond), " not in (")
 }
 
+func TestMakeEtapaCond_Planejamento(t *testing.T) {
+	cond := strings.ToLower(makeEtapaCond([]string{"planejamento"}))
+
+	assert.Contains(t, cond, "date('now') < date(cop.start_date)")
+	assert.NotContains(t, cond, "<= 0.33")
+}
+
 func TestMakeStatusCond_EmAndamento(t *testing.T) {
 	cond := strings.ToLower(makeStatusCond([]string{"em-andamento"}))
 
