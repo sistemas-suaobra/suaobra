@@ -38,20 +38,34 @@ inner join main.list on list.id = list_lead.list_id
 inner join main.lead on lead.id = list_lead.lead_id
 inner join main.list_stage on list_stage.id = list_lead.stage_id
 left join main.user on user.id = lead.owner_id
-left join main.lead_activity last_move on last_move.id = (
-  select activity.id
-  from main.lead_activity activity
-  where activity.lead_id = lead.id
-    and activity.type = 'history'
-    and ifnull(activity.actor_email, '') != ''
-  order by activity.created desc
-  limit 1
-)
-left join main.user mover on mover.email = last_move.actor_email
+left join (
+  select lead_id, actor_email
+  from (
+    select
+      activity.lead_id as lead_id,
+      activity.actor_email as actor_email,
+      row_number() over (
+        partition by activity.lead_id
+        order by activity.created desc
+      ) as move_rank
+    from main.lead_activity activity
+    where activity.team_id = {:team_id}
+      and activity.type = 'history'
+      and ifnull(activity.actor_email, '') != ''
+  ) ranked_moves
+  where move_rank = 1
+) last_move on last_move.lead_id = lead.id
+left join main.user mover
+  on mover.email = last_move.actor_email
+  and mover.team_id = {:team_id}
 left join core.core_obras_plus cop on cop.id = lead.obra_id
 
 where list.team_id = {:team_id}
   and {user_filter}
-  and ( list_stage.id = {:stage_id} or list_lead.id = {:list_lead_id} )
+  and (
+    {:stage_id} in ('', 'all')
+    or list_stage.id = {:stage_id}
+    or list_lead.id = {:list_lead_id}
+  )
 
 order by rank1 desc
