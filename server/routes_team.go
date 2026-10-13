@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/mail"
+	"strings"
 
 	"github.com/flarco/g"
 	"github.com/labstack/echo/v5"
@@ -11,6 +12,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/mailer"
 	"github.com/pocketbase/pocketbase/tools/security"
 	"github.com/spf13/cast"
+	"github.com/suaobra/suaobra-app/server/repositories"
 	"github.com/suaobra/suaobra-app/store"
 )
 
@@ -82,6 +84,33 @@ func TeamMembers(c echo.Context) error {
 	records, err := req.SqlQueryRecords(g.R(sql, "team_id", teamID))
 	if err != nil {
 		return ErrJSON(500, err, "error fetching team members")
+	}
+
+	// Anexa o número ativo do Mestre IA de cada pessoa, para o card da equipe
+	// mostrar o mesmo contato do perfil (e não o telefone antigo de cadastro).
+	conRepo := repositories.NewConexaoRepo(req.Dao())
+	waRepo := repositories.NewWhatsAppRepo(req.Dao())
+	for _, record := range records {
+		userID := cast.ToString(record["id"])
+		record["whatsapp_connected"] = false
+		record["whatsapp_jid"] = ""
+		if userID == "" {
+			continue
+		}
+		con, _ := conRepo.FindActiveWhatsappByOwner(teamID, userID)
+		if con == nil || con.Id == "" {
+			continue
+		}
+		wa, _ := waRepo.FindByConexao(con.Id)
+		if wa == nil || wa.Id == "" {
+			continue
+		}
+		jid := strings.TrimSpace(wa.GetString("device_jid"))
+		if jid == "" || wa.GetDateTime("conectado_em").Time().IsZero() {
+			continue
+		}
+		record["whatsapp_connected"] = true
+		record["whatsapp_jid"] = jid
 	}
 
 	return c.JSON(200, records)
