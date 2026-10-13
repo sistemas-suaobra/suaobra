@@ -1,6 +1,15 @@
 select
   activity.id as id,
-  coalesce(nullif(trim(cop.owner), ''), nullif(trim(cop.address), ''), 'Lead') as title,
+  coalesce(
+    nullif(trim(nullif(lead.properties -> 'obra' ->> 'owner', 'null')), ''),
+    nullif(trim(cop.owner), ''),
+    nullif(trim(nullif(lead.properties -> 'obra' ->> 'professional', 'null')), ''),
+    nullif(trim(cop.professional), ''),
+    nullif(trim(nullif(json_extract(lead.properties, '$.contacts[0].name'), 'null')), ''),
+    nullif(trim(nullif(lead.properties -> 'obra' ->> 'address', 'null')), ''),
+    nullif(trim(cop.address), ''),
+    'Lead'
+  ) as title,
   ifnull(stage.name, '') as stage,
   coalesce(
     nullif(nullif(actor.properties, ''), 'null') ->> 'name',
