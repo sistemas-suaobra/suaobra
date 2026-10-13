@@ -52,6 +52,10 @@ func NewRequest(c echo.Context) (req Request) {
 	g.Info("NewRequest DEBUG", "hasAuthRecord", req.AuthRecord() != nil, "hasAdmin", req.Admin() != nil, "hasTeamID", c.Get("team_id") != nil, "tokenPrefix", g.F("%.20s...", authToken))
 	
 	if req.AuthRecord() != nil {
+		if !UserIsActive(req.AuthRecord()) {
+			req.Error = g.Error(deactivatedAccountMessage)
+			return
+		}
 		userID = cast.ToString(req.AuthRecord().Get("id"))
 		teamID = cast.ToString(req.AuthRecord().Get("team_id"))
 		userEmail = cast.ToString(req.AuthRecord().Get("email"))

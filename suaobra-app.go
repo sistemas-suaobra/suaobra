@@ -40,9 +40,16 @@ func main() {
 	contextMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			c.Set("app", app)
+			if err := server.RejectDeactivatedAuth(c); err != nil {
+				return err
+			}
 			return next(c) // proceed with the request chain
 		}
 	}
+
+	app.OnRecordAuthRequest("user").Add(func(e *core.RecordAuthEvent) error {
+		return server.RejectDeactivatedRecord(e.Record)
+	})
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 
@@ -126,6 +133,7 @@ func main() {
 		e.Router.POST("/team/invite", server.TeamInvite)
 		e.Router.POST("/team/remove-member", server.TeamRemoveMember)
 		e.Router.POST("/team/set-manager", server.TeamSetManager)
+		e.Router.POST("/team/set-active", server.TeamSetActive)
 
 		// Debug endpoint para RudderStack (temporário)
 		e.Router.POST("/debug/rudderstack", func(c echo.Context) error {
