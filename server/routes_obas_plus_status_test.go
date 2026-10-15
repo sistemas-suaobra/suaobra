@@ -31,6 +31,24 @@ func TestMakeStatusCond_EmAndamento(t *testing.T) {
 	assert.NotContains(t, cond, "current_date")
 }
 
+func TestMakeTypeCond(t *testing.T) {
+	assert.Equal(t, "1=1", makeTypeCond(""))
+	assert.Equal(t, "1=1", makeTypeCond("todos"))
+	assert.Equal(t, "1=1", makeTypeCond("'; drop table core_obras_plus; --"))
+
+	projeto := makeTypeCond("1 - PROJETO")
+	assert.Contains(t, projeto, "upper(trim(cop.type)) like '1 - PROJETO%'")
+
+	execucao := makeTypeCond("2 - EXECUCAO")
+	assert.Contains(t, execucao, "2 - EXECUCAO%")
+	assert.Contains(t, execucao, "2 - EXECUÇÃO%")
+
+	outros := strings.ToLower(makeTypeCond("outros"))
+	assert.Contains(t, outros, "not like '1 - %'")
+	assert.Contains(t, outros, "not like '5 - %'")
+	assert.NotContains(t, outros, "not like '6 - %'")
+}
+
 func TestMakeOrderSQL(t *testing.T) {
 	desc, ok := makeOrderSQL("first_listing_date-desc,start_date-desc")
 	assert.True(t, ok)
@@ -65,7 +83,14 @@ func TestMakeEtapaCond(t *testing.T) {
 	assert.Contains(t, acabamento, "> 0.66")
 
 	finalizada := makeEtapaCond([]string{"finalizada"})
-	assert.Contains(t, finalizada, "date('now') > date(cop.end_date)")
+	assert.Contains(t, finalizada, "date('now') > date(")
+	assert.Contains(t, finalizada, "cop.size < 50")
+
+	pequena := effectiveEndDateSQL()
+	assert.Contains(t, pequena, "cop.size < 50")
+	assert.Contains(t, pequena, "then 12")
+	assert.Contains(t, pequena, "then 18")
+	assert.Contains(t, pequena, "INDUSTR")
 
 	multi := makeEtapaCond([]string{"inicio", "estrutura"})
 	assert.Contains(t, multi, " or ")

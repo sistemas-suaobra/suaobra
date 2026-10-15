@@ -19,7 +19,7 @@ with owner_phone_records as (
 
   order by
     -- poder_aquisitivo desc,
-    telefone desc,
+    telefone asc,
     uf,
     cidade
 )
@@ -45,7 +45,7 @@ with owner_phone_records as (
 
   order by
     -- poder_aquisitivo desc,
-    telefone desc,
+    telefone asc,
     uf,
     cidade
 )
@@ -106,9 +106,13 @@ with owner_phone_records as (
 
 , professional_email_records_limited as ( select * from professional_email_records where rank_num = 1 limit 4 )
 
-, owner_phone_records_limited as ( select * from owner_phone_records where rank_num = 1 limit 4 )
+, owner_phone_records_limited as (
+  select * from owner_phone_records where rank_num = 1 order by telephone asc limit 2
+)
 
-, professional_phone_records_limited as ( select * from professional_phone_records where rank_num = 1 limit 4 )
+, professional_phone_records_limited as (
+  select * from professional_phone_records where rank_num = 1 order by telephone asc limit 2
+)
 
 select * from owner_email_records_limited
 union all

@@ -34,16 +34,29 @@ div.stage-lead > div > div > div {
 }
 
 /* Obras+: intervalo de datas (Início / Previsão de término) */
+.obras-plus-filters.formgrid {
+  align-items: flex-end;
+}
+
+.obras-plus-filters .field > label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
 .date-range-field {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   width: 100%;
+  min-width: 0;
   min-height: 2.5rem;
   padding: 0 0.35rem;
   gap: 0;
   background: #fff;
   border: 1px solid #ced4da;
   border-radius: 6px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .date-range-field:focus-within {
@@ -62,6 +75,7 @@ div.stage-lead > div > div > div {
 
 .date-range-field .p-calendar {
   flex: 1 1 0;
+  width: 0;
   min-width: 0;
   display: flex;
   align-items: center;

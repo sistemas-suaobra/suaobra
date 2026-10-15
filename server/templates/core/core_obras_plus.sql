@@ -9,7 +9,7 @@ with page as (
     cop.city,
     cop.state,
     cop.start_date,
-    cop.end_date,
+    {endDateExpr} as end_date,
     cop.first_listing_date,
     cop.type,
     cop.activity,
@@ -43,6 +43,7 @@ with page as (
     and cop.size <= {sizeMax}
     and {statusCond}
     and {etapaCond}
+    and {typeCond}
     and {neighborhoodCond}
     and {filterCond}
     and {dateFilterCond}

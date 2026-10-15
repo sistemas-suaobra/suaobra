@@ -25,8 +25,8 @@ order by
     else 2
   end asc,
   -- poder_aquisitivo desc,
-  telefone desc,
+  telefone asc,
   uf,
   cidade
 
-limit 3
+limit 2

@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -55,6 +56,44 @@ func validateFilter(filter string) bool {
 		return false
 	}
 	return true
+}
+
+func makeTypeCond(tipo string) string {
+	tipo = strings.TrimSpace(tipo)
+	switch strings.ToLower(tipo) {
+	case "", "todos":
+		return "1=1"
+	case "outros":
+		return `(
+			upper(trim(cop.type)) not like '1 - %'
+			and upper(trim(cop.type)) not like '2 - %'
+			and upper(trim(cop.type)) not like '3 - %'
+			and upper(trim(cop.type)) not like '4 - %'
+			and upper(trim(cop.type)) not like '5 - %'
+		)`
+	}
+
+	allowed := map[string]string{
+		"1 - PROJETO": "1 - PROJETO",
+		"2 - EXECUCAO": "2 - EXECUÇÃO",
+		"3 - GESTAO": "3 - GESTÃO",
+		"4 - MEIO AMBIENTE E PLANEJAMENTO REGIONAL E URBANO": "",
+		"5 - ATIVIDADES ESPECIAIS EM ARQUITETURA E URBANISMO": "",
+	}
+	upper := strings.ToUpper(tipo)
+	accented, ok := allowed[upper]
+	if !ok {
+		return "1=1"
+	}
+
+	parts := []string{g.F("upper(trim(cop.type)) like '%s'", upper+"%")}
+	if accented != "" && accented != upper {
+		parts = append(parts, g.F("upper(trim(cop.type)) like '%s'", accented+"%"))
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return "(" + strings.Join(parts, " or ") + ")"
 }
 
 func makeFilterCond(filter string) string {
@@ -169,10 +208,88 @@ func makeStatusCond(statuses []string) string {
 	return "(" + strings.Join(whereArr, " and ") + ")"
 }
 
+// artBlobSQL normaliza type + activity para comparar o tipo ART sem acento.
+func artBlobSQL() string {
+	expr := "upper(trim(coalesce(cop.type, '') || ' ' || coalesce(cop.activity, '')))"
+	for _, pair := range [][2]string{
+		{"Á", "A"}, {"À", "A"}, {"Â", "A"}, {"Ã", "A"},
+		{"É", "E"}, {"Ê", "E"},
+		{"Í", "I"},
+		{"Ó", "O"}, {"Ô", "O"}, {"Õ", "O"},
+		{"Ú", "U"},
+		{"Ç", "C"},
+	} {
+		expr = fmt.Sprintf("replace(%s, '%s', '%s')", expr, pair[0], pair[1])
+	}
+	return expr
+}
+
+// prazoMesesSQL devolve os meses da tabela tipo ART.
+// Área abaixo de 50 m² entra como tamanho médio: 250 m² residencial (até 250)
+// ou 500 m² industrial (250 a 500). Acima disso a metragem real não muda o
+// prazo aqui — o término gravado no CAU continua valendo.
+func prazoMesesSQL() string {
+	blob := artBlobSQL()
+	industrial := fmt.Sprintf("instr(%s, 'INDUSTR') > 0", blob)
+	has := func(s string) string {
+		return fmt.Sprintf("instr(%s, '%s') > 0", blob, s)
+	}
+	lacks := func(s string) string {
+		return fmt.Sprintf("instr(%s, '%s') = 0", blob, s)
+	}
+	execExclusions := []string{
+		"REFORMA", "INTERIOR", "INSTALAC", "ESTRUTURA", "EFEMER", "PAISAG",
+		"URBAN", "HIDRO", "ELETR", "INCEND", "GAS", "ESGOTO", "SANEAMENTO",
+	}
+	var excluded []string
+	for _, word := range execExclusions {
+		excluded = append(excluded, lacks(word))
+	}
+
+	return fmt.Sprintf(`case
+		when (%s or %s or %s) and %s then 1
+		when %s and %s then 2
+		when %s and %s then 12
+		when %s then case when %s then 18 else 12 end
+		when %s then 3
+		when %s and %s then 10
+		when %s and %s and %s then 10
+		when %s and %s and %s then case when %s then 10 else 6 end
+		when %s and %s and %s and (%s or %s) then case when %s then 18 else 12 end
+		else case when %s then 18 else 12 end
+	end`,
+		has("VENTIL"), has("EXAUST"), has("CLIMATIZ"), has("EXECU"),
+		has("ESTRUTURA METAL"), has("PROJETO"),
+		has("ESTRUTURA METAL"), has("EXECU"),
+		has("ACOMPANHAMENTO DE OBRA"), industrial,
+		has("AVALIACAO"),
+		has("EXECU"), has("INTERIOR"),
+		has("EXECU"), has("REFORMA"), has("EDIFIC"),
+		has("PROJETO ARQUITETONICO"), lacks("REFORMA"), lacks("INTERIOR"), industrial,
+		has("EXECU"), has("OBRA"), strings.Join(excluded, " and "), has("EXECUCAO DE OBRA"), has("2.1.1"), industrial,
+		industrial,
+	)
+}
+
+// effectiveEndDateSQL usa o término do CAU, exceto em área < 50 m²,
+// em que o prazo é recalculado a partir do início como obra de tamanho médio.
+func effectiveEndDateSQL() string {
+	return fmt.Sprintf(`(
+		case
+			when coalesce(cop.size, 0) > 0
+				and cop.size < 50
+				and trim(coalesce(cop.start_date, '')) != ''
+			then date(cop.start_date, '+' || (%s) || ' months')
+			else cop.end_date
+		end
+	)`, prazoMesesSQL())
+}
+
 func obraEtapaExprs() (notProjeto, hasDates, pct string) {
+	end := effectiveEndDateSQL()
 	notProjeto = `(upper(trim(cop.type)) not like '1 - PROJETO%' and upper(trim(cop.type)) not like '%PROJETO%')`
-	hasDates = `(cop.start_date > '' and cop.end_date > '' and julianday(cop.end_date) > julianday(cop.start_date))`
-	pct = `(cast(julianday('now') - julianday(cop.start_date) as real) / nullif(cast(julianday(cop.end_date) - julianday(cop.start_date) as real), 0))`
+	hasDates = fmt.Sprintf(`(cop.start_date > '' and %s > '' and julianday(%s) > julianday(cop.start_date))`, end, end)
+	pct = fmt.Sprintf(`(cast(julianday('now') - julianday(cop.start_date) as real) / nullif(cast(julianday(%s) - julianday(cop.start_date) as real), 0))`, end)
 	return
 }
 
@@ -182,7 +299,8 @@ func makeEtapaCond(etapas []string) string {
 	}
 
 	notProjeto, hasDates, pct := obraEtapaExprs()
-	inPeriod := `(date('now') >= date(cop.start_date) and date('now') <= date(cop.end_date))`
+	end := effectiveEndDateSQL()
+	inPeriod := fmt.Sprintf(`(date('now') >= date(cop.start_date) and date('now') <= date(%s))`, end)
 
 	conds := []string{}
 	for _, etapa := range etapas {
@@ -196,7 +314,7 @@ func makeEtapaCond(etapas []string) string {
 		case "acabamento":
 			conds = append(conds, g.F(`(%s and %s and %s and %s > 0.66)`, notProjeto, hasDates, inPeriod, pct))
 		case "finalizada":
-			conds = append(conds, g.F(`(%s and %s and date('now') > date(cop.end_date))`, notProjeto, hasDates))
+			conds = append(conds, g.F(`(%s and %s and date('now') > date(%s))`, notProjeto, hasDates, end))
 		}
 	}
 
@@ -251,12 +369,13 @@ func makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo strin
 		whereArr = append(whereArr, g.F("cop.start_date <= '%s'", startDateTo))
 	}
 
-	// Filtros de data de fim
+	// Filtros de data de fim (área < 50 m² usa o término recalculado)
+	endExpr := effectiveEndDateSQL()
 	if endDateFrom != "" {
-		whereArr = append(whereArr, g.F("cop.end_date >= '%s'", endDateFrom))
+		whereArr = append(whereArr, fmt.Sprintf("%s >= '%s'", endExpr, endDateFrom))
 	}
 	if endDateTo != "" {
-		whereArr = append(whereArr, g.F("cop.end_date <= '%s'", endDateTo))
+		whereArr = append(whereArr, fmt.Sprintf("%s <= '%s'", endExpr, endDateTo))
 	}
 
 	if len(whereArr) == 0 {
@@ -345,6 +464,7 @@ func QueryObrasPlus(c echo.Context) (err error) {
 	order := c.QueryParam("order")
 	statuses := strings.Split(c.QueryParam("statuses"), ",")
 	etapas := strings.Split(c.QueryParam("etapas"), ",")
+	tipo := c.QueryParam("type")
 	export := cast.ToBool(c.QueryParam("export"))
 	filter := strings.TrimSpace(c.QueryParam("filter"))
 	offset := cast.ToInt(c.QueryParam("offset"))
@@ -416,8 +536,10 @@ func QueryObrasPlus(c echo.Context) (err error) {
 		"neighborhoodCond", makeNeighborhoodCond(neighborhoods),
 		"statusCond", makeStatusCond(statuses),
 		"etapaCond", makeEtapaCond(etapas),
+		"typeCond", makeTypeCond(tipo),
 		"filterCond", makeFilterCond(filter),
 		"dateFilterCond", makeDateFilterCond(startDateFrom, startDateTo, endDateFrom, endDateTo),
+		"endDateExpr", effectiveEndDateSQL(),
 		"itemPerPage", itemPerPage,
 		"offset", offset,
 		"teamId", user.Team.ID,
@@ -729,7 +851,7 @@ func buscarTelefoneParaLead(nome, cidade, uf string) string {
 		WHERE row_num = 1
 		ORDER BY
 			CASE WHEN uf = {:uf} AND cidade = {:cidade} THEN 1 ELSE 2 END ASC,
-			telefone DESC
+			telefone ASC
 		LIMIT 1
 	`
 	

@@ -19,7 +19,7 @@ const (
 	ContatoTipoOwner        = "OWNER"
 	ContatoTipoProfessional = "PROFISSIONAL"
 
-	maxTelefonesPorContato = 3 // mesmo limite do modal Obras+ (core_obras_plus_phone.sql)
+	maxTelefonesPorContato = 2 // mesmo limite do modal Obras+ (core_obras_plus_phone.sql)
 	maxEmailsPorContato    = 3
 )
 
@@ -1046,8 +1046,9 @@ func (s *CampanhaService) enriquecerDestinatarioComObra(
 
 func (s *CampanhaService) buscarTelefones(nome, cidade, uf string) []string {
 	// Mesma regra do modal Obras+ (/query/obras-plus-contacts → core_obras_plus_phone.sql):
-	// telefones do nome na MESMA cidade/UF da obra, deduplicados, ordenados por telefone DESC,
-	// limit 3. Antes buscávamos até 10 registros globais por nome (incluindo outras cidades),
+	// telefones do nome na MESMA cidade/UF da obra, deduplicados, ordenados por telefone ASC
+	// (o que aparecia por último fica na primeira linha), no máximo 2.
+	// Antes buscávamos até 10 registros globais por nome (incluindo outras cidades),
 	// o que fazia a campanha enviar para números que nem aparecem no modal — ex.: homônimos
 	// ou telefones extras de outra localidade.
 	sql := `
@@ -1063,7 +1064,7 @@ func (s *CampanhaService) buscarTelefones(nome, cidade, uf string) []string {
 		SELECT telefone
 		FROM prep
 		WHERE row_num = 1
-		ORDER BY telefone DESC
+		ORDER BY telefone ASC
 		LIMIT {:limite}
 	`
 
@@ -1140,7 +1141,7 @@ func (s *CampanhaService) buscarTelefonesPorNomeUF(nome, uf string) []string {
 		SELECT telefone
 		FROM prep
 		WHERE row_num = 1
-		ORDER BY telefone DESC
+		ORDER BY telefone ASC
 		LIMIT {:limite}
 	`
 

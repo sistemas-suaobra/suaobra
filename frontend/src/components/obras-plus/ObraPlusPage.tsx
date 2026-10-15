@@ -148,6 +148,7 @@ export default function ObraPlusPage(props: Props) {
   const [selectedCity, setSelectedCity] = React.useState<City>($obrasPlusCity || makeCity('SP-SAO_PAULO'))
   const [selectedNeighborhood, setSelectedNeighborhood] = React.useState<ResultNeighborhoodRecord[]>([])
   const [selectedSize, setSelectedSize] = React.useState(sizes[0].code)
+  const [selectedType, setSelectedType] = React.useState(types[0].code)
   const [filterValue, setFilterValue] = React.useState('')
   const [selectedOrder, setSelectedOrder] = React.useState(orders[0].code)
   const [selectedStatuses, setSelectedStatuses] = React.useState([statuses[0].code])
@@ -201,7 +202,7 @@ export default function ObraPlusPage(props: Props) {
       }
     )
 
-  }, [selectedCity, selectedNeighborhood, selectedSize, selectedOrder, selectedStatuses, selectedEtapas, offset, rowsPerPage, refresh, locked, citiesOptions, startDateFrom, startDateTo, endDateFrom, endDateTo])
+  }, [selectedCity, selectedNeighborhood, selectedSize, selectedType, selectedOrder, selectedStatuses, selectedEtapas, offset, rowsPerPage, refresh, locked, citiesOptions, startDateFrom, startDateTo, endDateFrom, endDateTo])
 
   /*
   In the useEffect hook, we increment the neighborhoodRequestId and update the latestRequestIdRef before making the API call.
@@ -293,6 +294,7 @@ export default function ObraPlusPage(props: Props) {
     setEndDateFrom(null)
     setEndDateTo(null)
     setSelectedEtapas([etapas[0].code])
+    setSelectedType(types[0].code)
     doRefresh()
   }
 
@@ -306,6 +308,7 @@ export default function ObraPlusPage(props: Props) {
       filter: filterValue,
       statuses: statuses.join(','),
       etapas: selectedEtapas.join(','),
+      type: selectedType,
       sizeMin: selectedSize.split('-')[0],
       sizeMax: selectedSize.split('-')[1],
       offset: offset.toString(),
@@ -381,6 +384,7 @@ export default function ObraPlusPage(props: Props) {
       filter: filterValue,
       statuses: selectedStatuses.join(','),
       etapas: selectedEtapas.join(','),
+      type: selectedType,
       sizeMin: selectedSize.split('-')[0],
       sizeMax: selectedSize.split('-')[1],
       offset: offset.toString(),
@@ -475,7 +479,7 @@ export default function ObraPlusPage(props: Props) {
 
   return (
     <div>
-      <div className="formgrid grid">
+      <div className="formgrid grid obras-plus-filters">
         <div className="field md:col-3 col-12">
           <label htmlFor="city-dropdown">Cidade</label>
           <Dropdown
@@ -558,23 +562,7 @@ export default function ObraPlusPage(props: Props) {
           </div>
         </div>
 
-        {/* <div className="field md:col-3 col-6">
-            <label htmlFor="type-dropdown">Tipo</label>
-            <Dropdown
-              id='type-dropdown'
-              value={selectedType}
-              onChange={(e) => {
-                setSelectedType(e.value)
-              }}
-              options={types}
-              optionLabel="label" 
-              optionValue="code"
-              placeholder="Selecione um tipo"
-              className="w-full"
-            />
-          </div> */}
-
-        <div className="field md:col-6 col-12">
+        <div className="field md:col-3 col-12">
           <label htmlFor="size-order">Obra Status Filtros</label>
           <MultiSelect
             id='status-dropdown'
@@ -619,6 +607,24 @@ export default function ObraPlusPage(props: Props) {
           />
         </div>
 
+        <div className="field md:col-3 col-12">
+          <label htmlFor="type-dropdown">Tipo</label>
+          <Dropdown
+            id="type-dropdown"
+            value={selectedType}
+            onChange={(e) => {
+              setOffset(0)
+              setPageNumber(1)
+              setSelectedType(e.value)
+            }}
+            options={types}
+            optionLabel="label"
+            optionValue="code"
+            placeholder="Selecione um tipo"
+            className="w-full"
+          />
+        </div>
+
         <div className="field md:col-3 col-6">
           <label htmlFor="size-dropdown">Tamanho M²</label>
           <Dropdown
@@ -658,7 +664,7 @@ export default function ObraPlusPage(props: Props) {
           />
         </div>
 
-        <div className="field md:col-3 col-6">
+        <div className="field md:col-2 col-12">
           <label htmlFor="size-order">Ordenação</label>
           <Dropdown
             id='order-dropdown'
@@ -673,7 +679,7 @@ export default function ObraPlusPage(props: Props) {
           />
         </div>
 
-        <div className="field md:col-6 col-12">
+        <div className="field md:col-5 col-12">
           <label htmlFor="start-date-from">Início da obra</label>
           <div className="date-range-field">
             <Calendar
@@ -700,7 +706,7 @@ export default function ObraPlusPage(props: Props) {
           </div>
         </div>
 
-        <div className="field md:col-6 col-12">
+        <div className="field md:col-5 col-12">
           <label htmlFor="end-date-from">Previsão de término</label>
           <div className="date-range-field">
             <Calendar
@@ -1122,9 +1128,13 @@ const RecordCard = (props: RecordCardParams) => {
             <a target="_blank" href={googleMapsURL}>{record.address?.toUpperCase()}</a>
           </p>
 
-          <br />
-          <p className="my-0"><strong>Tamanho</strong></p>
-          <p className="mt-2"> {record.size.toLocaleString('pt-br')} M²</p>
+          {!(record.size > 0 && record.size < 50) && (
+            <>
+              <br />
+              <p className="my-0"><strong>Tamanho</strong></p>
+              <p className="mt-2"> {record.size.toLocaleString('pt-br')} M²</p>
+            </>
+          )}
 
           <br />
           {!isProjetoObra(record.type) && (

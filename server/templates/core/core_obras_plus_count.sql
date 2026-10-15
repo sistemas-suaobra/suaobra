@@ -14,6 +14,7 @@ where 1=1
   and size <= {sizeMax}
   and {statusCond}
   and {etapaCond}
+  and {typeCond}
   and {neighborhoodCond}
   and {filterCond}
   and {dateFilterCond}
