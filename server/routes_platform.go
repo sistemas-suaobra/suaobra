@@ -100,7 +100,12 @@ func PlatformTeams(c echo.Context) error {
 			select count(*)
 			from main.user u
 			where u.team_id = t.id
-		) as member_count
+		) as member_count,
+		(
+			select group_concat(u.email, ', ')
+			from main.user u
+			where u.team_id = t.id and u.manager = 1
+		) as manager_emails
 	from main.team t
 	order by lower(coalesce(nullif(t.name, ''), t.id))
 	`
@@ -115,9 +120,30 @@ func PlatformTeams(c echo.Context) error {
 		record["blocked"] = cast.ToBool(record["blocked"])
 		record["active"] = cast.ToBool(record["active"])
 		record["member_count"] = cast.ToInt(record["member_count"])
+		record["managers"] = splitEmails(cast.ToString(record["manager_emails"]))
+		delete(record, "manager_emails")
 	}
 
 	return c.JSON(200, records)
+}
+
+func splitEmails(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		email := strings.TrimSpace(part)
+		if email == "" {
+			continue
+		}
+		key := strings.ToLower(email)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, email)
+	}
+	return out
 }
 
 // PlatformSetCities grava a abrangência (vários estados/cidades) de um time.
@@ -175,5 +201,140 @@ func PlatformSetCities(c echo.Context) error {
 		"id", team.Id,
 		"name", cast.ToString(team.Get("name")),
 		"cities", cities,
+		"blocked", cast.ToBool(team.Get("blocked")),
+		"active", cast.ToBool(team.Get("active")),
+	))
+}
+
+// PlatformTeamDetail retorna a conta com membros (para o backoffice).
+func PlatformTeamDetail(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+
+	teamID := strings.TrimSpace(c.QueryParam("team_id"))
+	if teamID == "" {
+		teamID = strings.TrimSpace(cast.ToString(req.Payload["team_id"]))
+	}
+	if teamID == "" {
+		return ErrJSON(400, g.Error("team_id é necessário"))
+	}
+
+	team, err := req.Dao().FindRecordById("team", teamID)
+	if err != nil {
+		return ErrJSON(404, g.Error("time não encontrado"))
+	}
+
+	sql := `
+	select
+		u.id,
+		u.email,
+		u.created,
+		u.updated,
+		u.manager,
+		u.properties
+	from main.user u
+	where u.team_id = '{team_id}'
+	order by u.manager desc, lower(u.email) asc
+	`
+	members, err := req.SqlQueryRecords(g.R(sql, "team_id", teamID))
+	if err != nil {
+		return ErrJSON(500, err, "error listing members")
+	}
+
+	managers := make([]string, 0)
+	for _, member := range members {
+		if cast.ToBool(member["manager"]) {
+			managers = append(managers, cast.ToString(member["email"]))
+		}
+	}
+
+	return c.JSON(200, g.M(
+		"id", team.Id,
+		"name", cast.ToString(team.Get("name")),
+		"blocked", cast.ToBool(team.Get("blocked")),
+		"active", cast.ToBool(team.Get("active")),
+		"cities", parseCitiesField(team.Get("cities")),
+		"member_count", len(members),
+		"managers", managers,
+		"members", members,
+	))
+}
+
+// PlatformSetTeamStatus ativa/desativa ou bloqueia uma conta.
+func PlatformSetTeamStatus(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+	if err := req.ValidatePayload("team_id"); err != nil {
+		return ErrJSON(400, err, "error validating payload")
+	}
+
+	teamID := strings.TrimSpace(req.Payload.String("team_id"))
+	team, err := req.Dao().FindRecordById("team", teamID)
+	if err != nil {
+		return ErrJSON(404, g.Error("time não encontrado"))
+	}
+
+	if _, ok := req.Payload["active"]; ok {
+		team.Set("active", req.Payload.Bool("active"))
+	}
+	if _, ok := req.Payload["blocked"]; ok {
+		team.Set("blocked", req.Payload.Bool("blocked"))
+	}
+
+	if err := req.Dao().SaveRecord(team); err != nil {
+		return ErrJSON(500, err, "error saving team status")
+	}
+
+	return c.JSON(200, g.M(
+		"id", team.Id,
+		"name", cast.ToString(team.Get("name")),
+		"active", cast.ToBool(team.Get("active")),
+		"blocked", cast.ToBool(team.Get("blocked")),
+		"cities", parseCitiesField(team.Get("cities")),
+	))
+}
+
+// PlatformDeleteTeam desativa a conta e limpa a abrangência (exclusão lógica).
+func PlatformDeleteTeam(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+	if err := req.ValidatePayload("team_id"); err != nil {
+		return ErrJSON(400, err, "error validating payload")
+	}
+
+	teamID := strings.TrimSpace(req.Payload.String("team_id"))
+	team, err := req.Dao().FindRecordById("team", teamID)
+	if err != nil {
+		return ErrJSON(404, g.Error("time não encontrado"))
+	}
+
+	team.Set("active", false)
+	team.Set("blocked", true)
+	team.Set("cities", "[]")
+	if err := req.Dao().SaveRecord(team); err != nil {
+		return ErrJSON(500, err, "error deleting team")
+	}
+
+	return c.JSON(200, g.M(
+		"id", team.Id,
+		"deleted", true,
+		"active", false,
+		"blocked", true,
+		"cities", []string{},
 	))
 }

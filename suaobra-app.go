@@ -138,7 +138,10 @@ func main() {
 
 		// Platform admin (abrangência por conta)
 		e.Router.GET("/platform/teams", server.PlatformTeams)
+		e.Router.GET("/platform/team", server.PlatformTeamDetail)
 		e.Router.POST("/platform/team-cities", server.PlatformSetCities)
+		e.Router.POST("/platform/team-status", server.PlatformSetTeamStatus)
+		e.Router.POST("/platform/team-delete", server.PlatformDeleteTeam)
 		e.Router.GET("/platform/feedback", server.PlatformFeedback)
 
 		// Feedback de usuários (bug / melhoria / contato)
