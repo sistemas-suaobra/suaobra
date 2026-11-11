@@ -46,11 +46,9 @@ func NewRequest(c echo.Context) (req Request) {
 
 	var userID, teamID, userEmail string
 	var userIsManager bool
-	
-	// DEBUG: Log auth state
+
 	authToken := c.Request().Header.Get(echo.HeaderAuthorization)
-	g.Info("NewRequest DEBUG", "hasAuthRecord", req.AuthRecord() != nil, "hasAdmin", req.Admin() != nil, "hasTeamID", c.Get("team_id") != nil, "tokenPrefix", g.F("%.20s...", authToken))
-	
+
 	if req.AuthRecord() != nil {
 		if !UserIsActive(req.AuthRecord()) {
 			req.Error = g.Error(deactivatedAccountMessage)

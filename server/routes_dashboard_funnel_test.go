@@ -12,6 +12,7 @@ func TestDashboardFunnelCountsVendaMaisStages(t *testing.T) {
 	assert.NoError(t, err)
 
 	sql := strings.ToLower(string(raw))
+	assert.Contains(t, sql, "month_activity")
 	assert.Contains(t, sql, "lead_activity")
 	assert.Contains(t, sql, "%propost%")
 	assert.Contains(t, sql, "%vend%")

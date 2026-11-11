@@ -24,6 +24,8 @@ var MainDB database.Connection
 var mainDataDir string
 var resolvedCoreDbPath string
 var coreIndexesEnsured bool
+var coreAttachedCached bool
+var coreAttachedCheckedAt time.Time
 
 func SetPocketBaseDB(app *pocketbase.PocketBase) (err error) {
 	MainDao = app.Dao()
@@ -131,8 +133,15 @@ func coreIsAttached() bool {
 	if MainDB == nil {
 		return false
 	}
+	// Evita SELECT a cada query do dashboard: o attach quase nunca cai
+	// depois do boot; revalida no máximo a cada 30s.
+	if coreAttachedCached && time.Since(coreAttachedCheckedAt) < 30*time.Second {
+		return true
+	}
 	_, err := MainDB.Exec("select 1 from core.core_obras_plus limit 1")
-	return err == nil
+	coreAttachedCheckedAt = time.Now()
+	coreAttachedCached = err == nil
+	return coreAttachedCached
 }
 
 func AttachCoreDb() error {
@@ -163,12 +172,15 @@ func AttachCoreDb() error {
 		}
 		if coreIsAttached() {
 			g.Info("core.db anexado com sucesso: file=%s sql=%s", corePath, attachPath)
+			coreAttachedCached = true
+			coreAttachedCheckedAt = time.Now()
 			ensureCoreIndexes()
 			if err = loadCities(); err != nil {
 				g.Warn("nao foi possivel carregar cidades apos attach do core: %v", err)
 			}
 			return nil
 		}
+		coreAttachedCached = false
 		lastErr = g.Error("attach executou mas core.core_obras_plus continua indisponivel")
 	}
 

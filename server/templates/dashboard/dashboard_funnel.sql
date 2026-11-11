@@ -1,3 +1,14 @@
+-- Materializa o histórico do mês uma vez (em vez de EXISTS correlacionado 3x).
+with month_activity as (
+  select
+    activity.lead_id as lead_id,
+    activity.properties ->> 'stage_id' as stage_id
+  from main.lead_activity activity
+  where activity.team_id = {:team_id}
+    and activity.type = 'history'
+    and activity.created >= {:month}
+    and activity.created < date({:month}, '+1 month')
+)
 select
   strftime('%Y-%m', date({:month})) as month,
   count(distinct case
@@ -30,12 +41,9 @@ select
         or (l.visited_at >= {:month} and l.visited_at < date({:month}, '+1 month'))
         or exists (
           select 1
-          from main.lead_activity activity
+          from month_activity activity
           where activity.lead_id = l.id
-            and activity.type = 'history'
-            and activity.created >= {:month}
-            and activity.created < date({:month}, '+1 month')
-            and activity.properties ->> 'stage_id' = ls.id
+            and activity.stage_id = ls.id
         )
       )
     then l.id
@@ -56,12 +64,9 @@ select
         or (l.visited_at >= {:month} and l.visited_at < date({:month}, '+1 month'))
         or exists (
           select 1
-          from main.lead_activity activity
+          from month_activity activity
           where activity.lead_id = l.id
-            and activity.type = 'history'
-            and activity.created >= {:month}
-            and activity.created < date({:month}, '+1 month')
-            and activity.properties ->> 'stage_id' = ls.id
+            and activity.stage_id = ls.id
         )
       )
     then l.id
@@ -75,10 +80,7 @@ where {where_clause}
     or (l.visited_at >= {:month} and l.visited_at < date({:month}, '+1 month'))
     or exists (
       select 1
-      from main.lead_activity activity
+      from month_activity activity
       where activity.lead_id = l.id
-        and activity.type = 'history'
-        and activity.created >= {:month}
-        and activity.created < date({:month}, '+1 month')
     )
   )

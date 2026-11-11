@@ -73,6 +73,7 @@ func main() {
 		e.Router.GET("/query/dashboard/history", server.QueryDashboardHistory)
 		e.Router.GET("/query/dashboard/leads", server.QueryDashboardLeads)
 		e.Router.GET("/query/dashboard/home", server.QueryDashboardHome)
+		e.Router.GET("/query/dashboard/bootstrap", server.QueryDashboardBootstrap)
 		e.Router.GET("/query/dashboard/users", server.QueryDashboardUsers)
 		e.Router.GET("/query/dashboard/campanhas", server.CampanhasDashboard)
 

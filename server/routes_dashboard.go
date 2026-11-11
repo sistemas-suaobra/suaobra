@@ -100,6 +100,61 @@ func QueryDashboardHome(c echo.Context) error {
 	))
 }
 
+// QueryDashboardBootstrap agrega funnel + home (+ users se manager)
+// numa única ida à API — o BFF da Vercel deixa de pagar 3 RTTs BR.
+func QueryDashboardBootstrap(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error)
+	}
+
+	funnelSQL, err := templates.ReadFile("templates/dashboard/dashboard_funnel.sql")
+	if err != nil {
+		return ErrJSON(500, err, "error reading funnel sql")
+	}
+	whereClause := req.BuildWhereClause("l.team_id = {:team_id}", map[string]string{
+		"l.owner_id": "user_id",
+	})
+	funnel, err := req.SqlQueryRecords(g.R(string(funnelSQL), "where_clause", whereClause))
+	if err != nil {
+		return ErrJSON(500, err, "error querying funnel")
+	}
+
+	reminders, err := queryDashboardList(&req, "templates/dashboard/dashboard_reminders.sql", "lead.owner_id")
+	if err != nil {
+		return ErrJSON(500, err, "error querying reminders")
+	}
+	unassigned, err := queryDashboardList(&req, "templates/dashboard/dashboard_unassigned.sql", "")
+	if err != nil {
+		return ErrJSON(500, err, "error querying unassigned")
+	}
+	moves, err := queryDashboardList(&req, "templates/dashboard/dashboard_moves.sql", "lead.owner_id")
+	if err != nil {
+		return ErrJSON(500, err, "error querying moves")
+	}
+
+	payload := g.M(
+		"funnel", funnel,
+		"reminders", reminders,
+		"unassigned", unassigned,
+		"moves", moves,
+	)
+
+	if req.IsManager() {
+		usersSQL, err := templates.ReadFile("templates/dashboard/dashboard_users.sql")
+		if err != nil {
+			return ErrJSON(500, err, "error reading users sql")
+		}
+		users, err := req.SqlQueryRecords(string(usersSQL))
+		if err != nil {
+			return ErrJSON(500, err, "error querying users")
+		}
+		payload["users"] = users
+	}
+
+	return c.JSON(200, payload)
+}
+
 func QueryDashboardLeads(c echo.Context) error {
 	req := NewRequest(c)
 	sqlBytes, _ := templates.ReadFile("templates/dashboard/dashboard_leads.sql")
