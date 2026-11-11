@@ -90,6 +90,36 @@ func userIsAdmin(record *models.Record) bool {
 	return cast.ToBool(props["is_admin"])
 }
 
+// lockUserPrivilegesOnAPIWrite impede auto-promoção a platform admin / gerente
+// via PATCH/POST em /api/collections/user. Promoções legítimas usam Dao
+// (team/set-manager) ou o admin UI do PocketBase.
+func lockUserPrivilegesOnAPIWrite(record, original *models.Record) error {
+	if record == nil {
+		return nil
+	}
+
+	props, err := propertiesMap(record.Get("properties"))
+	if err != nil {
+		return apis.NewBadRequestError("properties inválidas", err)
+	}
+
+	keepAdmin := false
+	keepManager := false
+	if original != nil {
+		origProps, origErr := propertiesMap(original.Get("properties"))
+		if origErr != nil {
+			return apis.NewBadRequestError("properties inválidas", origErr)
+		}
+		keepAdmin = cast.ToBool(origProps["is_admin"])
+		keepManager = original.GetBool("manager")
+	}
+
+	props["is_admin"] = keepAdmin
+	record.Set("manager", keepManager)
+	record.Set("properties", props)
+	return nil
+}
+
 func RejectDeactivatedRecord(record *models.Record) error {
 	if record == nil || UserIsActive(record) {
 		return nil

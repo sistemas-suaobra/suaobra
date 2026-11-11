@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/flarco/g"
 	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/spf13/cast"
@@ -23,6 +24,21 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 }
 
 func registerUserHooks(app *pocketbase.PocketBase) {
+
+	// Bloqueia is_admin / manager em create/update pela API de records.
+	app.OnRecordBeforeCreateRequest("user").Add(func(e *core.RecordCreateEvent) error {
+		if e.HttpContext.Get(apis.ContextAdminKey) != nil {
+			return nil
+		}
+		return lockUserPrivilegesOnAPIWrite(e.Record, nil)
+	})
+
+	app.OnRecordBeforeUpdateRequest("user").Add(func(e *core.RecordUpdateEvent) error {
+		if e.HttpContext.Get(apis.ContextAdminKey) != nil {
+			return nil
+		}
+		return lockUserPrivilegesOnAPIWrite(e.Record, e.Record.OriginalCopy())
+	})
 
 	// After CREATE user via API
 	app.OnRecordAfterCreateRequest("user").Add(func(e *core.RecordCreateEvent) error {
