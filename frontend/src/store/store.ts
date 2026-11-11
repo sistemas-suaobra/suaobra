@@ -56,21 +56,16 @@ export const loadUserState = async () => {
   userS.set(u => {
     data.team = data.expand.team_id
     u = new User(data)
-    if (u.team.cities.includes('SP-*')) {
-      u.team.cities = allCities.filter(c => c.id.startsWith('SP-')).map(c => c.id).sort()
+    const expanded = new Set<string>()
+    for (const id of u.team.cities) {
+      const match = /^([A-Z]{2})-\*$/.exec(id)
+      if (match) {
+        allCities.filter(c => c.id.startsWith(match[1] + '-')).forEach(c => expanded.add(c.id))
+        continue
+      }
+      expanded.add(id)
     }
-    if (u.team.cities.includes('GO-*')) {
-      u.team.cities = allCities.filter(c => c.id.startsWith('GO-')).map(c => c.id).sort()
-    }
-    if (u.team.cities.includes('SC-*')) {
-      u.team.cities = allCities.filter(c => c.id.startsWith('SC-')).map(c => c.id).sort()
-    }
-    if (u.team.cities.includes('DF-*')) {
-      u.team.cities = allCities.filter(c => c.id.startsWith('DF-')).map(c => c.id).sort()
-    }
-    if (u.team.cities.includes('PR-*')) {
-      u.team.cities = allCities.filter(c => c.id.startsWith('PR-')).map(c => c.id).sort()
-    }
+    u.team.cities = [...expanded].sort()
     return u
   })
 

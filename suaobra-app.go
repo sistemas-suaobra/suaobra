@@ -135,6 +135,10 @@ func main() {
 		e.Router.POST("/team/set-manager", server.TeamSetManager)
 		e.Router.POST("/team/set-active", server.TeamSetActive)
 
+		// Platform admin (abrangência por conta)
+		e.Router.GET("/platform/teams", server.PlatformTeams)
+		e.Router.POST("/platform/team-cities", server.PlatformSetCities)
+
 		// Debug endpoint para RudderStack (temporário)
 		e.Router.POST("/debug/rudderstack", func(c echo.Context) error {
 			token := c.Request().Header.Get("TOKEN")
