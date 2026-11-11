@@ -171,9 +171,9 @@ func PlatformSetCities(c echo.Context) error {
 		return ErrJSON(500, err, "error saving cities")
 	}
 
-	return c.JSON(200, g.M{
-		"id":     team.Id,
-		"name":   cast.ToString(team.Get("name")),
-		"cities": cities,
-	})
+	return c.JSON(200, g.M(
+		"id", team.Id,
+		"name", cast.ToString(team.Get("name")),
+		"cities", cities,
+	))
 }
