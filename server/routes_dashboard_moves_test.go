@@ -13,6 +13,7 @@ func TestDashboardMovesUsesSavedLeadName(t *testing.T) {
 
 	sql := strings.ToLower(string(raw))
 	assert.Contains(t, sql, "lead.properties -> 'obra' ->> 'owner'")
-	assert.Contains(t, sql, "cop.professional")
 	assert.Contains(t, sql, "$.contacts[0].name")
+	assert.Contains(t, sql, "with recent as")
+	assert.NotContains(t, sql, "core.core_obras_plus")
 }

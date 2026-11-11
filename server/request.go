@@ -150,18 +150,21 @@ func (r *Request) SqlQuery(sql string) (data iop.Dataset, err error) {
 	store.EnsureCoreReady() // core.db pode desanexar entre queries SQLite
 
 	sql = store.BindSQL(sql, r.Payload.Map())
-retry:
-	data, err = store.MainDB.Query(sql)
-	if err != nil {
-		if strings.Contains(err.Error(), "no such table: core.core_obras_plus") {
-			time.Sleep(100 * time.Millisecond)
-			g.Warn("retrying query, got error: no such table: core.core_obras_plus")
-			goto retry
+	for attempt := 0; attempt < 3; attempt++ {
+		data, err = store.MainDB.Query(sql)
+		if err == nil {
+			return data, nil
 		}
-		return data, g.Error(err, "error querying data")
+		if !strings.Contains(err.Error(), "no such table: core.core_obras_plus") {
+			return data, g.Error(err, "error querying data")
+		}
+		// Antes: retry infinito sem reattach — travava /dashboard/home por 60–90s+.
+		g.Warn("core.db ausente (tentativa %d/3): %v", attempt+1, err)
+		store.InvalidateCoreAttach()
+		store.EnsureCoreReady()
+		time.Sleep(100 * time.Millisecond)
 	}
-
-	return data, nil
+	return data, g.Error(err, "error querying data")
 }
 
 // BuildWhereClause constructs a dynamic WHERE clause from a base filter and optional additional filters

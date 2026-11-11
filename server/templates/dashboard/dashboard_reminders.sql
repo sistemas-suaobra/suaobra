@@ -1,8 +1,14 @@
+-- Sem join em core.*: o dashboard não pode depender do attach do core.db.
 select
   lead.id as id,
-  coalesce(nullif(trim(cop.owner), ''), nullif(trim(cop.address), ''), 'Lead') as title,
-  cop.city as city,
-  cop.state as state,
+  coalesce(
+    nullif(trim(nullif(lead.properties -> 'obra' ->> 'owner', 'null')), ''),
+    nullif(trim(nullif(lead.properties -> 'obra' ->> 'address', 'null')), ''),
+    nullif(trim(nullif(lead.properties -> 'obra' ->> 'professional', 'null')), ''),
+    'Lead'
+  ) as title,
+  nullif(lead.properties -> 'obra' ->> 'city', 'null') as city,
+  nullif(lead.properties -> 'obra' ->> 'state', 'null') as state,
   coalesce(
     nullif(nullif(user.properties, ''), 'null') ->> 'name',
     nullif(user.name, ''),
@@ -14,7 +20,6 @@ select
     else 'Pendente'
   end as status
 from main.lead lead
-left join core.core_obras_plus cop on cop.id = lead.obra_id
 left join main.user on user.id = lead.owner_id
 where lead.team_id = {:team_id}
   and {user_filter}

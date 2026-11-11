@@ -190,6 +190,12 @@ func AttachCoreDb() error {
 	return nil
 }
 
+// InvalidateCoreAttach força nova verificação/reattach do core.db.
+func InvalidateCoreAttach() {
+	coreAttachedCached = false
+	coreAttachedCheckedAt = time.Time{}
+}
+
 // EnsureCoreReady garante core.db anexado e cache de cidades carregado antes de queries Obras+.
 func EnsureCoreReady() {
 	if MainDB == nil {
