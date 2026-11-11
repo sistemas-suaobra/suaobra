@@ -139,6 +139,10 @@ func main() {
 		// Platform admin (abrangência por conta)
 		e.Router.GET("/platform/teams", server.PlatformTeams)
 		e.Router.POST("/platform/team-cities", server.PlatformSetCities)
+		e.Router.GET("/platform/feedback", server.PlatformFeedback)
+
+		// Feedback de usuários (bug / melhoria / contato)
+		e.Router.POST("/feedback", server.CreateFeedback)
 
 		// Debug endpoint para RudderStack (temporário)
 		e.Router.POST("/debug/rudderstack", func(c echo.Context) error {
