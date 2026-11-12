@@ -156,6 +156,10 @@ func main() {
 		e.Router.GET("/notifications", server.ListNotifications)
 		e.Router.POST("/notifications/read", server.MarkNotificationsRead)
 
+		// Tour de novidades (v2)
+		e.Router.GET("/tour/status", server.TourStatus)
+		e.Router.POST("/tour/complete", server.TourComplete)
+
 		// Auth codes (BFF SendKit) — públicos
 		e.Router.POST("/auth/store-code", server.StoreAuthCode)
 		e.Router.POST("/auth/confirm-code", server.ConfirmAuthCode)
