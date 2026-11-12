@@ -141,11 +141,24 @@ func main() {
 		e.Router.GET("/platform/team", server.PlatformTeamDetail)
 		e.Router.POST("/platform/team-cities", server.PlatformSetCities)
 		e.Router.POST("/platform/team-status", server.PlatformSetTeamStatus)
+		e.Router.POST("/platform/team-update", server.PlatformUpdateTeam)
 		e.Router.POST("/platform/team-delete", server.PlatformDeleteTeam)
+		e.Router.POST("/platform/member-update", server.PlatformUpdateMember)
+		e.Router.POST("/platform/member-remove", server.PlatformRemoveMember)
 		e.Router.GET("/platform/feedback", server.PlatformFeedback)
+		e.Router.GET("/platform/feedback/:id", server.PlatformFeedbackDetail)
+		e.Router.POST("/platform/feedback-status", server.PlatformFeedbackUpdateStatus)
 
 		// Feedback de usuários (bug / melhoria / contato)
 		e.Router.POST("/feedback", server.CreateFeedback)
+
+		// Notificações persistentes
+		e.Router.GET("/notifications", server.ListNotifications)
+		e.Router.POST("/notifications/read", server.MarkNotificationsRead)
+
+		// Auth codes (BFF SendKit) — públicos
+		e.Router.POST("/auth/store-code", server.StoreAuthCode)
+		e.Router.POST("/auth/confirm-code", server.ConfirmAuthCode)
 
 		// Debug endpoint para RudderStack (temporário)
 		e.Router.POST("/debug/rudderstack", func(c echo.Context) error {

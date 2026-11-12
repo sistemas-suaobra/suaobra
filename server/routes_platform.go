@@ -8,6 +8,7 @@ import (
 
 	"github.com/flarco/g"
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/pocketbase/models"
 	"github.com/spf13/cast"
 )
 
@@ -302,6 +303,160 @@ func PlatformSetTeamStatus(c echo.Context) error {
 		"blocked", cast.ToBool(team.Get("blocked")),
 		"cities", parseCitiesField(team.Get("cities")),
 	))
+}
+
+// PlatformUpdateTeam atualiza dados básicos da conta (nome).
+func PlatformUpdateTeam(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+	if err := req.ValidatePayload("team_id"); err != nil {
+		return ErrJSON(400, err, "error validating payload")
+	}
+
+	teamID := strings.TrimSpace(req.Payload.String("team_id"))
+	team, err := req.Dao().FindRecordById("team", teamID)
+	if err != nil {
+		return ErrJSON(404, g.Error("time não encontrado"))
+	}
+
+	if name, ok := req.Payload["name"]; ok {
+		trimmed := strings.TrimSpace(cast.ToString(name))
+		if trimmed == "" {
+			return ErrJSON(400, g.Error("nome inválido"))
+		}
+		if len(trimmed) > 200 {
+			trimmed = trimmed[:200]
+		}
+		team.Set("name", trimmed)
+	}
+
+	if err := req.Dao().SaveRecord(team); err != nil {
+		return ErrJSON(500, err, "error saving team")
+	}
+
+	return c.JSON(200, g.M(
+		"id", team.Id,
+		"name", cast.ToString(team.Get("name")),
+		"blocked", cast.ToBool(team.Get("blocked")),
+		"active", cast.ToBool(team.Get("active")),
+		"cities", parseCitiesField(team.Get("cities")),
+	))
+}
+
+// PlatformUpdateMember edita membro de qualquer equipe (plataforma).
+func PlatformUpdateMember(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+	if err := req.ValidatePayload("team_id", "user_id"); err != nil {
+		return ErrJSON(400, err, "error validating payload")
+	}
+
+	teamID := strings.TrimSpace(req.Payload.String("team_id"))
+	userID := strings.TrimSpace(req.Payload.String("user_id"))
+	record, err := req.Dao().FindRecordById("user", userID)
+	if err != nil {
+		return ErrJSON(404, g.Error("usuário não encontrado"))
+	}
+	if cast.ToString(record.Get("team_id")) != teamID {
+		return ErrJSON(403, g.Error("usuário não pertence a esta equipe"))
+	}
+
+	props, err := propertiesMap(record.Get("properties"))
+	if err != nil {
+		return ErrJSON(500, err, "erro ao ler os dados do usuário")
+	}
+
+	if name, ok := req.Payload["name"]; ok {
+		props["name"] = strings.TrimSpace(cast.ToString(name))
+	}
+	if phone, ok := req.Payload["phone"]; ok {
+		props["phone"] = strings.TrimSpace(cast.ToString(phone))
+	}
+	if _, ok := req.Payload["active"]; ok {
+		props["active"] = req.Payload.Bool("active")
+	}
+	record.Set("properties", props)
+
+	if _, ok := req.Payload["manager"]; ok {
+		record.Set("manager", req.Payload.Bool("manager"))
+	}
+	if _, ok := req.Payload["is_manager"]; ok {
+		record.Set("manager", req.Payload.Bool("is_manager"))
+	}
+
+	if err := req.Dao().SaveRecord(record); err != nil {
+		return ErrJSON(500, err, "erro ao atualizar usuário")
+	}
+
+	return c.JSON(200, g.M(
+		"id", record.Id,
+		"email", record.Email(),
+		"manager", record.GetBool("manager"),
+		"properties", props,
+		"message", "Usuário atualizado",
+	))
+}
+
+// PlatformRemoveMember remove o usuário da equipe (volta para equipe pessoal).
+func PlatformRemoveMember(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+	if err := req.ValidatePayload("team_id", "user_id"); err != nil {
+		return ErrJSON(400, err, "error validating payload")
+	}
+
+	teamID := strings.TrimSpace(req.Payload.String("team_id"))
+	userID := strings.TrimSpace(req.Payload.String("user_id"))
+	record, err := req.Dao().FindRecordById("user", userID)
+	if err != nil {
+		return ErrJSON(404, g.Error("usuário não encontrado"))
+	}
+	if cast.ToString(record.Get("team_id")) != teamID {
+		return ErrJSON(403, g.Error("usuário não pertence a esta equipe"))
+	}
+
+	userEmail := cast.ToString(record.Get("email"))
+	personalTeam, err := req.Dao().FindFirstRecordByData("team", "name", userEmail)
+	if err != nil || personalTeam == nil {
+		teamCollection, findErr := req.Dao().FindCollectionByNameOrId("team")
+		if findErr != nil {
+			return ErrJSON(500, findErr, "erro ao encontrar coleção de equipe")
+		}
+		personalTeam = models.NewRecord(teamCollection)
+		personalTeam.Set("name", userEmail)
+		personalTeam.Set("owner_id", userID)
+		personalTeam.Set("active", true)
+		personalTeam.Set("blocked", false)
+		personalTeam.Set("cities", "[]")
+		personalTeam.Set("properties", g.Marshal(g.M()))
+		personalTeam.Set("entitlements", g.Marshal(g.M()))
+		if saveErr := req.Dao().SaveRecord(personalTeam); saveErr != nil {
+			return ErrJSON(500, saveErr, "erro ao criar equipe pessoal")
+		}
+	}
+
+	record.Set("team_id", personalTeam.Id)
+	record.Set("manager", false)
+	if err := req.Dao().SaveRecord(record); err != nil {
+		return ErrJSON(500, err, "erro ao remover usuário da equipe")
+	}
+
+	return c.JSON(200, g.M("message", "Usuário removido com sucesso"))
 }
 
 // PlatformDeleteTeam desativa a conta e limpa a abrangência (exclusão lógica).

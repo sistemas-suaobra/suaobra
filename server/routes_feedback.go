@@ -17,6 +17,37 @@ var feedbackTypes = map[string]string{
 	"contato":  "contato",
 }
 
+var feedbackStatuses = map[string]string{
+	"novo":          "novo",
+	"em_andamento":  "em_andamento",
+	"em_espera":     "em_espera",
+	"concluido":     "concluido",
+}
+
+func feedbackStatusLabel(status string) string {
+	switch status {
+	case "em_andamento":
+		return "Em andamento"
+	case "em_espera":
+		return "Em espera"
+	case "concluido":
+		return "Concluído"
+	default:
+		return "Novo"
+	}
+}
+
+func feedbackKindLabel(kind string) string {
+	switch kind {
+	case "melhoria":
+		return "Melhoria"
+	case "contato":
+		return "Contato"
+	default:
+		return "Bug"
+	}
+}
+
 func feedbackUserName(auth *models.Record) string {
 	if auth == nil {
 		return ""
@@ -149,6 +180,11 @@ func CreateFeedback(c echo.Context) error {
 	))
 }
 
+func feedbackRecordJSON(record map[string]any) map[string]any {
+	record["attachments"] = parseFeedbackAttachmentsField(record["attachments"])
+	return record
+}
+
 // PlatformFeedback lista bugs/melhorias/contatos para o backoffice.
 func PlatformFeedback(c echo.Context) error {
 	req := NewRequest(c)
@@ -190,10 +226,124 @@ func PlatformFeedback(c echo.Context) error {
 	}
 
 	for _, record := range records {
-		record["attachments"] = parseFeedbackAttachmentsField(record["attachments"])
+		feedbackRecordJSON(record)
 	}
 
 	return c.JSON(200, records)
+}
+
+// PlatformFeedbackDetail retorna um relato pelo id.
+func PlatformFeedbackDetail(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+
+	id := strings.TrimSpace(c.PathParam("id"))
+	if id == "" {
+		id = strings.TrimSpace(c.QueryParam("id"))
+	}
+	if id == "" {
+		return ErrJSON(400, g.Error("id obrigatório"))
+	}
+
+	records, err := req.SqlQueryRecords(g.R(`
+		select
+			id, type, subject, message, user_id, team_id, user_email, user_name,
+			attachments, status, created, updated
+		from main.feedback
+		where id = '{id}'
+		limit 1
+	`, "id", id))
+	if err != nil {
+		return ErrJSON(500, err, "error loading feedback")
+	}
+	if len(records) == 0 {
+		return ErrJSON(404, g.Error("relato não encontrado"))
+	}
+	return c.JSON(200, feedbackRecordJSON(records[0]))
+}
+
+// PlatformFeedbackUpdateStatus atualiza o status e notifica o autor.
+func PlatformFeedbackUpdateStatus(c echo.Context) error {
+	req := NewRequest(c)
+	if req.Error != nil {
+		return ErrJSON(401, req.Error, "error creating request")
+	}
+	if err := requirePlatformAdmin(&req); err != nil {
+		return ErrJSON(403, err)
+	}
+	if err := req.ValidatePayload("id", "status"); err != nil {
+		return ErrJSON(400, err, "error validating payload")
+	}
+
+	id := strings.TrimSpace(req.Payload.String("id"))
+	status, ok := feedbackStatuses[strings.ToLower(strings.TrimSpace(req.Payload.String("status")))]
+	if !ok || id == "" {
+		return ErrJSON(400, g.Error("id ou status inválido"))
+	}
+
+	record, err := req.Dao().FindRecordById("feedback", id)
+	if err != nil || record == nil {
+		return ErrJSON(404, g.Error("relato não encontrado"))
+	}
+
+	previous := strings.TrimSpace(cast.ToString(record.Get("status")))
+	if previous == status {
+		return c.JSON(200, g.M(
+			"id", record.Id,
+			"status", status,
+			"unchanged", true,
+			"user_id", cast.ToString(record.Get("user_id")),
+			"user_email", cast.ToString(record.Get("user_email")),
+			"user_name", cast.ToString(record.Get("user_name")),
+			"type", cast.ToString(record.Get("type")),
+			"subject", cast.ToString(record.Get("subject")),
+		))
+	}
+
+	record.Set("status", status)
+	if err := req.Dao().SaveRecord(record); err != nil {
+		return ErrJSON(500, err, "erro ao atualizar status")
+	}
+
+	kind := cast.ToString(record.Get("type"))
+	subject := cast.ToString(record.Get("subject"))
+	userID := cast.ToString(record.Get("user_id"))
+	statusLabel := feedbackStatusLabel(status)
+	kindLabel := feedbackKindLabel(kind)
+	href := "/dashboard/notificacoes"
+	title := kindLabel + " " + strings.ToLower(statusLabel)
+	body := g.F("Seu relato \"%s\" está %s.", subject, strings.ToLower(statusLabel))
+
+	if userID != "" {
+		_ = createNotification(&req, map[string]string{
+			"user_id": userID,
+			"title":   title,
+			"body":    body,
+			"href":    href,
+			"kind":    "feedback_status",
+			"ref_id":  record.Id,
+		})
+	}
+
+	return c.JSON(200, g.M(
+		"id", record.Id,
+		"status", status,
+		"previous_status", previous,
+		"user_id", userID,
+		"user_email", cast.ToString(record.Get("user_email")),
+		"user_name", cast.ToString(record.Get("user_name")),
+		"type", kind,
+		"subject", subject,
+		"status_label", statusLabel,
+		"kind_label", kindLabel,
+		"notification_title", title,
+		"notification_body", body,
+	))
 }
 
 func parseFeedbackAttachmentsField(raw any) []map[string]string {
