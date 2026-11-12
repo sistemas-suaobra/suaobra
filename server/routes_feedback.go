@@ -32,6 +32,31 @@ func feedbackUserName(auth *models.Record) string {
 
 func normalizeFeedbackAttachments(raw any) []map[string]string {
 	out := make([]map[string]string, 0)
+	appendEntry := func(name, kind, key, url, mime, size string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		kind = strings.TrimSpace(kind)
+		if kind == "" {
+			kind = "arquivo"
+		}
+		item := map[string]string{"name": name, "kind": kind}
+		if key = strings.TrimSpace(key); key != "" {
+			item["key"] = key
+		}
+		if url = strings.TrimSpace(url); url != "" {
+			item["url"] = url
+		}
+		if mime = strings.TrimSpace(mime); mime != "" {
+			item["mime"] = mime
+		}
+		if size = strings.TrimSpace(size); size != "" {
+			item["size"] = size
+		}
+		out = append(out, item)
+	}
+
 	switch value := raw.(type) {
 	case []any:
 		for _, item := range value {
@@ -39,27 +64,18 @@ func normalizeFeedbackAttachments(raw any) []map[string]string {
 			if !ok {
 				continue
 			}
-			name := strings.TrimSpace(cast.ToString(entry["name"]))
-			kind := strings.TrimSpace(cast.ToString(entry["kind"]))
-			if name == "" {
-				continue
-			}
-			if kind == "" {
-				kind = "arquivo"
-			}
-			out = append(out, map[string]string{"name": name, "kind": kind})
+			appendEntry(
+				cast.ToString(entry["name"]),
+				cast.ToString(entry["kind"]),
+				cast.ToString(entry["key"]),
+				cast.ToString(entry["url"]),
+				cast.ToString(entry["mime"]),
+				cast.ToString(entry["size"]),
+			)
 		}
 	case []map[string]string:
 		for _, entry := range value {
-			name := strings.TrimSpace(entry["name"])
-			kind := strings.TrimSpace(entry["kind"])
-			if name == "" {
-				continue
-			}
-			if kind == "" {
-				kind = "arquivo"
-			}
-			out = append(out, map[string]string{"name": name, "kind": kind})
+			appendEntry(entry["name"], entry["kind"], entry["key"], entry["url"], entry["mime"], entry["size"])
 		}
 	}
 	if len(out) > 20 {

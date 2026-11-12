@@ -8,12 +8,12 @@ import (
 
 func TestNormalizeFeedbackAttachments(t *testing.T) {
 	got := normalizeFeedbackAttachments([]any{
-		map[string]any{"name": "print.png", "kind": "foto"},
+		map[string]any{"name": "print.png", "kind": "foto", "key": "feedback/u1/a.png", "url": "/api/feedback/attachments?v=a"},
 		map[string]any{"name": "  ", "kind": "foto"},
 		map[string]any{"name": "nota.pdf"},
 	})
 	assert.Equal(t, []map[string]string{
-		{"name": "print.png", "kind": "foto"},
+		{"name": "print.png", "kind": "foto", "key": "feedback/u1/a.png", "url": "/api/feedback/attachments?v=a"},
 		{"name": "nota.pdf", "kind": "arquivo"},
 	}, got)
 }
